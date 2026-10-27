@@ -68,11 +68,22 @@ public sealed partial class MainWindow : Window
         if (_settings.Current.HasCompletedWelcome)
         {
             ShowInbox();
+            await OpenFirstMessageForScreenshotAsync();
         }
         else
         {
             ShowWelcome();
         }
+    }
+
+    /// <summary>
+    /// Used by the CI smoke test (SIDEPHASE_OPEN_FIRST_MESSAGE=1) so its screenshot shows the reading pane.
+    /// </summary>
+    private async Task OpenFirstMessageForScreenshotAsync()
+    {
+        if (Environment.GetEnvironmentVariable("SIDEPHASE_OPEN_FIRST_MESSAGE") != "1") return;
+        await Task.Delay(1500);
+        _mailList.SelectedItem = _mailList.Entries.OfType<MessageItemViewModel>().FirstOrDefault();
     }
 
     public void ShowWelcome()
