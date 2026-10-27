@@ -41,6 +41,9 @@ public sealed partial class NavItemViewModel : ObservableObject
     public string ColorHex { get; init; } = "#8B7CFF";
     public string Subtitle { get; init; } = string.Empty;
 
+    /// <summary>A shortcut in the "Favourite folders" section (the folder also appears under its account).</summary>
+    public bool IsFavouriteFolder { get; init; }
+
     /// <summary>Child folders (accounts only). Null for leaves so no expand chevron is shown.</summary>
     public ObservableCollection<NavItemViewModel>? Children { get; init; }
 

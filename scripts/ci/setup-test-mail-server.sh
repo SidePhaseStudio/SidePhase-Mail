@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sets up a disposable, loopback-only Dovecot (IMAP) + Postfix (SMTP submission) server for the integration tests.
-# Ubuntu only. Uses two throwaway test users on the reserved example.test domain - never real accounts.
+# Ubuntu 24.04 (Dovecot 2.3) only. Uses two throwaway test users on the reserved example.test domain - never real accounts.
 #
 #   IMAPS  127.0.0.1:1993   IMAP+STARTTLS 127.0.0.1:1143
 #   SMTPS  127.0.0.1:1465   submission+STARTTLS 127.0.0.1:1587

@@ -10,7 +10,8 @@ using SidePhase.Mail.Core.Spam;
 namespace SidePhase.Mail.App.ViewModels;
 
 /// <summary>How a message should be presented in the current list.</summary>
-public sealed record MessageDisplayContext(DateTimeOffset Now, SpamVerdict Verdict, bool IsLocallyJunk, bool IsSenderBlocked);
+/// <param name="Account">Set in views that mix accounts, so each row can show which account it belongs to.</param>
+public sealed record MessageDisplayContext(DateTimeOffset Now, SpamVerdict Verdict, bool IsLocallyJunk, bool IsSenderBlocked, MailAccount? Account = null);
 
 /// <summary>One row in the message list. Instances are reused across refreshes to keep the list stable.</summary>
 public sealed partial class MessageItemViewModel : ObservableObject
@@ -48,6 +49,11 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public bool HasSpamTag => SpamTag.Length > 0;
 
     public bool IsCompact { get; private set; }
+
+    /// <summary>Account colour marker, shown only when the list mixes several accounts.</summary>
+    public bool ShowAccountMarker { get; private set; }
+    public string AccountColorHex { get; private set; } = "#8B7CFF";
+    public string AccountName { get; private set; } = string.Empty;
 
     public string StarGlyph => IsStarred ? Glyphs.StarFilled : Glyphs.Star;
     public string StarMenuText => IsStarred ? "Remove from favourites" : "Add to favourites";
@@ -91,6 +97,10 @@ public sealed partial class MessageItemViewModel : ObservableObject
             Initials = AvatarHelper.Initials(m.From);
             AvatarIndex = AvatarHelper.ColorIndex(m.From.Address);
         }
+
+        ShowAccountMarker = context.Account is not null;
+        AccountColorHex = context.Account?.ColorHex ?? "#8B7CFF";
+        AccountName = context.Account?.EmailAddress ?? string.Empty;
 
         Subject = m.DisplaySubject;
         Preview = m.Preview;

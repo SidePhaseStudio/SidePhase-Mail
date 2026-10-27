@@ -95,6 +95,17 @@
           FontWeight="SemiBold"
           Foreground="White"
           Text="{x:Bind Item.Initials, Mode=OneWay}" />
+      <Ellipse
+          Width="11"
+          Height="11"
+          Margin="0,0,-2,-2"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Bottom"
+          Fill="{x:Bind h:X.HexBrush(Item.AccountColorHex), Mode=OneWay}"
+          Stroke="{ThemeResource SpStrokeBrush}"
+          StrokeThickness="1.5"
+          ToolTipService.ToolTip="{x:Bind Item.AccountName, Mode=OneWay}"
+          Visibility="{x:Bind Item.ShowAccountMarker, Mode=OneWay}" />
     </Grid>
 
     <Grid Grid.Column="1" RowSpacing="1">

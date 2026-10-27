@@ -6,10 +6,18 @@ SidePhase Mail is a genuine WinUI 3 desktop application — not a web wrapper �
 *Dark Glass* design built on Microsoft's Fluent Design: Mica backdrops, translucent layers, thin
 hairline borders, Segoe UI Variable typography and a calm, refined accent colour.
 
-> **Status: Milestone 1 preview.** The application, design system, navigation, message list, reading
-> pane, compose window and settings are implemented and run against **clearly labelled demonstration
-> data**. Connecting real accounts (IMAP/SMTP, Gmail and Microsoft OAuth, SQLite cache) is Milestone 2.
-> See [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md) for exactly what is implemented, tested or planned.
+> **Status: Milestone 2 preview.** Real IMAP/SMTP accounts work: add an account, read, reply, send,
+> organise folders, pin and star — all cached locally in SQLite. Google and Microsoft sign-in (OAuth) are
+> implemented but **not yet verified with real accounts**; they need app registrations
+> ([docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)). The demonstration mailbox is still available and never
+> mixes with real mail. See [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md) for exactly what is implemented and tested.
+
+## Adding an account
+
+*Add account* (sidebar) → choose Google, Microsoft or *another email account* → enter your address. SidePhase Mail
+finds the server settings, signs in (OAuth in your browser, or a password / app password), tests incoming and outgoing
+mail, and only then saves the account. Passwords and tokens are encrypted with Windows and never leave your PC except
+to your own provider.
 
 ## Download and run
 
@@ -43,14 +51,14 @@ To build it yourself see **[BUILD.md](BUILD.md)**.
 ```
 SidePhase.Mail.sln
 ├─ src/SidePhase.Mail.Core            UI-independent domain: models, rules, services (net10.0)
-├─ src/SidePhase.Mail.Infrastructure  Settings storage, demo data source; MailKit + SQLite in Milestone 2 (net10.0)
+├─ src/SidePhase.Mail.Infrastructure  MailKit IMAP/SMTP engine, SQLite cache, secret store, OAuth, account setup, demo data (net10.0)
 ├─ src/SidePhase.Mail.App             WinUI 3 app: views, view models (MVVM), theme, windows (net10.0-windows)
 └─ tests/SidePhase.Mail.Tests         xUnit tests for Core and Infrastructure (run on any OS)
 ```
 
 * **The email engine is independent of the UI.** View models talk only to `IMailDataSource`
-  (`SidePhase.Mail.Core.Abstractions`). Milestone 1 registers `DemoMailDataSource`; Milestone 2 swaps
-  in the SQLite cache + MailKit engine behind the same interface without touching the UI.
+  (`SidePhase.Mail.Core.Abstractions`). `MailDataSourceRouter` serves either `LiveMailDataSource` (SQLite cache +
+  MailKit) or `DemoMailDataSource`, never both.
 * **MVVM + DI**: CommunityToolkit.Mvvm view models, `Microsoft.Extensions.DependencyInjection`
   composition root in `App.xaml.cs`.
 * **Stable message identity**: messages carry a stable local id plus the RFC 5322 `Message-ID`, never
@@ -58,8 +66,8 @@ SidePhase.Mail.sln
 * **Lazy bodies**: lists only ever hold lightweight summaries; bodies load on demand with cancellation.
 * **Security**: HTML email is sanitised, served with a strict Content-Security-Policy and rendered with
   scripts, host objects, dev tools, downloads and navigation disabled. Remote images are blocked by default.
-  No credentials exist in Milestone 1; tokens will be stored with Windows data protection (see
-  [docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)).
+  Passwords and tokens are encrypted with Windows DPAPI and never stored in SQLite, logs or settings; connections are
+  TLS-only (see [docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)).
 
 Design tokens and the visual language are documented in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
 

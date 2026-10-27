@@ -22,7 +22,8 @@ env:
 jobs:
   mail-integration:
     name: Mail engine integration (IMAP/SMTP test server)
-    runs-on: ubuntu-latest
+    # Pinned: the test server config uses Dovecot 2.3 syntax (Ubuntu 24.04); Dovecot 2.4 changed it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:

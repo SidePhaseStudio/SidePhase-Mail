@@ -249,7 +249,13 @@ public sealed partial class MailListViewModel : ObservableObject
         _refreshQueued = false;
         var version = ++_refreshVersion;
         var all = await _mail.GetMessagesAsync();
+        var accounts = await _mail.GetAccountsAsync();
         if (version != _refreshVersion) return; // a newer refresh superseded this one
+
+        // In views that mix accounts, each row gets its account's colour.
+        var accountsById = accounts.Count > 1 && Scope.Kind != MailboxScopeKind.AccountFolder
+            ? accounts.ToDictionary(a => a.Id)
+            : null;
 
         var settings = _settings.Current;
         var inScope = all.Where(m => MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk)).ToList();
@@ -293,7 +299,8 @@ public sealed partial class MailListViewModel : ObservableObject
                     now,
                     SpamClassifier.Classify(message.Spam, settings.SpamThreshold),
                     _junk.IsLocallyJunk(message),
-                    _rules.IsBlocked(message.From));
+                    _rules.IsBlocked(message.From),
+                    accountsById?.GetValueOrDefault(message.AccountId));
 
                 if (_items.TryGetValue(message.Id, out var item))
                 {

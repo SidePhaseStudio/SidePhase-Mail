@@ -257,7 +257,12 @@ public sealed partial class MainWindow : Window
         else
         {
             container.Content = model.Title;
-            ToolTipService.SetToolTip(container, model.Title);
+            ToolTipService.SetToolTip(container, model.IsFavouriteFolder ? $"{model.Title} · {model.Subtitle}" : model.Title);
+        }
+
+        if (model.Scope is { Kind: Core.Models.MailboxScopeKind.AccountFolder, FolderId: { } folderId })
+        {
+            container.ContextFlyout = CreateFolderMenu(folderId);
         }
 
         if (model.Children is { Count: > 0 } children)
@@ -282,6 +287,16 @@ public sealed partial class MainWindow : Window
 
         _navContainers[model] = container;
         return container;
+    }
+
+    private MenuFlyout CreateFolderMenu(Guid folderId)
+    {
+        var toggle = new MenuFlyoutItem { Icon = new FontIcon { Glyph = Helpers.Glyphs.Star } };
+        toggle.Click += async (_, _) => await Shell.ToggleFavouriteFolderAsync(folderId);
+        var menu = new MenuFlyout();
+        menu.Items.Add(toggle);
+        menu.Opening += (_, _) => toggle.Text = Shell.IsFavouriteFolder(folderId) ? "Remove from favourite folders" : "Add to favourite folders";
+        return menu;
     }
 
     private static void UpdateBadge(NavItemViewModel model, NavigationViewItem container, InfoBadge badge)
