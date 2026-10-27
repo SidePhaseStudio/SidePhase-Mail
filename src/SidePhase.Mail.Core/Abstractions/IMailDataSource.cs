@@ -27,6 +27,16 @@ public sealed record SendResult(bool Succeeded, string Message, Guid? SentMessag
 
 public sealed record SyncResult(bool Succeeded, int NewMessages, string Message);
 
+/// <summary>A problem with one account or operation, phrased for the user. Never contains secrets.</summary>
+public sealed class MailErrorEventArgs(Guid? accountId, string message, bool requiresSignIn = false) : EventArgs
+{
+    public Guid? AccountId { get; } = accountId;
+    public string Message { get; } = message;
+
+    /// <summary>The account's credentials were rejected or have expired.</summary>
+    public bool RequiresSignIn { get; } = requiresSignIn;
+}
+
 /// <summary>
 /// The application's single entry point to mail data. The UI only talks to this interface, so the demonstration
 /// store used in Milestone 1 can be replaced by the SQLite cache + IMAP/SMTP engine without touching view models.
@@ -39,6 +49,9 @@ public interface IMailDataSource
 
     event EventHandler<MailDataChangedEventArgs>? DataChanged;
 
+    /// <summary>Raised when a background operation fails (sync, flag change, move). May be raised on any thread.</summary>
+    event EventHandler<MailErrorEventArgs>? ErrorOccurred;
+
     Task<IReadOnlyList<MailAccount>> GetAccountsAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<MailFolder>> GetFoldersAsync(Guid accountId, CancellationToken cancellationToken = default);
@@ -49,6 +62,9 @@ public interface IMailDataSource
     Task<MessageSummary?> GetMessageAsync(Guid messageId, CancellationToken cancellationToken = default);
 
     Task<MessageBody?> GetMessageBodyAsync(Guid messageId, CancellationToken cancellationToken = default);
+
+    /// <summary>Downloads the content of one attachment (index into <see cref="MessageBody.Attachments"/>).</summary>
+    Task<byte[]> GetAttachmentContentAsync(Guid messageId, int attachmentIndex, CancellationToken cancellationToken = default);
 
     Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default);
 

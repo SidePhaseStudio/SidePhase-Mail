@@ -1,0 +1,521 @@
+using System.Globalization;
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
+using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Spam;
+
+namespace SidePhase.Mail.Infrastructure.Storage;
+
+/// <summary>Typed access to the SQLite cache. Holds no secrets: passwords and tokens live in the secret store.</summary>
+public sealed class MailCache(MailDatabase database)
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public MailDatabase Database => database;
+
+    public Task<int> InitializeAsync(CancellationToken cancellationToken = default) => database.MigrateAsync(cancellationToken);
+
+    // ------------------------------------------------------------------ accounts
+
+    public async Task<IReadOnlyList<StoredAccount>> GetAccountsAsync(CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id, display_name, email, provider, color, auth_method, username, imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security FROM accounts ORDER BY sort_order, created_at";
+        var result = new List<StoredAccount>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var account = new MailAccount
+            {
+                Id = Guid.Parse(r.GetString(0)),
+                DisplayName = r.GetString(1),
+                EmailAddress = r.GetString(2),
+                Provider = (MailProviderKind)r.GetInt32(3),
+                ColorHex = r.IsDBNull(4) ? null : r.GetString(4),
+            };
+            var settings = new AccountConnectionSettings
+            {
+                AuthMethod = (AuthMethod)r.GetInt32(5),
+                Username = r.GetString(6),
+                Imap = new ServerEndpoint(r.GetString(7), r.GetInt32(8), (ConnectionSecurity)r.GetInt32(9)),
+                Smtp = new ServerEndpoint(r.GetString(10), r.GetInt32(11), (ConnectionSecurity)r.GetInt32(12)),
+            };
+            result.Add(new StoredAccount(account, settings));
+        }
+
+        return result;
+    }
+
+    public async Task AddAccountAsync(StoredAccount stored, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO accounts (id, display_name, email, provider, color, auth_method, username,
+                imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security, sort_order, created_at)
+            VALUES ($id, $name, $email, $provider, $color, $auth, $user, $ih, $ip, $is, $sh, $sp, $ss,
+                (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM accounts), $created)
+            """;
+        var a = stored.Account;
+        var s = stored.Settings;
+        cmd.Parameters.AddWithValue("$id", a.Id.ToString());
+        cmd.Parameters.AddWithValue("$name", a.DisplayName);
+        cmd.Parameters.AddWithValue("$email", a.EmailAddress);
+        cmd.Parameters.AddWithValue("$provider", (int)a.Provider);
+        cmd.Parameters.AddWithValue("$color", (object?)a.ColorHex ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$auth", (int)s.AuthMethod);
+        cmd.Parameters.AddWithValue("$user", s.Username);
+        cmd.Parameters.AddWithValue("$ih", s.Imap.Host);
+        cmd.Parameters.AddWithValue("$ip", s.Imap.Port);
+        cmd.Parameters.AddWithValue("$is", (int)s.Imap.Security);
+        cmd.Parameters.AddWithValue("$sh", s.Smtp.Host);
+        cmd.Parameters.AddWithValue("$sp", s.Smtp.Port);
+        cmd.Parameters.AddWithValue("$ss", (int)s.Smtp.Security);
+        cmd.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes the account and, through cascades, its folders, messages, bodies, pins and drafts.</summary>
+    public async Task DeleteAccountAsync(Guid accountId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM accounts WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", accountId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ folders
+
+    public async Task<IReadOnlyList<StoredFolder>> GetFoldersAsync(Guid? accountId = null, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id, account_id, path, name, kind, uid_validity, highest_uid, highest_modseq, last_sync, sort_order, sync FROM folders"
+                          + (accountId is null ? string.Empty : " WHERE account_id = $a")
+                          + " ORDER BY sort_order, name";
+        if (accountId is { } id) cmd.Parameters.AddWithValue("$a", id.ToString());
+        var result = new List<StoredFolder>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            result.Add(new StoredFolder
+            {
+                Id = Guid.Parse(r.GetString(0)),
+                AccountId = Guid.Parse(r.GetString(1)),
+                Path = r.GetString(2),
+                Name = r.GetString(3),
+                Kind = (FolderKind)r.GetInt32(4),
+                UidValidity = (uint)r.GetInt64(5),
+                HighestUid = (uint)r.GetInt64(6),
+                HighestModSeq = (ulong)r.GetInt64(7),
+                LastSync = r.IsDBNull(8) ? null : DateTimeOffset.FromUnixTimeSeconds(r.GetInt64(8)),
+                SortOrder = r.GetInt32(9),
+                Synchronize = r.GetBoolean(10),
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>Inserts a folder or updates its name, kind and order, keeping its id and sync state.</summary>
+    public async Task UpsertFolderAsync(StoredFolder folder, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO folders (id, account_id, path, name, kind, sort_order, sync)
+            VALUES ($id, $a, $path, $name, $kind, $order, $sync)
+            ON CONFLICT (account_id, path) DO UPDATE SET name = excluded.name, kind = excluded.kind, sort_order = excluded.sort_order, sync = excluded.sync
+            """;
+        cmd.Parameters.AddWithValue("$id", folder.Id.ToString());
+        cmd.Parameters.AddWithValue("$a", folder.AccountId.ToString());
+        cmd.Parameters.AddWithValue("$path", folder.Path);
+        cmd.Parameters.AddWithValue("$name", folder.Name);
+        cmd.Parameters.AddWithValue("$kind", (int)folder.Kind);
+        cmd.Parameters.AddWithValue("$order", folder.SortOrder);
+        cmd.Parameters.AddWithValue("$sync", folder.Synchronize);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteFolderAsync(Guid folderId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM folders WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", folderId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task UpdateFolderSyncStateAsync(Guid folderId, uint uidValidity, uint highestUid, ulong highestModSeq, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE folders SET uid_validity = $v, highest_uid = $u, highest_modseq = $m, last_sync = $t WHERE id = $id";
+        cmd.Parameters.AddWithValue("$v", (long)uidValidity);
+        cmd.Parameters.AddWithValue("$u", (long)highestUid);
+        cmd.Parameters.AddWithValue("$m", (long)highestModSeq);
+        cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$id", folderId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The server renumbered the folder (UIDVALIDITY changed): drop its cached messages and sync state.
+    /// Pins and local stars are keyed by message identity, so they reattach when the messages are downloaded again.
+    /// </summary>
+    public async Task ResetFolderAsync(Guid folderId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM messages WHERE folder_id = $id; UPDATE folders SET uid_validity = 0, highest_uid = 0, highest_modseq = 0 WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", folderId.ToString());
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ messages
+
+    private const string SummarySelect = """
+        SELECT m.id, m.account_id, m.folder_id, f.kind, m.message_id_header, m.from_name, m.from_address, m.to_json, m.cc_json,
+               m.subject, m.preview, m.date, m.is_read, m.is_starred, m.has_attachments, m.spam_json,
+               p.pinned_at, CASE WHEN ls.identity_key IS NULL THEN 0 ELSE 1 END
+        FROM messages m
+        JOIN folders f ON f.id = m.folder_id
+        LEFT JOIN pins p ON p.account_id = m.account_id AND p.identity_key = m.identity_key
+        LEFT JOIN local_stars ls ON ls.account_id = m.account_id AND ls.identity_key = m.identity_key
+        """;
+
+    public async Task<IReadOnlyList<MessageSummary>> GetSummariesAsync(CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = SummarySelect + " ORDER BY m.date DESC";
+        return await ReadSummariesAsync(cmd, ct).ConfigureAwait(false);
+    }
+
+    public async Task<MessageSummary?> GetSummaryAsync(Guid messageId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = SummarySelect + " WHERE m.id = $id";
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        return (await ReadSummariesAsync(cmd, ct).ConfigureAwait(false)).FirstOrDefault();
+    }
+
+    private static async Task<IReadOnlyList<MessageSummary>> ReadSummariesAsync(SqliteCommand cmd, CancellationToken ct)
+    {
+        var result = new List<MessageSummary>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var pinnedAt = r.IsDBNull(16) ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(16));
+            result.Add(new MessageSummary
+            {
+                Id = Guid.Parse(r.GetString(0)),
+                AccountId = Guid.Parse(r.GetString(1)),
+                FolderId = Guid.Parse(r.GetString(2)),
+                FolderKind = (FolderKind)r.GetInt32(3),
+                MessageIdHeader = r.IsDBNull(4) ? null : r.GetString(4),
+                From = new EmailAddress(r.IsDBNull(5) ? null : r.GetString(5), r.GetString(6)),
+                To = ReadAddresses(r.GetString(7)),
+                Cc = ReadAddresses(r.GetString(8)),
+                Subject = r.GetString(9),
+                Preview = r.GetString(10),
+                Date = DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(11)),
+                IsRead = r.GetBoolean(12),
+                IsStarred = r.GetBoolean(13) || r.GetInt32(17) == 1,
+                HasAttachments = r.GetBoolean(14),
+                Spam = r.IsDBNull(15) ? SpamReport.None : JsonSerializer.Deserialize<SpamReport>(r.GetString(15), Json) ?? SpamReport.None,
+                IsPinned = pinnedAt is not null,
+                PinnedAt = pinnedAt,
+            });
+        }
+
+        return result;
+    }
+
+    public async Task<StoredMessageRef?> GetMessageRefAsync(Guid messageId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT m.id, m.account_id, m.folder_id, f.path, f.kind, m.uid, m.uid_validity, m.identity_key, m.message_id_header, m.is_read, m.is_starred
+            FROM messages m JOIN folders f ON f.id = m.folder_id WHERE m.id = $id
+            """;
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await r.ReadAsync(ct).ConfigureAwait(false)) return null;
+        return new StoredMessageRef(
+            Guid.Parse(r.GetString(0)), Guid.Parse(r.GetString(1)), Guid.Parse(r.GetString(2)), r.GetString(3),
+            (FolderKind)r.GetInt32(4), (uint)r.GetInt64(5), (uint)r.GetInt64(6), r.GetString(7),
+            r.IsDBNull(8) ? null : r.GetString(8), r.GetBoolean(9), r.GetBoolean(10));
+    }
+
+    /// <summary>Finds a message in a folder by its identity (used after moves when the server didn't report the new UID).</summary>
+    public async Task<Guid?> FindByIdentityAsync(Guid folderId, string identityKey, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id FROM messages WHERE folder_id = $f AND identity_key = $k ORDER BY uid DESC LIMIT 1";
+        cmd.Parameters.AddWithValue("$f", folderId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        var value = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return value is string s ? Guid.Parse(s) : null;
+    }
+
+    public async Task<IReadOnlyList<uint>> GetUidsAsync(Guid folderId, uint uidValidity, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT uid FROM messages WHERE folder_id = $f AND uid_validity = $v ORDER BY uid";
+        cmd.Parameters.AddWithValue("$f", folderId.ToString());
+        cmd.Parameters.AddWithValue("$v", (long)uidValidity);
+        var result = new List<uint>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false)) result.Add((uint)r.GetInt64(0));
+        return result;
+    }
+
+    /// <summary>Inserts new messages or refreshes flags of known ones. Message ids are deterministic, so re-syncing never duplicates.</summary>
+    public async Task UpsertMessagesAsync(IEnumerable<StoredMessage> messages, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT INTO messages (id, account_id, folder_id, uid, uid_validity, message_id_header, identity_key, from_name, from_address,
+                to_json, cc_json, subject, preview, date, is_read, is_starred, has_attachments, spam_json, size, in_reply_to, references_json)
+            VALUES ($id, $a, $f, $uid, $uv, $mid, $key, $fn, $fa, $to, $cc, $subject, $preview, $date, $read, $star, $att, $spam, $size, $irt, $refs)
+            ON CONFLICT (id) DO UPDATE SET is_read = excluded.is_read, is_starred = excluded.is_starred,
+                preview = CASE WHEN excluded.preview <> '' THEN excluded.preview ELSE messages.preview END
+            """;
+        var p = new Dictionary<string, SqliteParameter>();
+        foreach (var name in new[] { "$id", "$a", "$f", "$uid", "$uv", "$mid", "$key", "$fn", "$fa", "$to", "$cc", "$subject", "$preview", "$date", "$read", "$star", "$att", "$spam", "$size", "$irt", "$refs" })
+        {
+            p[name] = cmd.Parameters.Add(name, SqliteType.Text);
+        }
+
+        foreach (var m in messages)
+        {
+            p["$id"].Value = m.Id.ToString();
+            p["$a"].Value = m.AccountId.ToString();
+            p["$f"].Value = m.FolderId.ToString();
+            p["$uid"].Value = (long)m.Uid;
+            p["$uv"].Value = (long)m.UidValidity;
+            p["$mid"].Value = (object?)m.MessageIdHeader ?? DBNull.Value;
+            p["$key"].Value = m.IdentityKey;
+            p["$fn"].Value = (object?)m.From.Name ?? DBNull.Value;
+            p["$fa"].Value = m.From.Address;
+            p["$to"].Value = JsonSerializer.Serialize(m.To, Json);
+            p["$cc"].Value = JsonSerializer.Serialize(m.Cc, Json);
+            p["$subject"].Value = m.Subject;
+            p["$preview"].Value = m.Preview;
+            p["$date"].Value = m.Date.ToUnixTimeMilliseconds();
+            p["$read"].Value = m.IsRead;
+            p["$star"].Value = m.IsStarred;
+            p["$att"].Value = m.HasAttachments;
+            p["$spam"].Value = m.Spam.HasHeaders ? JsonSerializer.Serialize(m.Spam, Json) : DBNull.Value;
+            p["$size"].Value = m.Size;
+            p["$irt"].Value = (object?)m.InReplyTo ?? DBNull.Value;
+            p["$refs"].Value = m.References.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(m.References, Json);
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Updates read/starred flags reported by the server for already-cached UIDs.</summary>
+    public async Task<int> UpdateFlagsAsync(Guid folderId, uint uidValidity, IEnumerable<(uint Uid, bool IsRead, bool IsStarred)> flags, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "UPDATE messages SET is_read = $r, is_starred = $s WHERE folder_id = $f AND uid_validity = $v AND uid = $u AND (is_read <> $r OR is_starred <> $s)";
+        var pr = cmd.Parameters.Add("$r", SqliteType.Integer);
+        var ps = cmd.Parameters.Add("$s", SqliteType.Integer);
+        cmd.Parameters.AddWithValue("$f", folderId.ToString());
+        cmd.Parameters.AddWithValue("$v", (long)uidValidity);
+        var pu = cmd.Parameters.Add("$u", SqliteType.Integer);
+        var changed = 0;
+        foreach (var (uid, read, starred) in flags)
+        {
+            pr.Value = read;
+            ps.Value = starred;
+            pu.Value = (long)uid;
+            changed += await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return changed;
+    }
+
+    public async Task<int> DeleteMessagesAsync(Guid folderId, uint uidValidity, IEnumerable<uint> uids, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "DELETE FROM messages WHERE folder_id = $f AND uid_validity = $v AND uid = $u";
+        cmd.Parameters.AddWithValue("$f", folderId.ToString());
+        cmd.Parameters.AddWithValue("$v", (long)uidValidity);
+        var pu = cmd.Parameters.Add("$u", SqliteType.Integer);
+        var removed = 0;
+        foreach (var uid in uids)
+        {
+            pu.Value = (long)uid;
+            removed += await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return removed;
+    }
+
+    public async Task DeleteMessageAsync(Guid messageId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM messages WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task SetFlagsAsync(Guid messageId, bool? isRead, bool? isStarred, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE messages SET is_read = COALESCE($r, is_read), is_starred = COALESCE($s, is_starred) WHERE id = $id";
+        cmd.Parameters.AddWithValue("$r", isRead is null ? DBNull.Value : isRead.Value);
+        cmd.Parameters.AddWithValue("$s", isStarred is null ? DBNull.Value : isStarred.Value);
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ bodies
+
+    public async Task<MessageBody?> GetBodyAsync(Guid messageId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT html, text, attachments_json, bcc_json FROM bodies WHERE message_id = $id";
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await r.ReadAsync(ct).ConfigureAwait(false)) return null;
+        return new MessageBody
+        {
+            MessageId = messageId,
+            HtmlBody = r.IsDBNull(0) ? null : r.GetString(0),
+            TextBody = r.IsDBNull(1) ? null : r.GetString(1),
+            Attachments = JsonSerializer.Deserialize<List<AttachmentInfo>>(r.GetString(2), Json) ?? [],
+            Bcc = r.IsDBNull(3) ? [] : ReadAddresses(r.GetString(3)),
+        };
+    }
+
+    public async Task SaveBodyAsync(MessageBody body, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO bodies (message_id, html, text, attachments_json, bcc_json, cached_at) VALUES ($id, $h, $t, $a, $b, $c)
+            ON CONFLICT (message_id) DO UPDATE SET html = excluded.html, text = excluded.text, attachments_json = excluded.attachments_json,
+                bcc_json = excluded.bcc_json, cached_at = excluded.cached_at
+            """;
+        cmd.Parameters.AddWithValue("$id", body.MessageId.ToString());
+        cmd.Parameters.AddWithValue("$h", (object?)body.HtmlBody ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$t", (object?)body.TextBody ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$a", JsonSerializer.Serialize(body.Attachments, Json));
+        cmd.Parameters.AddWithValue("$b", body.Bcc.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(body.Bcc, Json));
+        cmd.Parameters.AddWithValue("$c", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ pins & local stars
+
+    public async Task SetPinnedAsync(Guid accountId, string identityKey, DateTimeOffset? pinnedAt, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        if (pinnedAt is { } at)
+        {
+            cmd.CommandText = "INSERT INTO pins (account_id, identity_key, pinned_at) VALUES ($a, $k, $t) ON CONFLICT DO UPDATE SET pinned_at = excluded.pinned_at";
+            cmd.Parameters.AddWithValue("$t", at.ToUnixTimeMilliseconds());
+        }
+        else
+        {
+            cmd.CommandText = "DELETE FROM pins WHERE account_id = $a AND identity_key = $k";
+        }
+
+        cmd.Parameters.AddWithValue("$a", accountId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task SetLocalStarAsync(Guid accountId, string identityKey, bool starred, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = starred
+            ? "INSERT OR IGNORE INTO local_stars (account_id, identity_key) VALUES ($a, $k)"
+            : "DELETE FROM local_stars WHERE account_id = $a AND identity_key = $k";
+        cmd.Parameters.AddWithValue("$a", accountId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ drafts
+
+    public async Task SaveDraftAsync(Guid draftId, DraftMessage draft, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO drafts (id, account_id, json, updated_at) VALUES ($id, $a, $j, $t)
+            ON CONFLICT (id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at
+            """;
+        cmd.Parameters.AddWithValue("$id", draftId.ToString());
+        cmd.Parameters.AddWithValue("$a", draft.AccountId.ToString());
+        cmd.Parameters.AddWithValue("$j", JsonSerializer.Serialize(draft with { DraftId = draftId }, Json));
+        cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<DraftMessage?> GetDraftAsync(Guid draftId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT json FROM drafts WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", draftId.ToString());
+        return await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false) is string json
+            ? JsonSerializer.Deserialize<DraftMessage>(json, Json)
+            : null;
+    }
+
+    public async Task DeleteDraftAsync(Guid draftId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM drafts WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", draftId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Removes every cached account, folder and message (the server is never touched).</summary>
+    public async Task ClearMessagesAsync(CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await MailDatabase.ExecuteAsync(c, "DELETE FROM bodies; DELETE FROM messages; UPDATE folders SET uid_validity = 0, highest_uid = 0, highest_modseq = 0, last_sync = NULL;", ct).ConfigureAwait(false);
+    }
+
+    internal static IReadOnlyList<EmailAddress> ReadAddresses(string json) =>
+        JsonSerializer.Deserialize<List<EmailAddress>>(json, Json) ?? [];
+
+    internal static string Invariant(long value) => value.ToString(CultureInfo.InvariantCulture);
+}
