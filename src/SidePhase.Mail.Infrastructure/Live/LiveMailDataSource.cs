@@ -98,6 +98,10 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             var mime = await _imap.RunAsync(account, c => ImapOperations.FetchMessageAsync(c, reference.FolderPath, reference.Uid, cancellationToken), cancellationToken).ConfigureAwait(false);
             var body = MessageBodyExtractor.Extract(messageId, mime);
             await _cache.SaveBodyAsync(body, cancellationToken).ConfigureAwait(false);
+
+            // The full header set gives a more complete spam assessment (e.g. X-Spam-Report) than the sync fetch.
+            await _cache.UpdateSpamAsync(messageId, MessageBodyExtractor.ReadSpamHeaders(mime.Headers), cancellationToken).ConfigureAwait(false);
+            Raise(MailDataChangeKind.FlagsChanged, [messageId]);
             return body;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

@@ -433,6 +433,17 @@ public sealed class MailCache(MailDatabase database)
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>Replaces a message's spam assessment (e.g. once the full headers have been downloaded).</summary>
+    public async Task UpdateSpamAsync(Guid messageId, SpamReport spam, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE messages SET spam_json = $s WHERE id = $id";
+        cmd.Parameters.AddWithValue("$s", spam.HasHeaders ? JsonSerializer.Serialize(spam, Json) : DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task SetFlagsAsync(Guid messageId, bool? isRead, bool? isStarred, CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);

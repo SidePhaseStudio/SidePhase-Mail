@@ -12,7 +12,9 @@ public static class SpamClassifier
     public static SpamVerdict Classify(SpamReport report, double userThreshold)
     {
         ArgumentNullException.ThrowIfNull(report);
-        if (!report.HasHeaders) return SpamVerdict.Unknown;
+
+        // Missing headers prove nothing, and headers the sender wrote themselves are ignored.
+        if (!report.IsUsable) return SpamVerdict.Unknown;
 
         // Respect an explicit server-side "yes".
         if (report.ServerFlaggedAsSpam == true) return SpamVerdict.Spam;
