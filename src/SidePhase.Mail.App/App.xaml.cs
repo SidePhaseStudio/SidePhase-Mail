@@ -62,6 +62,9 @@ public partial class App : Application
         // Keep the WebView2 profile with the rest of the app data (the exe folder may be read-only).
         Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", _paths.WebViewDataFolder);
 
+        // Let message bodies render on the translucent reading pane rather than an opaque white/black page.
+        Environment.SetEnvironmentVariable("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "00000000");
+
         _services = ConfigureServices(_paths);
 
         await GetService<ISettingsService>().LoadAsync();

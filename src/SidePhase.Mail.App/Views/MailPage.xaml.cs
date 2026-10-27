@@ -100,15 +100,7 @@ public sealed partial class MailPage : Page
             Grid.SetRow(ReaderHost, 1);
             Grid.SetColumn(ReaderHost, 0);
             Grid.SetColumnSpan(ReaderHost, 2);
-            ReaderHost.Margin = new Thickness(0, 1, 0, 0);
-
-            Grid.SetRow(PaneDivider, 1);
-            Grid.SetColumn(PaneDivider, 0);
-            Grid.SetColumnSpan(PaneDivider, 2);
-            PaneDivider.Width = double.NaN;
-            PaneDivider.Height = 1;
-            PaneDivider.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PaneDivider.VerticalAlignment = VerticalAlignment.Top;
+            ReaderHost.Margin = new Thickness(0, 6, 0, 0);
         }
         else
         {
@@ -121,15 +113,7 @@ public sealed partial class MailPage : Page
             Grid.SetRow(ReaderHost, 0);
             Grid.SetColumn(ReaderHost, 1);
             Grid.SetColumnSpan(ReaderHost, 1);
-            ReaderHost.Margin = new Thickness(1, 0, 0, 0);
-
-            Grid.SetRow(PaneDivider, 0);
-            Grid.SetColumn(PaneDivider, 1);
-            Grid.SetColumnSpan(PaneDivider, 1);
-            PaneDivider.Width = 1;
-            PaneDivider.Height = double.NaN;
-            PaneDivider.HorizontalAlignment = HorizontalAlignment.Left;
-            PaneDivider.VerticalAlignment = VerticalAlignment.Stretch;
+            ReaderHost.Margin = new Thickness(6, 0, 0, 0);
         }
     }
 

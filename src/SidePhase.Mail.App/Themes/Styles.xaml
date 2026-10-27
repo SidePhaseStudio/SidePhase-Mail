@@ -92,20 +92,37 @@
               ContentTemplate="{TemplateBinding ContentTemplate}"
               ContentTransitions="{TemplateBinding ContentTransitions}"
               CornerRadius="{TemplateBinding CornerRadius}"
-              Foreground="{TemplateBinding Foreground}">
+              Foreground="{TemplateBinding Foreground}"
+              RenderTransformOrigin="0.5,0.5">
+            <ContentPresenter.RenderTransform>
+              <ScaleTransform x:Name="PresenterScale" />
+            </ContentPresenter.RenderTransform>
             <ContentPresenter.BackgroundTransition>
               <BrushTransition Duration="0:0:0.083" />
             </ContentPresenter.BackgroundTransition>
             <VisualStateManager.VisualStateGroups>
               <VisualStateGroup x:Name="CommonStates">
-                <VisualState x:Name="Normal" />
+                <VisualState x:Name="Normal">
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="PresenterScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.167" />
+                    <DoubleAnimation Storyboard.TargetName="PresenterScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.167" />
+                  </Storyboard>
+                </VisualState>
                 <VisualState x:Name="PointerOver">
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="PresenterScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.167" />
+                    <DoubleAnimation Storyboard.TargetName="PresenterScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.167" />
+                  </Storyboard>
                   <VisualState.Setters>
                     <Setter Target="ContentPresenter.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
                     <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource SpTextPrimaryBrush}" />
                   </VisualState.Setters>
                 </VisualState>
                 <VisualState x:Name="Pressed">
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="PresenterScale" Storyboard.TargetProperty="ScaleX" To="0.96" Duration="0:0:0.083" />
+                    <DoubleAnimation Storyboard.TargetName="PresenterScale" Storyboard.TargetProperty="ScaleY" To="0.96" Duration="0:0:0.083" />
+                  </Storyboard>
                   <VisualState.Setters>
                     <Setter Target="ContentPresenter.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
                     <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource SpTextSecondaryBrush}" />
@@ -125,8 +142,8 @@
   </Style>
 
   <Style x:Key="SpIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SpSubtleButtonStyle}">
-    <Setter Property="Width" Value="34" />
-    <Setter Property="Height" Value="34" />
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
     <Setter Property="Padding" Value="0" />
   </Style>
 
@@ -140,7 +157,8 @@
   </Style>
 
   <Style x:Key="SpToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource SpSubtleButtonStyle}">
-    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Padding" Value="10,0,12,0" />
     <Setter Property="Foreground" Value="{ThemeResource SpTextSubtleBrush}" />
   </Style>
 
@@ -158,6 +176,23 @@
   </Style>
 
   <!-- ============================ Surfaces & pills ============================ -->
+  <!-- Translucent glass panel used for the message list, reading pane and full-page views. -->
+  <Style x:Key="SpPanelStyle" TargetType="Grid">
+    <Setter Property="Background" Value="{ThemeResource SpPanelBrush}" />
+    <Setter Property="BorderBrush" Value="{ThemeResource SpPanelStrokeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource SpCornerLarge}" />
+  </Style>
+
+  <!-- Groups related toolbar buttons on a faint shared surface. -->
+  <Style x:Key="SpToolbarGroupStyle" TargetType="Border">
+    <Setter Property="Background" Value="{ThemeResource SpControlFillBrush}" />
+    <Setter Property="BorderBrush" Value="{ThemeResource SpStrokeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource SpCornerLarge}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+
   <Style x:Key="SpCardStyle" TargetType="Border">
     <Setter Property="Background" Value="{ThemeResource SpCardBrush}" />
     <Setter Property="BorderBrush" Value="{ThemeResource SpStrokeBrush}" />
@@ -192,12 +227,12 @@
 
   <!-- ============================== List items ============================== -->
   <Style x:Key="SpMessageItemContainerStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
-    <Setter Property="Margin" Value="8,1" />
+    <Setter Property="Margin" Value="6,1" />
     <Setter Property="Padding" Value="0" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="VerticalContentAlignment" Value="Stretch" />
-    <Setter Property="CornerRadius" Value="{StaticResource SpCornerLarge}" />
+    <Setter Property="CornerRadius" Value="{StaticResource SpCornerMedium}" />
   </Style>
 
   <!-- Section headers in the message list: no selection or hover visuals. -->

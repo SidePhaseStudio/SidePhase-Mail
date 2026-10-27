@@ -83,7 +83,7 @@
     </Grid.RowDefinitions>
 
     <!-- ============================ Message list ============================ -->
-    <Grid x:Name="ListPane" Background="{ThemeResource SpLayerBrush}">
+    <Grid x:Name="ListPane" Style="{StaticResource SpPanelStyle}">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
@@ -252,16 +252,13 @@
       </Grid>
     </Grid>
 
-    <!-- Divider between list and reader -->
-    <Rectangle
-        x:Name="PaneDivider"
-        Grid.Column="1"
-        Width="1"
-        HorizontalAlignment="Left"
-        Fill="{ThemeResource SpStrokeBrush}" />
-
     <!-- ============================ Reading pane ============================ -->
-    <Grid x:Name="ReaderHost" Grid.Column="1" Margin="1,0,0,0" Background="{ThemeResource SpReaderBrush}">
+    <Grid
+        x:Name="ReaderHost"
+        Grid.Column="1"
+        Margin="6,0,0,0"
+        Background="{ThemeResource SpReaderBrush}"
+        Style="{StaticResource SpPanelStyle}">
       <controls:ReadingPane x:Name="Reader" />
     </Grid>
   </Grid>

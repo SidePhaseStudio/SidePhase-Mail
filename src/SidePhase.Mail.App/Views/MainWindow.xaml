@@ -65,15 +65,8 @@
         </NavigationViewItem>
       </NavigationView.FooterMenuItems>
 
-      <Grid>
-        <!-- Content layer: rounded top-left corner and a hairline edge where it meets the glass sidebar. -->
-        <Border
-            Background="Transparent"
-            BorderBrush="{ThemeResource SpStrokeBrush}"
-            BorderThickness="1,1,0,0"
-            CornerRadius="8,0,0,0" />
-        <Frame x:Name="ContentFrame" Margin="1,1,0,0" CornerRadius="8,0,0,0" />
-      </Grid>
+      <!-- Pages float on the glass as rounded translucent panels (see SpPanelStyle); no hard frame border. -->
+      <Frame x:Name="ContentFrame" Margin="0,0,8,8" />
     </NavigationView>
 
     <!-- ============================ Toasts ============================ -->
@@ -85,9 +78,9 @@
         Margin="0,0,0,28"
         HorizontalAlignment="Center"
         VerticalAlignment="Bottom"
-        Background="{ThemeResource SpElevatedBrush}"
+        Background="{ThemeResource SpAcrylicBrush}"
         BorderBrush="{ThemeResource SpStrokeStrongBrush}"
-        CornerRadius="10"
+        CornerRadius="8"
         IsClosable="True"
         IsOpen="False">
       <InfoBar.ActionButton>

@@ -13,18 +13,22 @@ SidePhase Mail's look is built from a small set of tokens on top of Fluent Desig
 
 ## Layers (dark)
 
+The window is one sheet of Mica Alt glass. The sidebar sits directly on it; the message list, reading pane and
+full-page views float on it as rounded translucent panels separated by a 6 px gap rather than divider lines.
+
 | Token | Value | Use |
 | --- | --- | --- |
-| `SpWindowTintBrush` | `#0B0D12` @ 62% | Over Mica, deepens it towards near-black |
+| `SpWindowTintBrush` | `#0B0D12` gradient, 18% top → 40% bottom | Over Mica: deepens it and adds soft top lighting |
 | `SpWindowSolidBrush` | `#0B0D12` | Solid themes and fallbacks |
-| `SpLayerBrush` | `#151820` @ 78% | Message list, settings, welcome |
-| `SpReaderBrush` | `#171A23` @ 86% | Reading pane, compose surface |
-| `SpElevatedBrush` | `#1D222C` @ 96% | Hover action strip, toasts |
+| `SpPanelBrush` / `SpLayerBrush` | `#151820` @ 58% | Message list, settings, welcome panels |
+| `SpReaderBrush` | `#171A23` @ 65% | Reading pane and compose panels |
+| `SpPanelStrokeBrush` | white 12% → 3% (top → bottom) | Panel rims, like light catching the edge of glass |
+| `SpBodyCardBrush` | white @ 3% | The card a message body sits on |
+| `SpControlFillBrush` | white @ 4% | Toolbar button groups |
+| `SpAcrylicBrush` | in-app Acrylic, `#1A1E27` tint | Floating surfaces: toasts, hover quick actions |
 | `SpCardBrush` / `SpCardHoverBrush` | white @ 3.5% / 6% | Cards, settings rows, attachments |
-| `SpStrokeBrush` / `SpStrokeStrongBrush` | white @ 7.5% / 14% | Hairline borders |
-| `SpDividerBrush` | white @ 5.5% | Separators |
-
-The sidebar is fully transparent: it *is* the glass.
+| `SpStrokeBrush` / `SpStrokeStrongBrush` | white @ 6.5% / 12% | Hairline borders |
+| `SpDividerBrush` | white @ 4.5% | Separators inside panels |
 
 ## Text
 
@@ -51,9 +55,10 @@ Selection is the accent at 16% (hover 22%); badges at 20% with a light accent la
 * **Buttons** — `SpSubtleButtonStyle` (transparent, soft fill on hover), `SpIconButtonStyle` (34 px),
   `SpQuickActionButtonStyle` (28 px), `SpPrimaryButtonStyle` (accent), `SpSecondaryButtonStyle`.
 * **Settings card** — `controls:SettingsCard`: icon, header, description, control on the right.
-* **Corner radii** — 4 / 6 / 8 / 12. Content layer has an 8 px top-left radius where it meets the sidebar.
+* **Corner radii** — 4 (small chips, quick actions) / 6 (buttons, list rows) / 8 (panels, cards, toolbar groups, toasts) / 12 (dialogs).
+* **Toolbar groups** — related reading-pane actions share a faint rounded surface (`SpToolbarGroupStyle`).
 
 ## Motion
 
-Short and quiet: 83 ms brush transitions on buttons, a 180 ms fade when a new message opens, Fluent
-entrance transitions for pages, the welcome screen and list changes.
+Short and quiet: 83 ms brush transitions on buttons with a gentle press-in (96% scale), a 180 ms fade when a
+new message opens, Fluent entrance transitions for pages, the welcome screen and list changes.
