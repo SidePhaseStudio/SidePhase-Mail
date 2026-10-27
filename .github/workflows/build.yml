@@ -128,6 +128,7 @@ jobs:
           # 2. Returning user: straight into the inbox (message list and sidebar counts).
           New-Item -ItemType Directory -Force $data | Out-Null
           '{ "hasCompletedWelcome": true }' | Set-Content -Encoding utf8 (Join-Path $data "settings.json")
+          $env:SIDEPHASE_OPEN_FIRST_MESSAGE = "1"
           $inbox = Test-Launch "inbox"
 
           if (-not ($first -and $inbox)) { Write-Error "SidePhase Mail exited during start-up (first run: $first, inbox: $inbox)."; exit 1 }

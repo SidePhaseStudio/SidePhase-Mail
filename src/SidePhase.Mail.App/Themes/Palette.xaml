@@ -39,20 +39,34 @@
       <Color x:Key="SpSurfaceColor">#151820</Color>
       <Color x:Key="SpElevatedColor">#1D222C</Color>
 
-      <!-- Window layers -->
+      <!-- Window layers. Kept translucent so the Mica backdrop reads through; a vertical tint adds soft top lighting. -->
       <SolidColorBrush x:Key="SpWindowSolidBrush" Color="#0B0D12" />
-      <SolidColorBrush x:Key="SpWindowTintBrush" Color="#0B0D12" Opacity="0.62" />
-      <SolidColorBrush x:Key="SpLayerBrush" Color="#151820" Opacity="0.78" />
-      <SolidColorBrush x:Key="SpReaderBrush" Color="#171A23" Opacity="0.86" />
+      <LinearGradientBrush x:Key="SpWindowTintBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#2E0B0D12" />
+        <GradientStop Offset="1" Color="#660B0D12" />
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="SpLayerBrush" Color="#94151820" />
+      <SolidColorBrush x:Key="SpPanelBrush" Color="#94151820" />
+      <SolidColorBrush x:Key="SpReaderBrush" Color="#A6171A23" />
       <SolidColorBrush x:Key="SpElevatedBrush" Color="#1D222C" Opacity="0.96" />
       <SolidColorBrush x:Key="SpFlyoutBrush" Color="#1D222C" />
+      <AcrylicBrush x:Key="SpAcrylicBrush" FallbackColor="#1D222C" TintColor="#1A1E27" TintLuminosityOpacity="0.85" TintOpacity="0.72" />
+
+      <!-- Panel edges: brighter at the top, fading downwards, like light catching the rim of glass. -->
+      <LinearGradientBrush x:Key="SpPanelStrokeBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#1FFFFFFF" />
+        <GradientStop Offset="0.25" Color="#10FFFFFF" />
+        <GradientStop Offset="1" Color="#08FFFFFF" />
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="SpBodyCardBrush" Color="#07FFFFFF" />
+      <SolidColorBrush x:Key="SpControlFillBrush" Color="#0BFFFFFF" />
 
       <!-- Cards & strokes -->
       <SolidColorBrush x:Key="SpCardBrush" Color="#FFFFFF" Opacity="0.035" />
       <SolidColorBrush x:Key="SpCardHoverBrush" Color="#FFFFFF" Opacity="0.06" />
-      <SolidColorBrush x:Key="SpStrokeBrush" Color="#FFFFFF" Opacity="0.075" />
-      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="#FFFFFF" Opacity="0.14" />
-      <SolidColorBrush x:Key="SpDividerBrush" Color="#FFFFFF" Opacity="0.055" />
+      <SolidColorBrush x:Key="SpStrokeBrush" Color="#FFFFFF" Opacity="0.065" />
+      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="#FFFFFF" Opacity="0.12" />
+      <SolidColorBrush x:Key="SpDividerBrush" Color="#FFFFFF" Opacity="0.045" />
       <SolidColorBrush x:Key="SpHoverBrush" Color="#FFFFFF" Opacity="0.045" />
       <SolidColorBrush x:Key="SpPressedBrush" Color="#FFFFFF" Opacity="0.03" />
       <SolidColorBrush x:Key="SpInputBrush" Color="#FFFFFF" Opacity="0.05" />
@@ -119,17 +133,29 @@
       <Color x:Key="SpElevatedColor">#FFFFFF</Color>
 
       <SolidColorBrush x:Key="SpWindowSolidBrush" Color="#EEF0F5" />
-      <SolidColorBrush x:Key="SpWindowTintBrush" Color="#F3F4F8" Opacity="0.45" />
-      <SolidColorBrush x:Key="SpLayerBrush" Color="#FFFFFF" Opacity="0.72" />
-      <SolidColorBrush x:Key="SpReaderBrush" Color="#FFFFFF" Opacity="0.88" />
+      <LinearGradientBrush x:Key="SpWindowTintBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#1FF3F4F8" />
+        <GradientStop Offset="1" Color="#59F3F4F8" />
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="SpLayerBrush" Color="#B8FFFFFF" />
+      <SolidColorBrush x:Key="SpPanelBrush" Color="#B8FFFFFF" />
+      <SolidColorBrush x:Key="SpReaderBrush" Color="#D1FFFFFF" />
       <SolidColorBrush x:Key="SpElevatedBrush" Color="#FFFFFF" Opacity="0.98" />
       <SolidColorBrush x:Key="SpFlyoutBrush" Color="#FFFFFF" />
+      <AcrylicBrush x:Key="SpAcrylicBrush" FallbackColor="#F9F9FB" TintColor="#FCFCFD" TintLuminosityOpacity="0.85" TintOpacity="0.7" />
+
+      <LinearGradientBrush x:Key="SpPanelStrokeBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#0F000000" />
+        <GradientStop Offset="1" Color="#17000000" />
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="SpBodyCardBrush" Color="#8CFFFFFF" />
+      <SolidColorBrush x:Key="SpControlFillBrush" Color="#99FFFFFF" />
 
       <SolidColorBrush x:Key="SpCardBrush" Color="#FFFFFF" Opacity="0.7" />
       <SolidColorBrush x:Key="SpCardHoverBrush" Color="#FFFFFF" Opacity="0.95" />
-      <SolidColorBrush x:Key="SpStrokeBrush" Color="#000000" Opacity="0.07" />
-      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="#000000" Opacity="0.13" />
-      <SolidColorBrush x:Key="SpDividerBrush" Color="#000000" Opacity="0.06" />
+      <SolidColorBrush x:Key="SpStrokeBrush" Color="#000000" Opacity="0.065" />
+      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="#000000" Opacity="0.12" />
+      <SolidColorBrush x:Key="SpDividerBrush" Color="#000000" Opacity="0.05" />
       <SolidColorBrush x:Key="SpHoverBrush" Color="#000000" Opacity="0.04" />
       <SolidColorBrush x:Key="SpPressedBrush" Color="#000000" Opacity="0.025" />
       <SolidColorBrush x:Key="SpInputBrush" Color="#FFFFFF" Opacity="0.8" />
@@ -194,6 +220,11 @@
       <SolidColorBrush x:Key="SpWindowTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
       <SolidColorBrush x:Key="SpLayerBrush" Color="{ThemeResource SystemColorWindowColor}" />
       <SolidColorBrush x:Key="SpReaderBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpPanelBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpAcrylicBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpPanelStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpBodyCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpControlFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
       <SolidColorBrush x:Key="SpElevatedBrush" Color="{ThemeResource SystemColorWindowColor}" />
       <SolidColorBrush x:Key="SpFlyoutBrush" Color="{ThemeResource SystemColorWindowColor}" />
       <SolidColorBrush x:Key="SpCardBrush" Color="{ThemeResource SystemColorWindowColor}" />

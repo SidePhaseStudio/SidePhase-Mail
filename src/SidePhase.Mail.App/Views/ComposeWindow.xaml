@@ -36,7 +36,14 @@
 
     <Border x:Name="SolidLayer" Grid.RowSpan="7" Background="{ThemeResource SpWindowSolidBrush}" />
     <Border Grid.RowSpan="7" Background="{ThemeResource SpWindowTintBrush}" />
-    <Border Grid.Row="1" Grid.RowSpan="6" Background="{ThemeResource SpReaderBrush}" BorderBrush="{ThemeResource SpStrokeBrush}" BorderThickness="0,1,0,0" />
+    <Border
+        Grid.Row="1"
+        Grid.RowSpan="6"
+        Margin="8,0,8,8"
+        Background="{ThemeResource SpReaderBrush}"
+        BorderBrush="{ThemeResource SpPanelStrokeBrush}"
+        BorderThickness="1"
+        CornerRadius="{StaticResource SpCornerLarge}" />
 
     <TitleBar x:Name="ComposeTitleBar" Title="{x:Bind ViewModel.WindowTitle}" Height="48">
       <TitleBar.IconSource>

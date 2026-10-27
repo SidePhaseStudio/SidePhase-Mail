@@ -145,7 +145,8 @@ public sealed class ThemeService
         {
             if (MicaController.IsSupported())
             {
-                backdrop = entry.Window.SystemBackdrop as MicaBackdrop ?? new MicaBackdrop { Kind = MicaKind.Base };
+                // Mica Alt carries a little more of the wallpaper's colour, giving the glass more depth.
+                backdrop = entry.Window.SystemBackdrop as MicaBackdrop ?? new MicaBackdrop { Kind = MicaKind.BaseAlt };
             }
             else if (DesktopAcrylicController.IsSupported())
             {

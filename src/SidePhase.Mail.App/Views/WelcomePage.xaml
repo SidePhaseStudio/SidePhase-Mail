@@ -6,7 +6,7 @@
     xmlns:controls="using:SidePhase.Mail.App.Controls"
     Background="Transparent">
 
-  <Grid Background="{ThemeResource SpLayerBrush}">
+  <Grid Style="{StaticResource SpPanelStyle}">
     <ScrollViewer>
       <StackPanel
           MaxWidth="460"
