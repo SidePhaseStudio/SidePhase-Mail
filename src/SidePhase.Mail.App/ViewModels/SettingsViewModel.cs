@@ -36,13 +36,23 @@ public sealed partial class SenderRuleItemViewModel(SenderRule rule, Action<Send
 public sealed partial class AccountSettingsViewModel : ObservableObject
 {
     private readonly ISettingsService _settings;
+    private readonly Func<AccountSettingsViewModel, Task> _reauthenticate;
+    private readonly Func<AccountSettingsViewModel, Task> _remove;
 
-    public AccountSettingsViewModel(MailAccount account, ISettingsService settings)
+    public AccountSettingsViewModel(MailAccount account, ISettingsService settings, Func<AccountSettingsViewModel, Task> reauthenticate, Func<AccountSettingsViewModel, Task> remove)
     {
         Account = account;
         _settings = settings;
+        _reauthenticate = reauthenticate;
+        _remove = remove;
         Signature = settings.Current.Signatures.TryGetValue(account.Id, out var s) ? s : string.Empty;
     }
+
+    [RelayCommand]
+    private Task ReauthenticateAsync() => _reauthenticate(this);
+
+    [RelayCommand]
+    private Task RemoveAsync() => _remove(this);
 
     public MailAccount Account { get; }
     public string Name => Account.DisplayName;
@@ -82,6 +92,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ThemeService _theme;
     private readonly IUiDispatcher _ui;
     private readonly AppDataPaths _paths;
+    private readonly IAccountService _accounts;
+    private readonly ISecretStore _secrets;
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -91,8 +103,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         ToastService toasts,
         ThemeService theme,
         IUiDispatcher ui,
-        AppDataPaths paths)
+        AppDataPaths paths,
+        IAccountService accounts,
+        ISecretStore secrets)
     {
+        _accounts = accounts;
+        _secrets = secrets;
         _settings = settings;
         _rules = rules;
         _mail = mail;
@@ -102,7 +118,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ui = ui;
         _paths = paths;
 
-        NewTrustedSender = NewBlockedSender = NewBlockedDomain = RuleError = string.Empty;
+        NewTrustedSender = NewBlockedSender = NewBlockedDomain = RuleError = GoogleClientSecret = string.Empty;
 
         AccentOptions =
         [
@@ -258,8 +274,117 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool IsDemo => _mail.IsDemo;
 
     public string CredentialSummary => _mail.IsDemo
-        ? "No credentials are stored. Only demonstration accounts are configured."
-        : "Sign-in tokens are encrypted with Windows Data Protection and never written to logs.";
+        ? "The demonstration mailbox stores no credentials. Real accounts' passwords and sign-in tokens are encrypted with Windows Data Protection for your user account, never written to logs, and never sent to SidePhase Studio."
+        : "Passwords and sign-in tokens are encrypted with Windows Data Protection for your user account, never written to logs, and never sent to SidePhase Studio.";
+
+    // ---------------------------------------------------------------- Accounts
+
+    /// <summary>Shows the demonstration mailbox instead of real accounts. The two are never mixed.</summary>
+    public bool UseDemoMailbox
+    {
+        get => S.DataMode == DataMode.Demo;
+        set
+        {
+            if (UseDemoMailbox == value) return;
+            _settings.Update(s => s.DataMode = value ? DataMode.Demo : DataMode.Live);
+            _ = LoadAsync();
+        }
+    }
+
+    public string GoogleClientId
+    {
+        get => S.GoogleClientId ?? string.Empty;
+        set => Set(s => s.GoogleClientId = string.IsNullOrWhiteSpace(value) ? null : value.Trim(), (S.GoogleClientId ?? string.Empty) != value);
+    }
+
+    public string MicrosoftClientId
+    {
+        get => S.MicrosoftClientId ?? string.Empty;
+        set => Set(s => s.MicrosoftClientId = string.IsNullOrWhiteSpace(value) ? null : value.Trim(), (S.MicrosoftClientId ?? string.Empty) != value);
+    }
+
+    [ObservableProperty] public partial string GoogleClientSecret { get; set; }
+
+    [RelayCommand]
+    private async Task SaveGoogleClientSecretAsync()
+    {
+        if (string.IsNullOrWhiteSpace(GoogleClientSecret))
+        {
+            await _secrets.DeleteAsync(Infrastructure.Security.SecretKeys.GoogleClientSecret);
+            _toasts.Show("Google client secret removed.");
+        }
+        else
+        {
+            await _secrets.SetAsync(Infrastructure.Security.SecretKeys.GoogleClientSecret, GoogleClientSecret.Trim());
+            _toasts.Show("Google client secret saved (encrypted).", ToastKind.Success);
+        }
+
+        GoogleClientSecret = string.Empty;
+    }
+
+    private async Task ReauthenticateAccountAsync(AccountSettingsViewModel item)
+    {
+        try
+        {
+            var connection = await _accounts.GetConnectionSettingsAsync(item.Account.Id);
+            if (connection is null) return;
+
+            if (connection.AuthMethod == AuthMethod.Password)
+            {
+                var password = await AskForPasswordAsync(item.Account);
+                if (password is null) return;
+                _toasts.Show($"Checking the new password for {item.Address}…");
+                await _accounts.ReauthenticateAsync(item.Account.Id, password, null);
+            }
+            else
+            {
+                _toasts.Show("Finish signing in in your browser…");
+                var tokens = await _accounts.SignInAsync(connection.AuthMethod, item.Address);
+                await _accounts.ReauthenticateAsync(item.Account.Id, null, tokens);
+            }
+
+            _toasts.Show($"{item.Address} is signed in again.", ToastKind.Success);
+        }
+        catch (Exception ex)
+        {
+            _toasts.Show($"Couldn't sign in: {ex.Message}", ToastKind.Error);
+        }
+    }
+
+    private async Task<string?> AskForPasswordAsync(MailAccount account)
+    {
+        var box = new Microsoft.UI.Xaml.Controls.PasswordBox { Header = $"Password for {account.EmailAddress}", MinWidth = 320 };
+        var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+        {
+            Title = "Sign in again",
+            Content = box,
+            PrimaryButtonText = "Test and save",
+            CloseButtonText = "Cancel",
+            DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
+        };
+        var result = await _dialogs.ShowAsync(dialog);
+        return result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary && box.Password.Length > 0 ? box.Password : null;
+    }
+
+    private async Task RemoveAccountAsync(AccountSettingsViewModel item)
+    {
+        var confirmed = await _dialogs.ConfirmAsync(
+            $"Remove {item.Address}?",
+            "Its cached messages, pins and saved sign-in are deleted from this PC. Nothing is deleted from your mail server, and you can add the account again at any time.",
+            "Remove account");
+        if (!confirmed) return;
+
+        try
+        {
+            await _accounts.RemoveAsync(item.Account.Id);
+            Accounts.Remove(item);
+            _toasts.Show($"{item.Address} removed from this PC.", ToastKind.Success);
+        }
+        catch (Exception ex)
+        {
+            _toasts.Show($"Couldn't remove the account: {ex.Message}", ToastKind.Error);
+        }
+    }
 
     // ---------------------------------------------------------------- About
 
@@ -268,7 +393,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         get
         {
             var version = typeof(SettingsViewModel).Assembly.GetName().Version;
-            return $"Version {version?.ToString(3) ?? "0.1.0"} · Milestone 1 preview";
+            return $"Version {version?.ToString(3) ?? "0.1.0"} · Milestone 2 preview";
         }
     }
 
@@ -277,7 +402,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Accounts.Clear();
         foreach (var account in await _mail.GetAccountsAsync())
         {
-            Accounts.Add(new AccountSettingsViewModel(account, _settings));
+            Accounts.Add(new AccountSettingsViewModel(account, _settings, ReauthenticateAccountAsync, RemoveAccountAsync));
         }
 
         OnPropertyChanged(string.Empty);

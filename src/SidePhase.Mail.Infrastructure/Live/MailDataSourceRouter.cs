@@ -32,6 +32,7 @@ public sealed class MailDataSourceRouter : IMailDataSource
             _mode = e.Settings.DataMode;
             ModeChanged?.Invoke(this, EventArgs.Empty);
             DataChanged?.Invoke(this, new MailDataChangedEventArgs(MailDataChangeKind.Reset, []));
+            if (_mode == DataMode.Live) _ = _live.SyncAsync();
         };
     }
 

@@ -31,7 +31,7 @@
         <Border
             Margin="0,0,12,0"
             Style="{StaticResource SpPillStyle}"
-            Visibility="{x:Bind Shell.IsDemo}">
+            Visibility="{x:Bind Shell.IsDemo, Mode=OneWay}">
           <TextBlock Style="{StaticResource SpPillTextStyle}" Text="DEMO DATA" />
         </Border>
       </TitleBar.RightHeader>

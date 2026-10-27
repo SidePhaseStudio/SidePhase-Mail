@@ -37,7 +37,7 @@ public class MimeTests
     {
         var message = MimeMessageBuilder.Build(new DraftMessage { To = [new EmailAddress(null, "b@x.test")], TextBody = "Hi", IsPlainText = true }, Alice, null, null);
         Assert.Null(message.HtmlBody);
-        Assert.Equal("Hi", message.TextBody.Trim());
+        Assert.Equal("Hi", message.TextBody?.Trim());
     }
 
     [Fact]

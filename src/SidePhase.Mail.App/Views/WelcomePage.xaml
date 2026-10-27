@@ -35,7 +35,7 @@
             TextAlignment="Center" />
 
         <StackPanel Margin="0,18,0,0" Spacing="8">
-          <Button HorizontalAlignment="Stretch" IsEnabled="False" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
+          <Button HorizontalAlignment="Stretch" Click="OnGoogleClick" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
             <Grid ColumnSpacing="12">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -45,24 +45,24 @@
               <TextBlock Grid.Column="1" Text="Continue with Google" />
             </Grid>
           </Button>
-          <Button HorizontalAlignment="Stretch" IsEnabled="False" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
+          <Button HorizontalAlignment="Stretch" Click="OnMicrosoftClick" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
             <Grid ColumnSpacing="12">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
               <FontIcon FontSize="16" Glyph="&#xE715;" />
-              <TextBlock Grid.Column="1" Text="Continue with Microsoft" />
+              <TextBlock Grid.Column="1" Text="Continue with Microsoft (Outlook, Hotmail, Live)" />
             </Grid>
           </Button>
-          <Button HorizontalAlignment="Stretch" IsEnabled="False" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
+          <Button HorizontalAlignment="Stretch" Click="OnOtherClick" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
             <Grid ColumnSpacing="12">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
               <FontIcon FontSize="16" Glyph="&#xE8FA;" />
-              <TextBlock Grid.Column="1" Text="Add another email account" />
+              <TextBlock Grid.Column="1" Text="Add another email account (IMAP)" />
             </Grid>
           </Button>
 
@@ -72,10 +72,10 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
-              <FontIcon Margin="0,2,0,0" VerticalAlignment="Top" FontSize="14" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="&#xE946;" />
-              <TextBlock Grid.Column="1" Style="{StaticResource SpCaptionTextStyle}">
-                <Run FontWeight="SemiBold" Text="Not available in this preview." />
-                <Run Text="Connecting Google, Microsoft and IMAP accounts arrives in Milestone 2, using each provider's secure sign-in (OAuth) — SidePhase Mail will never ask for your Google or Microsoft password." />
+              <FontIcon Margin="0,2,0,0" VerticalAlignment="Top" FontSize="14" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="&#xE72E;" />
+              <TextBlock Grid.Column="1" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap">
+                <Run FontWeight="SemiBold" Text="Private by design." />
+                <Run Text="SidePhase Mail talks directly to your provider. Google and Microsoft accounts use their own sign-in page in your browser, so SidePhase Mail never sees those passwords. Nothing is sent to SidePhase Studio." />
               </TextBlock>
             </Grid>
           </Border>
@@ -95,7 +95,7 @@
         <TextBlock
             HorizontalAlignment="Center"
             Style="{StaticResource SpCaptionTextStyle}"
-            Text="The demo uses fictional sample messages. Nothing is sent or received."
+            Text="The demo uses fictional sample messages. Nothing is sent or received, and it never mixes with your real mail."
             TextAlignment="Center" />
       </StackPanel>
     </ScrollViewer>

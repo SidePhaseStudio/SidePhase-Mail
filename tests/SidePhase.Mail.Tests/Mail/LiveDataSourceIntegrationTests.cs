@@ -191,7 +191,7 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         Assert.Null(await _app.Mail.GetMessageAsync(draftId));
         Assert.Equal("Draft B", (await _app.Mail.GetDraftAsync(draftId2))!.Subject);
         await _app.Mail.SyncAsync();
-        Assert.Single((await _app.Mail.GetMessagesAsync()).Where(m => m.AccountId == alice.Id && m.FolderKind == FolderKind.Drafts && m.Subject.StartsWith("Draft ")));
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.AccountId == alice.Id && m.FolderKind == FolderKind.Drafts && m.Subject.StartsWith("Draft "));
 
         // Trash then permanent delete (both explicit).
         var trashed = Assert.Single(await _app.Mail.MoveToAsync([draftId2], FolderKind.Trash));

@@ -133,9 +133,11 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             var body = await _mail.GetMessageBodyAsync(message.Id, cts.Token);
             if (cts.IsCancellationRequested) return;
             _body = body;
+            var index = 0;
             foreach (var attachment in body?.Attachments ?? [])
             {
-                Attachments.Add(new AttachmentItemViewModel(attachment, _commands.OpenAttachment));
+                var attachmentIndex = index++;
+                Attachments.Add(new AttachmentItemViewModel(attachment, a => _ = _commands.SaveAttachmentAsync(message, attachmentIndex, a)));
             }
 
             HasAttachments = Attachments.Count > 0;

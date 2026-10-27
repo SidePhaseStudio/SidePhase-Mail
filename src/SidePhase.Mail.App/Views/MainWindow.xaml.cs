@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window
         _toastTimer.IsRepeating = false;
         _toastTimer.Tick += (_, _) => ToastBar.IsOpen = false;
         App.GetService<ToastService>().ToastRequested += (_, request) => DispatcherQueue.TryEnqueue(() => ShowToast(request));
+        App.GetService<IMailDataSource>().ErrorOccurred += (_, e) => DispatcherQueue.TryEnqueue(() => ShowMailError(e));
+        App.GetService<Infrastructure.Live.LiveMailDataSource>().NewMailArrived += (_, messages) => DispatcherQueue.TryEnqueue(() => ShowNewMail(messages));
 
         Shell.NavigationRebuilt += (_, _) =>
         {
@@ -92,6 +94,57 @@ public sealed partial class MainWindow : Window
         NavView.SelectedItem = AddAccountItem;
         _suppressNavigation = false;
         ContentFrame.Navigate(typeof(WelcomePage), null, new DrillInNavigationTransitionInfo());
+    }
+
+    /// <summary>Opens account setup, optionally preset for Google, Microsoft or a Microsoft 365 work account.</summary>
+    public void ShowAddAccount(AddAccountPreset preset = AddAccountPreset.Any)
+    {
+        _suppressNavigation = true;
+        NavView.SelectedItem = AddAccountItem;
+        _suppressNavigation = false;
+        ContentFrame.Navigate(typeof(AddAccountPage), preset, new DrillInNavigationTransitionInfo());
+    }
+
+    public void ShowSettings()
+    {
+        NavView.SelectedItem = SettingsItem;
+    }
+
+    private readonly Dictionary<string, DateTimeOffset> _recentErrors = [];
+
+    /// <summary>
+    /// Shows a mail problem as a toast. The same message is shown at most once a minute so a server that's down
+    /// doesn't flood the screen, and one failing account never interrupts the others.
+    /// </summary>
+    private void ShowMailError(MailErrorEventArgs e)
+    {
+        var now = DateTimeOffset.Now;
+        if (_recentErrors.TryGetValue(e.Message, out var last) && now - last < TimeSpan.FromMinutes(1)) return;
+        _recentErrors[e.Message] = now;
+
+        var toasts = App.GetService<ToastService>();
+        if (e.RequiresSignIn)
+        {
+            toasts.ShowWithAction(e.Message, ToastKind.Error, "Sign in again", () =>
+            {
+                ShowSettings();
+                return Task.CompletedTask;
+            });
+        }
+        else
+        {
+            toasts.Show(e.Message, ToastKind.Warning);
+        }
+    }
+
+    private void ShowNewMail(IReadOnlyList<Core.Models.MessageSummary> messages)
+    {
+        if (!_settings.Current.NotificationsEnabled || messages.Count == 0) return;
+        var first = messages[0];
+        var text = messages.Count == 1
+            ? $"New message from {first.From.DisplayName}: {first.DisplaySubject}"
+            : $"{messages.Count} new messages";
+        App.GetService<ToastService>().Show(text);
     }
 
     public void ShowInbox()

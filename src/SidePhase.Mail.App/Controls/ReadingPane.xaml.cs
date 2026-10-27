@@ -22,6 +22,7 @@ public sealed partial class ReadingPane : UserControl
             var parsed = RecipientParser.Parse(address);
             if (parsed.Addresses.Count > 0) await ViewModel.ComposeToAsync(parsed.Addresses[0]);
         };
+        BodyView.LinkRequested += async (_, link) => await App.GetService<Services.MessageCommandService>().OpenLinkAsync(link);
     }
 
     public ReadingPaneViewModel ViewModel { get; }

@@ -27,7 +27,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
         _mail.DataChanged += (_, e) =>
         {
-            if (e.Kind == MailDataChangeKind.Reset) _ui.Post(() => _ = BuildAsync());
+            if (e.Kind == MailDataChangeKind.Reset) _ui.Post(() =>
+            {
+                OnPropertyChanged(nameof(IsDemo));
+                _ = BuildAsync();
+            });
             else QueueCountRefresh();
         };
         rules.RulesChanged += (_, _) => QueueCountRefresh();

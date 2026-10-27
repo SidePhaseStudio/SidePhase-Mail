@@ -71,7 +71,7 @@ public static class MessageBodyExtractor
         switch (entity)
         {
             case MessagePart rfc822:
-                rfc822.Message.WriteTo(stream);
+                rfc822.Message?.WriteTo(stream);
                 break;
             case MimePart part:
                 part.Content?.DecodeTo(stream);
@@ -94,8 +94,8 @@ public static class MessageBodyExtractor
             case MessagePart rfc822:
             {
                 using var stream = new MemoryStream();
-                rfc822.Message.WriteTo(stream);
-                var subject = rfc822.Message.Subject;
+                rfc822.Message?.WriteTo(stream);
+                var subject = rfc822.Message?.Subject;
                 return ($"{(string.IsNullOrWhiteSpace(subject) ? "Attached message" : subject)}.eml", "message/rfc822", stream.Length);
             }
 

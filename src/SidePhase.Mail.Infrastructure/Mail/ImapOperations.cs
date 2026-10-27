@@ -89,7 +89,8 @@ public static class ImapOperations
     {
         var personal = client.PersonalNamespaces.Count > 0 ? client.PersonalNamespaces[0] : new FolderNamespace('/', string.Empty);
         var root = await client.GetFolderAsync(personal.Path, ct).ConfigureAwait(false);
-        var created = await root.CreateAsync(name, isMessageFolder: true, ct).ConfigureAwait(false);
+        var created = await root.CreateAsync(name, isMessageFolder: true, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"The server didn't create the \"{name}\" folder.");
         await created.SubscribeAsync(ct).ConfigureAwait(false);
         return created.FullName;
     }

@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ main, 'claude/**' ]
+    branches: [ main, 'claude/**', 'feature/**' ]
   pull_request:
   workflow_dispatch:
 
@@ -20,6 +20,58 @@ env:
   CONFIGURATION: Release
 
 jobs:
+  mail-integration:
+    name: Mail engine integration (IMAP/SMTP test server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Start a disposable IMAP/SMTP server (Dovecot + Postfix, loopback only)
+        run: bash scripts/ci/setup-test-mail-server.sh
+
+      # Throwaway users on a local test server only. No real or production accounts are ever used in CI.
+      - name: Run unit and integration tests
+        env:
+          SIDEPHASE_TEST_IMAP_HOST: 127.0.0.1
+          SIDEPHASE_TEST_IMAP_PORT: 1993
+          SIDEPHASE_TEST_SMTP_PORT: 1587
+          SIDEPHASE_TEST_SMTP_SECURITY: starttls
+        run: >
+          dotnet test tests/SidePhase.Mail.Tests/SidePhase.Mail.Tests.csproj -c Release
+          --logger "trx;LogFileName=integration-results.trx"
+          --logger "console;verbosity=normal"
+          --results-directory artifacts/integration-results
+
+      - name: Run integration tests with IMAP STARTTLS and implicit-TLS SMTP
+        env:
+          SIDEPHASE_TEST_IMAP_HOST: 127.0.0.1
+          SIDEPHASE_TEST_IMAP_PORT: 1143
+          SIDEPHASE_TEST_IMAP_SECURITY: starttls
+          SIDEPHASE_TEST_SMTP_PORT: 1465
+        run: dotnet test tests/SidePhase.Mail.Tests/SidePhase.Mail.Tests.csproj -c Release --filter "FullyQualifiedName~Integration"
+
+      - name: Mail server logs
+        if: failure()
+        run: |
+          sudo tail -n 200 /var/log/postfix.log || true
+          sudo journalctl -u dovecot --no-pager -n 200 || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: artifacts/integration-results
+          if-no-files-found: ignore
+
   windows-x64:
     name: Windows x64 (build, test, package)
     runs-on: windows-latest

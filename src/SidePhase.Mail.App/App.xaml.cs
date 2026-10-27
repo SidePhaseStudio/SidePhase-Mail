@@ -6,7 +6,9 @@ using SidePhase.Mail.App.ViewModels;
 using SidePhase.Mail.App.Views;
 using SidePhase.Mail.Core;
 using SidePhase.Mail.Core.Abstractions;
+using SidePhase.Mail.Core.Settings;
 using SidePhase.Mail.Infrastructure;
+using SidePhase.Mail.Infrastructure.Live;
 using SidePhase.Mail.Infrastructure.Storage;
 
 namespace SidePhase.Mail.App;
@@ -72,6 +74,12 @@ public partial class App : Application
 
         Main = new MainWindow();
         Main.Activate();
+
+        // Real accounts sync in the background (only while real accounts, not the demo, are shown).
+        var settings = GetService<ISettingsService>();
+        GetService<LiveMailDataSource>().StartBackgroundSync(
+            () => TimeSpan.FromMinutes(Math.Max(1, settings.Current.SyncIntervalMinutes)),
+            () => settings.Current.DataMode == DataMode.Live);
     }
 
     private static ServiceProvider ConfigureServices(AppDataPaths paths)
@@ -94,6 +102,7 @@ public partial class App : Application
         services.AddSingleton<MailListViewModel>();
         services.AddSingleton<ReadingPaneViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddTransient<AddAccountViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
     }

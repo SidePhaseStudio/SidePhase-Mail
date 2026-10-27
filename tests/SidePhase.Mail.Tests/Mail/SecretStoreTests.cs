@@ -37,6 +37,20 @@ public sealed class SecretStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Windows_data_protection_round_trips_and_encrypts()
+    {
+        if (!OperatingSystem.IsWindows()) return; // DPAPI exists only on Windows (covered by the Windows CI job)
+
+        var store = new FileSecretStore(new AppDataPaths(_root), new DpapiSecretProtector());
+        await store.SetAsync("dpapi-test", "correct horse battery staple");
+        Assert.Equal("correct horse battery staple", await store.GetAsync("dpapi-test"));
+        foreach (var file in Directory.GetFiles(Path.Combine(_root, "Secrets")))
+        {
+            Assert.DoesNotContain("correct horse", await File.ReadAllTextAsync(file));
+        }
+    }
+
+    [Fact]
     public async Task Missing_secret_is_null_and_overwrite_replaces()
     {
         Assert.Null(await _store.GetAsync("nope"));

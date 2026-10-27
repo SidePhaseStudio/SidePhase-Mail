@@ -141,7 +141,7 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
         inbox = (await _cache.GetFoldersAsync(_bob)).Single(f => f.Id == inbox.Id);
         var again = await sync.SyncFolderAsync(imap, inbox);
         Assert.Empty(again.NewMessageIds);
-        Assert.Single((await _cache.GetSummariesAsync()).Where(m => m.Subject == subject));
+        Assert.Single(await _cache.GetSummariesAsync(), m => m.Subject == subject);
 
         // 3. Body on demand (BODY.PEEK: still unread on the server) with the attachment.
         var reference = (await _cache.GetMessageRefAsync(received.Id))!;

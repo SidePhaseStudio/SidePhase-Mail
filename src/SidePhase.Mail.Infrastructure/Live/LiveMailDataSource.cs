@@ -634,22 +634,33 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
     }
 
-    /// <summary>Runs <see cref="SyncAsync"/> every <paramref name="interval"/> until the app closes.</summary>
-    public void StartBackgroundSync(Func<TimeSpan> interval)
+    /// <summary>
+    /// Runs <see cref="SyncAsync"/> now and then every <paramref name="interval"/> until the app closes, whenever
+    /// <paramref name="isActive"/> says real accounts are in use.
+    /// </summary>
+    public void StartBackgroundSync(Func<TimeSpan> interval, Func<bool> isActive)
     {
         _ = Task.Run(async () =>
         {
             try
             {
-                await SyncAsync().ConfigureAwait(false);
                 while (!_shutdown.IsCancellationRequested)
                 {
+                    if (isActive() && (await GetStoredAccountsAsync(_shutdown.Token).ConfigureAwait(false)).Count > 0)
+                    {
+                        await SyncAsync().ConfigureAwait(false);
+                    }
+
                     await Task.Delay(interval(), _shutdown.Token).ConfigureAwait(false);
-                    if ((await GetStoredAccountsAsync(_shutdown.Token).ConfigureAwait(false)).Count > 0) await SyncAsync().ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
             {
+            }
+            catch (Exception ex)
+            {
+                // The cache itself failed (e.g. disk full). Report it once rather than crashing the app.
+                ErrorOccurred?.Invoke(this, new MailErrorEventArgs(null, "Background sync stopped: " + MailErrorTranslator.Describe(ex).Message));
             }
         });
     }
