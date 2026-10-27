@@ -36,6 +36,13 @@ public sealed class DemoMailDataSource : IMailDataSource
 
     public event EventHandler<MailDataChangedEventArgs>? DataChanged;
 
+    // The demo store has no background work that can fail.
+    public event EventHandler<MailErrorEventArgs>? ErrorOccurred
+    {
+        add { }
+        remove { }
+    }
+
     public Task<IReadOnlyList<MailAccount>> GetAccountsAsync(CancellationToken cancellationToken = default)
     {
         lock (_gate) return Task.FromResult<IReadOnlyList<MailAccount>>(_accounts.ToList());
@@ -66,6 +73,9 @@ public sealed class DemoMailDataSource : IMailDataSource
         await Task.Delay(_latency / 6, cancellationToken).ConfigureAwait(false);
         lock (_gate) return _bodies.GetValueOrDefault(messageId);
     }
+
+    public Task<byte[]> GetAttachmentContentAsync(Guid messageId, int attachmentIndex, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Demonstration attachments have no file content.");
 
     public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) =>
         UpdateFlags(messageIds, m => m with { IsRead = isRead });

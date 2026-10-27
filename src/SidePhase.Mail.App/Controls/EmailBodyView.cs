@@ -68,8 +68,8 @@ public sealed partial class EmailBodyView : UserControl
     /// <summary>Raised when the user activates a mailto: link.</summary>
     public event EventHandler<string>? MailtoRequested;
 
-    /// <summary>Raised when the user activates a web link (already opened in the browser).</summary>
-    public event EventHandler<Uri>? LinkOpened;
+    /// <summary>Raised when the user activates a web link. Nothing is opened until the host confirms it.</summary>
+    public event EventHandler<Uri>? LinkRequested;
 
     private async void QueueRender()
     {
@@ -243,8 +243,7 @@ public sealed partial class EmailBodyView : UserControl
 
         if (parsed.Scheme == Uri.UriSchemeHttps || parsed.Scheme == Uri.UriSchemeHttp)
         {
-            _ = Windows.System.Launcher.LaunchUriAsync(parsed);
-            LinkOpened?.Invoke(this, parsed);
+            LinkRequested?.Invoke(this, parsed);
         }
     }
 

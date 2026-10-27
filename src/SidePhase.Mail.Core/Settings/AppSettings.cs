@@ -29,6 +29,13 @@ public enum ComposeFormat
     PlainText,
 }
 
+/// <summary>Which mailbox the app shows. Demo data and real accounts are never mixed.</summary>
+public enum DataMode
+{
+    Demo,
+    Live,
+}
+
 public enum SenderRuleKind
 {
     TrustedSender,
@@ -52,6 +59,17 @@ public sealed class AppSettings
 
     public int Version { get; set; } = CurrentVersion;
     public bool HasCompletedWelcome { get; set; }
+
+    /// <summary>Demo shows the sample mailbox; Live shows the user's real accounts.</summary>
+    public DataMode DataMode { get; set; } = DataMode.Demo;
+
+    /// <summary>Folders shown in the sidebar's Favourites section.</summary>
+    public List<Guid> FavouriteFolderIds { get; set; } = [];
+
+    // OAuth client registrations (public client IDs, not secrets). See docs/ACCOUNT_PROVIDERS.md.
+    // Environment variables SIDEPHASE_GOOGLE_CLIENT_ID / SIDEPHASE_MICROSOFT_CLIENT_ID take precedence.
+    public string? GoogleClientId { get; set; }
+    public string? MicrosoftClientId { get; set; }
 
     // Appearance
     public AppTheme Theme { get; set; } = AppTheme.DarkGlass;
@@ -85,6 +103,7 @@ public sealed class AppSettings
     {
         var copy = (AppSettings)MemberwiseClone();
         copy.SenderRules = [.. SenderRules];
+        copy.FavouriteFolderIds = [.. FavouriteFolderIds];
         copy.Signatures = new Dictionary<Guid, string>(Signatures);
         return copy;
     }
@@ -96,6 +115,10 @@ public sealed class AppSettings
         if (!Enum.IsDefined(Density)) Density = ListDensity.Comfortable;
         if (!Enum.IsDefined(ReadingPane)) ReadingPane = ReadingPanePosition.Right;
         if (!Enum.IsDefined(DefaultComposeFormat)) DefaultComposeFormat = ComposeFormat.RichText;
+        if (!Enum.IsDefined(DataMode)) DataMode = DataMode.Demo;
+        FavouriteFolderIds = (FavouriteFolderIds ?? []).Distinct().ToList();
+        GoogleClientId = string.IsNullOrWhiteSpace(GoogleClientId) ? null : GoogleClientId.Trim();
+        MicrosoftClientId = string.IsNullOrWhiteSpace(MicrosoftClientId) ? null : MicrosoftClientId.Trim();
         if (!Formatting.ColorMath.TryParseHex(AccentColor, out _)) AccentColor = DefaultAccent;
         if (double.IsNaN(SpamThreshold) || SpamThreshold < 1 || SpamThreshold > 20) SpamThreshold = 5.0;
         if (SyncIntervalMinutes is < 1 or > 240) SyncIntervalMinutes = 5;

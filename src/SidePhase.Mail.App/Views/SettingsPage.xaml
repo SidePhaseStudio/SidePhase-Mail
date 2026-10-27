@@ -188,22 +188,40 @@
                         Text="{x:Bind Signature, Mode=TwoWay}"
                         TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                      <Button Content="Re-authenticate" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
-                      <Button Content="Remove account" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
+                      <Button Command="{x:Bind ReauthenticateCommand}" Content="Sign in again" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
+                      <Button Command="{x:Bind RemoveCommand}" Content="Remove account" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
                     </StackPanel>
-                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Demonstration accounts can't be removed or re-authenticated. Real accounts (Milestone 2) can be removed here at any time; removing one never deletes mail on the server." />
+                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Removing an account deletes its cached mail and saved sign-in from this PC. It never deletes mail on the server. Demonstration accounts can't be removed." />
                   </StackPanel>
                 </Expander>
               </DataTemplate>
             </ItemsRepeater.ItemTemplate>
           </ItemsRepeater>
 
-          <controls:SettingsCard Description="Google, Microsoft and IMAP accounts arrive in Milestone 2." Glyph="&#xE8FA;" Header="Add an account">
+          <controls:SettingsCard Description="Google, Microsoft (Outlook.com, Hotmail, Live, Microsoft 365) or any IMAP/SMTP provider." Glyph="&#xE8FA;" Header="Add an account">
             <Button Click="OnAddAccountClick" Content="Add account…" Style="{StaticResource SpSecondaryButtonStyle}" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Show the fictional sample mailbox instead of your real accounts. The two are never mixed, and your accounts come back when you turn this off." Glyph="&#xE7BE;" Header="Demonstration mailbox">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.UseDemoMailbox, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Sign-in providers" />
+          <TextBlock Margin="2,0,0,6" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Google and Microsoft sign-in need an OAuth app registration (a public client ID). Builds from SidePhase Studio include one; for your own build, follow docs/ACCOUNT_PROVIDERS.md. These IDs are not secrets and identify the app, not you." />
+          <controls:SettingsCard Description="From Google Cloud Console → Credentials → OAuth client ID (Desktop app)." Glyph="&#xE8D7;" Header="Google OAuth client ID">
+            <TextBox MinWidth="280" IsSpellCheckEnabled="False" PlaceholderText="…apps.googleusercontent.com" Text="{x:Bind ViewModel.GoogleClientId, Mode=TwoWay}" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Google issues a 'client secret' even for desktop apps. It's stored encrypted on this PC, never in settings files." Glyph="&#xE72E;" Header="Google client secret">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PasswordBox MinWidth="200" Password="{x:Bind ViewModel.GoogleClientSecret, Mode=TwoWay}" PlaceholderText="Leave empty to remove" />
+              <Button Command="{x:Bind ViewModel.SaveGoogleClientSecretCommand}" Content="Save" Style="{StaticResource SpSecondaryButtonStyle}" />
+            </StackPanel>
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="From Microsoft Entra admin center → App registrations → Application (client) ID." Glyph="&#xE8D7;" Header="Microsoft application ID">
+            <TextBox MinWidth="280" IsSpellCheckEnabled="False" PlaceholderText="00000000-0000-0000-0000-000000000000" Text="{x:Bind ViewModel.MicrosoftClientId, Mode=TwoWay}" />
           </controls:SettingsCard>
 
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Synchronisation" />
-          <controls:SettingsCard Description="How often to check for new mail while SidePhase Mail is open. Applies once real accounts are connected." Glyph="&#xE895;" Header="Check for new mail">
+          <controls:SettingsCard Description="How often to check for new mail while SidePhase Mail is open." Glyph="&#xE895;" Header="Check for new mail">
             <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.SyncIntervalIndex, Mode=TwoWay}">
               <ComboBoxItem Content="Every minute" />
               <ComboBoxItem Content="Every 5 minutes" />
@@ -391,7 +409,7 @@
                 <TextBlock Style="{StaticResource SpTitleTextStyle}" Text="SidePhase Mail" />
                 <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.VersionText}" />
                 <TextBlock Style="{StaticResource SpSecondaryTextStyle}" Text="A premium email client for Windows 11 by SidePhase Studio." />
-                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="This preview shows demonstration data: fictional people and companies on reserved .example domains. No real email is sent or received." />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Connects to Google, Microsoft and IMAP/SMTP accounts directly. The demonstration mailbox uses fictional people and companies on reserved .example domains." />
                 <StackPanel Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                   <HyperlinkButton Content="Project on GitHub" NavigateUri="https://github.com/SidePhaseStudio/SidePhase-Mail" />
                   <HyperlinkButton Command="{x:Bind ViewModel.ShowWelcomeCommand}" Content="Show welcome screen" />
@@ -399,7 +417,7 @@
               </StackPanel>
             </Grid>
           </Border>
-          <TextBlock Margin="2,12,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Built with WinUI 3, the Windows App SDK and .NET. Mail engine (MailKit/MimeKit) and SQLite cache arrive in Milestone 2." />
+          <TextBlock Margin="2,12,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Built with WinUI 3, the Windows App SDK, .NET, MailKit/MimeKit and SQLite." />
         </StackPanel>
       </Grid>
     </ScrollViewer>

@@ -28,6 +28,26 @@ dotnet build src/SidePhase.Mail.App -p:Platform=x64
 
 On an ARM64 PC use `-p:Platform=ARM64` (the output folder is then `...\win-arm64\`).
 
+### Integration tests against a test mail server
+
+The IMAP/SMTP integration tests are skipped unless a **disposable** test server is configured. On Ubuntu 24.04,
+`scripts/ci/setup-test-mail-server.sh` sets one up (Dovecot + Postfix on 127.0.0.1, users `alice@example.test` /
+`bob@example.test`). Then:
+
+```bash
+SIDEPHASE_TEST_IMAP_HOST=127.0.0.1 SIDEPHASE_TEST_IMAP_PORT=1993 \
+SIDEPHASE_TEST_SMTP_PORT=1587 SIDEPHASE_TEST_SMTP_SECURITY=starttls \
+dotnet test tests/SidePhase.Mail.Tests
+```
+
+Never point these variables at a real mailbox: the tests send, move and delete messages.
+
+### OAuth client IDs for local builds
+
+No OAuth client IDs or secrets are in the repository. To try Google or Microsoft sign-in, register your own apps
+([docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)) and enter the IDs in *Settings → Accounts*, or set
+`SIDEPHASE_GOOGLE_CLIENT_ID`, `SIDEPHASE_GOOGLE_CLIENT_SECRET` and `SIDEPHASE_MICROSOFT_CLIENT_ID` before starting the app.
+
 ## Build in Visual Studio
 
 1. Open `SidePhase.Mail.sln`.
@@ -46,7 +66,9 @@ faster start-up. Only the WebView2 Runtime must be present on the target PC.
 
 ## Continuous integration
 
-`.github/workflows/build.yml` runs on every push and pull request on a GitHub-hosted `windows-latest` runner:
+`.github/workflows/build.yml` runs on every push and pull request. The **Mail engine integration** job (Ubuntu 24.04)
+starts the throwaway Dovecot/Postfix server and runs all tests including the IMAP/SMTP integration tests, with
+both SSL/TLS and STARTTLS. The **Windows x64** job on `windows-latest`:
 
 1. Restores packages.
 2. Runs the xUnit test suite (results uploaded as the `test-results` artifact).
@@ -64,4 +86,4 @@ faster start-up. Only the WebView2 Runtime must be present on the target PC.
 | “XamlCompiler.exe … could not be run” on macOS/Linux | Expected: the WinUI XAML compiler is Windows-only. Core, Infrastructure and Tests build anywhere. |
 | App starts but message bodies show as plain text | The WebView2 Runtime is missing; install it from the link above. |
 | Glass looks solid | Windows *Settings → Personalisation → Colours → Transparency effects* is off, a contrast theme is on, or a Solid theme is selected. This is intentional. |
-| Where are settings stored? | `%LOCALAPPDATA%\SidePhase Mail\settings.json`. Errors are logged to `%LOCALAPPDATA%\SidePhase Mail\Logs\errors.log` (never message contents or credentials). |
+| Where is data stored? | `%LOCALAPPDATA%\SidePhase Mail\` — `settings.json`, `mail-cache.db` (SQLite cache) and `Secrets\` (DPAPI-encrypted credentials). Errors are logged to `%LOCALAPPDATA%\SidePhase Mail\Logs\errors.log` (never message contents or credentials). |

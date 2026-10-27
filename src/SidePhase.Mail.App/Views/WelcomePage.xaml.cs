@@ -14,7 +14,17 @@ public sealed partial class WelcomePage : Page
 
     private void OnExploreDemoClick(object sender, RoutedEventArgs e)
     {
-        App.GetService<ISettingsService>().Update(s => s.HasCompletedWelcome = true);
+        App.GetService<ISettingsService>().Update(s =>
+        {
+            s.HasCompletedWelcome = true;
+            s.DataMode = Core.Settings.DataMode.Demo;
+        });
         App.Main?.ShowInbox();
     }
+
+    private void OnGoogleClick(object sender, RoutedEventArgs e) => App.Main?.ShowAddAccount(ViewModels.AddAccountPreset.Google);
+
+    private void OnMicrosoftClick(object sender, RoutedEventArgs e) => App.Main?.ShowAddAccount(ViewModels.AddAccountPreset.Microsoft);
+
+    private void OnOtherClick(object sender, RoutedEventArgs e) => App.Main?.ShowAddAccount();
 }

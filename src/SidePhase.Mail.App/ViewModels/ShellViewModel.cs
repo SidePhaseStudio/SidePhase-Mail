@@ -27,7 +27,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
         _mail.DataChanged += (_, e) =>
         {
-            if (e.Kind == MailDataChangeKind.Reset) _ui.Post(() => _ = BuildAsync());
+            if (e.Kind == MailDataChangeKind.Reset) _ui.Post(() =>
+            {
+                OnPropertyChanged(nameof(IsDemo));
+                _ = BuildAsync();
+            });
             else QueueCountRefresh();
         };
         rules.RulesChanged += (_, _) => QueueCountRefresh();
@@ -72,6 +76,32 @@ public sealed partial class ShellViewModel : ObservableObject
         NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Archive", Glyphs.Archive, MailboxScope.Unified(FolderKind.Archive), BadgeMode.None));
         NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Trash", Glyphs.Delete, MailboxScope.Unified(FolderKind.Trash), BadgeMode.None));
 
+        // Favourite folders (any account), in the order they were added.
+        var favouriteIds = _settings.Current.FavouriteFolderIds;
+        if (favouriteIds.Count > 0)
+        {
+            var allFolders = new Dictionary<Guid, (MailFolder Folder, MailAccount Account)>();
+            foreach (var account in accounts)
+            {
+                foreach (var folder in await _mail.GetFoldersAsync(account.Id)) allFolders[folder.Id] = (folder, account);
+            }
+
+            var favourites = favouriteIds.Where(allFolders.ContainsKey).Select(id => allFolders[id]).ToList();
+            if (favourites.Count > 0)
+            {
+                NavItems.Add(new NavItemViewModel(NavItemKind.Header, "Favourite folders"));
+                foreach (var (folder, account) in favourites)
+                {
+                    NavItems.Add(new NavItemViewModel(NavItemKind.Item, folder.Name, Glyphs.ForFolder(folder.Kind), MailboxScope.ForFolder(folder), BadgeFor(folder.Kind))
+                    {
+                        Subtitle = account.EmailAddress,
+                        ColorHex = account.ColorHex ?? "#8B7CFF",
+                        IsFavouriteFolder = true,
+                    });
+                }
+            }
+        }
+
         if (accounts.Count > 0)
         {
             NavItems.Add(new NavItemViewModel(NavItemKind.Header, "Accounts"));
@@ -99,6 +129,18 @@ public sealed partial class ShellViewModel : ObservableObject
 
         await RefreshCountsAsync();
         NavigationRebuilt?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool IsFavouriteFolder(Guid folderId) => _settings.Current.FavouriteFolderIds.Contains(folderId);
+
+    /// <summary>Adds or removes a folder from the sidebar's favourite folders. Local to this PC.</summary>
+    public async Task ToggleFavouriteFolderAsync(Guid folderId)
+    {
+        _settings.Update(s =>
+        {
+            if (!s.FavouriteFolderIds.Remove(folderId)) s.FavouriteFolderIds.Add(folderId);
+        });
+        await BuildAsync();
     }
 
     public NavItemViewModel? FindByScope(MailboxScope scope) =>

@@ -176,16 +176,84 @@ public sealed class MessageCommandService(
         });
     }
 
-    public void OpenAttachment(AttachmentInfo attachment)
+    /// <summary>
+    /// Saves an attachment where the user chooses. Attachments are never opened or run by SidePhase Mail.
+    /// </summary>
+    public async Task SaveAttachmentAsync(MessageSummary message, int index, AttachmentInfo attachment)
     {
         if (mail.IsDemo)
         {
-            toasts.Show($"\"{attachment.FileName}\" is demonstration content, so there's no file to open. " +
-                        "Opening and saving attachments arrives with real accounts in Milestone 2.");
+            toasts.Show($"\"{attachment.FileName}\" is demonstration content, so there's no file to save.");
+            return;
         }
-        else
+
+        try
         {
-            toasts.Show("Opening attachments is not implemented yet (Milestone 2).", ToastKind.Warning);
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
+                SuggestedFileName = SafeFileName(attachment.FileName),
+            };
+            var extension = Path.GetExtension(picker.SuggestedFileName);
+            picker.FileTypeChoices.Add(string.IsNullOrEmpty(extension) ? "File" : extension.TrimStart('.').ToUpperInvariant() + " file", [string.IsNullOrEmpty(extension) ? "." : extension]);
+            if (App.Main is { } window) WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            toasts.Show($"Downloading \"{attachment.FileName}\"…");
+            var content = await mail.GetAttachmentContentAsync(message.Id, index);
+            await File.WriteAllBytesAsync(file.Path, content);
+            toasts.Show($"Saved \"{file.Name}\".", ToastKind.Success);
         }
+        catch (Exception ex)
+        {
+            toasts.Show($"Couldn't save \"{attachment.FileName}\": {ex.Message}", ToastKind.Error);
+        }
+    }
+
+    /// <summary>Asks before opening a link from a message, showing exactly where it goes.</summary>
+    public async Task OpenLinkAsync(Uri link)
+    {
+        var panel = new StackPanel { Spacing = 10, MaxWidth = 460 };
+        panel.Children.Add(new TextBlock { Text = "This link opens in your web browser:", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock
+        {
+            Text = link.Host,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = link.AbsoluteUri,
+            FontSize = 12,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+            MaxLines = 4,
+        });
+        if (link.Scheme == Uri.UriSchemeHttp)
+        {
+            panel.Children.Add(new TextBlock { Text = "This link isn't encrypted (http).", FontSize = 12, Opacity = 0.7 });
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Open link?",
+            Content = panel,
+            PrimaryButtonText = "Open link",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialogs.ShowAsync(dialog) == ContentDialogResult.Primary)
+        {
+            await Windows.System.Launcher.LaunchUriAsync(link);
+        }
+    }
+
+    private static string SafeFileName(string name)
+    {
+        var cleaned = string.Concat(Path.GetFileName(name).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim().TrimEnd('.');
+        return cleaned.Length == 0 ? "attachment" : cleaned;
     }
 }
