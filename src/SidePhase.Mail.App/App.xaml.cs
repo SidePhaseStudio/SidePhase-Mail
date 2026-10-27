@@ -18,7 +18,21 @@ public partial class App : Application
 
     public App()
     {
-        InitializeComponent();
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex) StartupDiagnostics.Report("runtime", ex, showDialog: e.IsTerminating);
+        };
+
+        try
+        {
+            InitializeComponent();
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Report("loading app resources", ex);
+            throw;
+        }
+
         UnhandledException += OnUnhandledException;
     }
 
@@ -28,6 +42,19 @@ public partial class App : Application
         (_services ?? throw new InvalidOperationException("Services are not configured yet.")).GetRequiredService<T>();
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        try
+        {
+            await LaunchAsync();
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Report("launch", ex);
+            Exit();
+        }
+    }
+
+    private async Task LaunchAsync()
     {
         _paths = new AppDataPaths();
         _paths.EnsureCreated();

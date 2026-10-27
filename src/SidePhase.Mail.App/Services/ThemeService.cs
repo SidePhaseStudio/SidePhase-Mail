@@ -43,9 +43,24 @@ public sealed class ThemeService
         _appliedTheme = settings.Current.Theme;
 
         _settings.SettingsChanged += (_, e) => _dispatcher.TryEnqueue(() => OnSettingsChanged(e.Settings));
-        _uiSettings.AdvancedEffectsEnabledChanged += (_, _) => _dispatcher.TryEnqueue(ApplyAll);
-        _uiSettings.ColorValuesChanged += (_, _) => _dispatcher.TryEnqueue(ApplyAll);
-        _accessibility.HighContrastChanged += (_, _) => _dispatcher.TryEnqueue(ApplyAll);
+
+        // System change notifications are a nicety: if one is unavailable the app must still start.
+        // AccessibilitySettings.HighContrastChanged is not used because it requires a UWP CoreWindow and throws
+        // ERROR_NOT_FOUND in desktop apps; ColorValuesChanged also fires when a contrast theme is turned on or off.
+        TrySubscribe(() => _uiSettings.AdvancedEffectsEnabledChanged += (_, _) => _dispatcher.TryEnqueue(ApplyAll));
+        TrySubscribe(() => _uiSettings.ColorValuesChanged += (_, _) => _dispatcher.TryEnqueue(ApplyAll));
+    }
+
+    private static void TrySubscribe(Action subscribe)
+    {
+        try
+        {
+            subscribe();
+        }
+        catch (Exception)
+        {
+            // The theme still applies at start-up and whenever settings change.
+        }
     }
 
     public event EventHandler? ThemeApplied;

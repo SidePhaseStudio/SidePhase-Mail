@@ -23,23 +23,3 @@ public sealed partial class MessageListContainerStyleSelector : StyleSelector
     protected override Style? SelectStyleCore(object item, DependencyObject container) =>
         item is ListHeaderViewModel ? HeaderStyle : MessageStyle;
 }
-
-public sealed partial class NavItemTemplateSelector : DataTemplateSelector
-{
-    public DataTemplate? ItemTemplate { get; set; }
-    public DataTemplate? AccountTemplate { get; set; }
-    public DataTemplate? HeaderTemplate { get; set; }
-    public DataTemplate? SeparatorTemplate { get; set; }
-
-    protected override DataTemplate? SelectTemplateCore(object item) => item is NavItemViewModel nav
-        ? nav.Kind switch
-        {
-            NavItemKind.Account => AccountTemplate,
-            NavItemKind.Header => HeaderTemplate,
-            NavItemKind.Separator => SeparatorTemplate,
-            _ => ItemTemplate,
-        }
-        : ItemTemplate;
-
-    protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container) => SelectTemplateCore(item);
-}

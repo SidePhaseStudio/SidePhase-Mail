@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueueTimer _toastTimer;
     private Func<Task>? _toastAction;
     private bool _suppressNavigation;
+    private readonly Dictionary<NavItemViewModel, NavigationViewItem> _navContainers = [];
 
     public MainWindow()
     {
@@ -48,7 +49,11 @@ public sealed partial class MainWindow : Window
         _toastTimer.Tick += (_, _) => ToastBar.IsOpen = false;
         App.GetService<ToastService>().ToastRequested += (_, request) => DispatcherQueue.TryEnqueue(() => ShowToast(request));
 
-        Shell.NavigationRebuilt += (_, _) => SelectScope(_mailList.Scope);
+        Shell.NavigationRebuilt += (_, _) =>
+        {
+            BuildNavigation();
+            SelectScope(_mailList.Scope);
+        };
         RootGrid.Loaded += OnRootLoaded;
         Closed += (_, _) => _settings.FlushAsync().Wait(TimeSpan.FromSeconds(2));
     }
@@ -62,7 +67,7 @@ public sealed partial class MainWindow : Window
 
         if (_settings.Current.HasCompletedWelcome)
         {
-            NavView.SelectedItem = Shell.DefaultItem;
+            ShowInbox();
         }
         else
         {
@@ -80,7 +85,10 @@ public sealed partial class MainWindow : Window
 
     public void ShowInbox()
     {
-        NavView.SelectedItem = Shell.DefaultItem;
+        if (Shell.DefaultItem is { } item && _navContainers.TryGetValue(item, out var container))
+        {
+            NavView.SelectedItem = container;
+        }
     }
 
     private void OnPaneToggleRequested(TitleBar sender, object args) => Shell.IsPaneOpen = !Shell.IsPaneOpen;
@@ -88,8 +96,8 @@ public sealed partial class MainWindow : Window
     private void OnNavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
         // Re-invoking the selected mailbox while in Settings returns to it.
-        if (args.InvokedItemContainer?.DataContext is NavItemViewModel { Scope: not null } item
-            && ReferenceEquals(sender.SelectedItem, item)
+        if (args.InvokedItemContainer?.Tag is NavItemViewModel { Scope: not null } item
+            && ReferenceEquals(sender.SelectedItem, args.InvokedItemContainer)
             && ContentFrame.CurrentSourcePageType != typeof(MailPage))
         {
             _ = NavigateToMailboxAsync(item);
@@ -100,24 +108,17 @@ public sealed partial class MainWindow : Window
     {
         if (_suppressNavigation) return;
 
-        if (args.SelectedItem is NavigationViewItem { Tag: string tag })
+        switch (args.SelectedItemContainer?.Tag)
         {
-            switch (tag)
-            {
-                case "settings":
-                    ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
-                    break;
-                case "add-account":
-                    ContentFrame.Navigate(typeof(WelcomePage), null, new EntranceNavigationTransitionInfo());
-                    break;
-            }
-
-            return;
-        }
-
-        if (args.SelectedItem is NavItemViewModel { Scope: not null } item)
-        {
-            _ = NavigateToMailboxAsync(item);
+            case "settings":
+                ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
+                break;
+            case "add-account":
+                ContentFrame.Navigate(typeof(WelcomePage), null, new EntranceNavigationTransitionInfo());
+                break;
+            case NavItemViewModel { Scope: not null } item:
+                _ = NavigateToMailboxAsync(item);
+                break;
         }
     }
 
@@ -135,9 +136,95 @@ public sealed partial class MainWindow : Window
     {
         var item = Shell.FindByScope(scope) ?? Shell.DefaultItem;
         if (item is null || ContentFrame.CurrentSourcePageType != typeof(MailPage)) return;
+        if (!_navContainers.TryGetValue(item, out var container)) return;
         _suppressNavigation = true;
-        NavView.SelectedItem = item;
+        NavView.SelectedItem = container;
         _suppressNavigation = false;
+    }
+
+    /// <summary>
+    /// Builds the sidebar from the shell view model. Items are created in code (not through MenuItemsSource data
+    /// templates) because NavigationView does not reliably hand .NET view models back to x:Bind templates.
+    /// </summary>
+    private void BuildNavigation()
+    {
+        _navContainers.Clear();
+        NavView.MenuItems.Clear();
+        foreach (var item in Shell.NavItems)
+        {
+            NavView.MenuItems.Add(CreateNavItem(item));
+        }
+    }
+
+    private NavigationViewItemBase CreateNavItem(NavItemViewModel model)
+    {
+        switch (model.Kind)
+        {
+            case NavItemKind.Header:
+                return new NavigationViewItemHeader { Content = model.Title };
+            case NavItemKind.Separator:
+                return new NavigationViewItemSeparator();
+        }
+
+        var icon = new FontIcon { Glyph = model.Glyph };
+        var container = new NavigationViewItem
+        {
+            Tag = model,
+            Icon = icon,
+            SelectsOnInvoked = model.Scope is not null,
+        };
+
+        if (model.Kind == NavItemKind.Account)
+        {
+            icon.Foreground = Helpers.X.HexBrush(model.ColorHex);
+            var content = new StackPanel();
+            content.Children.Add(new TextBlock { Text = model.Title, MaxLines = 1, TextTrimming = TextTrimming.CharacterEllipsis });
+            content.Children.Add(new TextBlock
+            {
+                Text = model.Subtitle,
+                FontSize = 11,
+                Opacity = 0.62,
+                MaxLines = 1,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            container.Content = content;
+            ToolTipService.SetToolTip(container, model.Subtitle);
+        }
+        else
+        {
+            container.Content = model.Title;
+            ToolTipService.SetToolTip(container, model.Title);
+        }
+
+        if (model.Children is { Count: > 0 } children)
+        {
+            foreach (var child in children)
+            {
+                container.MenuItems.Add(CreateNavItem(child));
+            }
+
+            container.IsExpanded = model.IsExpanded;
+        }
+
+        var badge = new InfoBadge();
+        if (Application.Current.Resources.TryGetValue("SpInfoBadgeStyle", out var style) && style is Style badgeStyle)
+        {
+            badge.Style = badgeStyle;
+        }
+
+        container.InfoBadge = badge;
+        UpdateBadge(model, container, badge);
+        model.PropertyChanged += (_, _) => UpdateBadge(model, container, badge);
+
+        _navContainers[model] = container;
+        return container;
+    }
+
+    private static void UpdateBadge(NavItemViewModel model, NavigationViewItem container, InfoBadge badge)
+    {
+        badge.Value = model.Count;
+        badge.Visibility = model.BadgeVisibility;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(container, model.AutomationName);
     }
 
     private void ShowToast(ToastRequest request)
