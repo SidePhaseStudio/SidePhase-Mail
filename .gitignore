@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+*.binlog
+TestResults/
+*.trx
+coverage*/
+
+# Packaging
+AppPackages/
+BundleArtifacts/
+*.msix
+*.appx
+
+# Secrets / local configuration (never commit OAuth client secrets or tokens)
+*.local.json
+secrets.json
+appsettings.Development.json

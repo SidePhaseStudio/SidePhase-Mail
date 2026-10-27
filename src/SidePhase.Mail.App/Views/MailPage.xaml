@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="SidePhase.Mail.App.Views.MailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:SidePhase.Mail.App.Controls"
+    xmlns:h="using:SidePhase.Mail.App.Helpers"
+    xmlns:views="using:SidePhase.Mail.App.Views"
+    xmlns:vm="using:SidePhase.Mail.App.ViewModels"
+    Background="Transparent"
+    NavigationCacheMode="Required">
+
+  <Page.Resources>
+    <DataTemplate x:Key="MessageTemplate" x:DataType="vm:MessageItemViewModel">
+      <controls:MessageRow Item="{x:Bind}" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="HeaderTemplate" x:DataType="vm:ListHeaderViewModel">
+      <Grid Margin="20,14,16,4" ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <FontIcon
+            FontSize="11"
+            Foreground="{ThemeResource SpAccentTextBrush}"
+            Glyph="&#xE840;"
+            Visibility="{x:Bind IsPinnedSection}" />
+        <TextBlock Grid.Column="1" Style="{StaticResource SpSectionHeaderTextStyle}" Text="{x:Bind Title, Mode=OneWay}" />
+        <Border Grid.Column="2" Style="{StaticResource SpPillStyle}" Padding="6,0,6,1" HorizontalAlignment="Left" Visibility="{x:Bind IsCollapsible}">
+          <TextBlock Style="{StaticResource SpPillTextStyle}" Text="{x:Bind CountText, Mode=OneWay}" />
+        </Border>
+        <Button
+            Grid.Column="3"
+            Width="26"
+            Height="22"
+            MinWidth="26"
+            MinHeight="22"
+            Padding="0"
+            AutomationProperties.Name="{x:Bind ToggleLabel, Mode=OneWay}"
+            Command="{x:Bind ToggleCommand}"
+            Style="{StaticResource SpQuickActionButtonStyle}"
+            ToolTipService.ToolTip="{x:Bind ToggleLabel, Mode=OneWay}"
+            Visibility="{x:Bind IsCollapsible}">
+          <FontIcon FontSize="10" Glyph="&#xE70D;" RenderTransformOrigin="0.5,0.5">
+            <FontIcon.RenderTransform>
+              <RotateTransform Angle="{x:Bind ChevronAngle, Mode=OneWay}" />
+            </FontIcon.RenderTransform>
+          </FontIcon>
+        </Button>
+      </Grid>
+    </DataTemplate>
+
+    <views:MessageListTemplateSelector
+        x:Key="TemplateSelector"
+        HeaderTemplate="{StaticResource HeaderTemplate}"
+        MessageTemplate="{StaticResource MessageTemplate}" />
+    <views:MessageListContainerStyleSelector
+        x:Key="ContainerStyleSelector"
+        HeaderStyle="{StaticResource SpListHeaderContainerStyle}"
+        MessageStyle="{StaticResource SpMessageItemContainerStyle}" />
+  </Page.Resources>
+
+  <Page.KeyboardAccelerators>
+    <KeyboardAccelerator Key="N" Invoked="OnComposeAccelerator" Modifiers="Control" />
+    <KeyboardAccelerator Key="R" Invoked="OnReplyAccelerator" Modifiers="Control" />
+    <KeyboardAccelerator Key="R" Invoked="OnReplyAllAccelerator" Modifiers="Control,Shift" />
+    <KeyboardAccelerator Key="F" Invoked="OnForwardAccelerator" Modifiers="Control" />
+    <KeyboardAccelerator Key="E" Invoked="OnSearchAccelerator" Modifiers="Control" />
+    <KeyboardAccelerator Key="F5" Invoked="OnSyncAccelerator" />
+  </Page.KeyboardAccelerators>
+
+  <Grid x:Name="LayoutRoot">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition x:Name="ListColumn" Width="400" MinWidth="320" />
+      <ColumnDefinition x:Name="ReaderColumn" Width="*" />
+    </Grid.ColumnDefinitions>
+    <Grid.RowDefinitions>
+      <RowDefinition x:Name="ListRow" Height="*" />
+      <RowDefinition x:Name="ReaderRow" Height="0" />
+    </Grid.RowDefinitions>
+
+    <!-- ============================ Message list ============================ -->
+    <Grid x:Name="ListPane" Background="{ThemeResource SpLayerBrush}">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <!-- Title row -->
+      <Grid Padding="20,18,14,4" ColumnSpacing="10">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Spacing="2">
+          <TextBlock Style="{StaticResource SpTitleTextStyle}" Text="{x:Bind ViewModel.Title, Mode=OneWay}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock
+                FontSize="12"
+                Foreground="{ThemeResource SpAccentTextBrush}"
+                Text="{x:Bind ViewModel.UnreadText, Mode=OneWay}"
+                Visibility="{x:Bind ViewModel.HasUnread, Mode=OneWay}" />
+            <TextBlock
+                FontSize="12"
+                Foreground="{ThemeResource SpTextTertiaryBrush}"
+                Text="{x:Bind ViewModel.UnreadText, Mode=OneWay}"
+                Visibility="{x:Bind h:X.Collapsed(ViewModel.HasUnread), Mode=OneWay}" />
+            <TextBlock
+                FontSize="12"
+                Foreground="{ThemeResource SpTextTertiaryBrush}"
+                Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
+                Visibility="{x:Bind h:X.VisibleIfText(ViewModel.SyncStatus), Mode=OneWay}" />
+          </StackPanel>
+        </StackPanel>
+
+        <Button
+            Grid.Column="1"
+            AutomationProperties.Name="Check for new mail"
+            Command="{x:Bind ViewModel.SyncCommand}"
+            Style="{StaticResource SpIconButtonStyle}"
+            ToolTipService.ToolTip="Check for new mail (F5)">
+          <Grid>
+            <FontIcon FontSize="15" Glyph="&#xE895;" Visibility="{x:Bind h:X.Collapsed(ViewModel.IsSyncing), Mode=OneWay}" />
+            <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsSyncing, Mode=OneWay}" />
+          </Grid>
+        </Button>
+
+        <Button
+            Grid.Column="2"
+            Command="{x:Bind ViewModel.ComposeCommand}"
+            Style="{StaticResource SpPrimaryButtonStyle}"
+            ToolTipService.ToolTip="New message (Ctrl+N)">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon FontSize="14" Glyph="&#xE70F;" />
+            <TextBlock Text="New mail" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+      <!-- Search, filter, sort -->
+      <Grid Grid.Row="1" Padding="16,10,14,8" ColumnSpacing="4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <AutoSuggestBox
+            x:Name="SearchBox"
+            AutomationProperties.Name="Search mail"
+            CornerRadius="8"
+            PlaceholderText="Search mail"
+            QueryIcon="Find"
+            Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+            ToolTipService.ToolTip="Search (Ctrl+E). Try from:, subject:, is:unread, is:pinned or has:attachment" />
+
+        <Button
+            Grid.Column="1"
+            AutomationProperties.Name="Filter"
+            Style="{StaticResource SpIconButtonStyle}"
+            ToolTipService.ToolTip="Filter">
+          <Grid>
+            <FontIcon FontSize="15" Glyph="&#xE71C;" />
+            <Ellipse
+                Width="6"
+                Height="6"
+                Margin="0,-2,-4,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Fill="{ThemeResource SpAccentBrush}"
+                Visibility="{x:Bind ViewModel.HasActiveFilter, Mode=OneWay}" />
+          </Grid>
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <RadioMenuFlyoutItem x:Name="FilterAll" Command="{x:Bind ViewModel.SetFilterCommand}" CommandParameter="All" GroupName="Filter" IsChecked="True" Text="All messages" />
+              <RadioMenuFlyoutItem x:Name="FilterUnread" Command="{x:Bind ViewModel.SetFilterCommand}" CommandParameter="Unread" GroupName="Filter" Text="Unread" />
+              <RadioMenuFlyoutItem x:Name="FilterStarred" Command="{x:Bind ViewModel.SetFilterCommand}" CommandParameter="Starred" GroupName="Filter" Text="Favourites" />
+              <RadioMenuFlyoutItem x:Name="FilterAttachments" Command="{x:Bind ViewModel.SetFilterCommand}" CommandParameter="WithAttachments" GroupName="Filter" Text="Has attachments" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+
+        <Button
+            Grid.Column="2"
+            AutomationProperties.Name="Sort"
+            Style="{StaticResource SpIconButtonStyle}"
+            ToolTipService.ToolTip="{x:Bind ViewModel.SortLabel, Mode=OneWay}">
+          <FontIcon FontSize="15" Glyph="&#xE8CB;" />
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <RadioMenuFlyoutItem Command="{x:Bind ViewModel.SetSortCommand}" CommandParameter="NewestFirst" GroupName="Sort" IsChecked="True" Text="Newest first" />
+              <RadioMenuFlyoutItem Command="{x:Bind ViewModel.SetSortCommand}" CommandParameter="OldestFirst" GroupName="Sort" Text="Oldest first" />
+              <RadioMenuFlyoutItem Command="{x:Bind ViewModel.SetSortCommand}" CommandParameter="SenderAscending" GroupName="Sort" Text="Sender (A–Z)" />
+              <RadioMenuFlyoutItem Command="{x:Bind ViewModel.SetSortCommand}" CommandParameter="SubjectAscending" GroupName="Sort" Text="Subject (A–Z)" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+      </Grid>
+
+      <!-- Active filter chip -->
+      <Grid Grid.Row="2">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="20,0,0,4" Orientation="Horizontal" Spacing="6" Visibility="{x:Bind ViewModel.HasActiveFilter, Mode=OneWay}">
+          <Button Padding="10,3,8,4" Command="{x:Bind ViewModel.ClearFilterCommand}" CornerRadius="12" Background="{ThemeResource SpBadgeBrush}" BorderThickness="0" ToolTipService.ToolTip="Clear filter">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock FontSize="12" Foreground="{ThemeResource SpBadgeTextBrush}" Text="{x:Bind ViewModel.FilterLabel, Mode=OneWay}" />
+              <FontIcon FontSize="9" Foreground="{ThemeResource SpBadgeTextBrush}" Glyph="&#xE711;" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <ListView
+            x:Name="MessageList"
+            Grid.Row="1"
+            Padding="0,0,0,16"
+            AutomationProperties.Name="Messages"
+            ItemContainerStyleSelector="{StaticResource ContainerStyleSelector}"
+            ItemTemplateSelector="{StaticResource TemplateSelector}"
+            ItemsSource="{x:Bind ViewModel.Entries}"
+            SelectionChanged="OnSelectionChanged"
+            SelectionMode="Single"
+            ShowsScrollingPlaceholders="False">
+          <ListView.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Delete" Invoked="OnDeleteAccelerator" />
+          </ListView.KeyboardAccelerators>
+        </ListView>
+
+        <!-- Empty state -->
+        <StackPanel
+            Grid.Row="1"
+            MaxWidth="300"
+            Margin="0,-40,0,0"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8"
+            Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}">
+          <Border Width="56" Height="56" HorizontalAlignment="Center" Background="{ThemeResource SpBadgeBrush}" CornerRadius="28">
+            <FontIcon FontSize="22" Foreground="{ThemeResource SpBadgeTextBrush}" Glyph="&#xE8FB;" />
+          </Border>
+          <TextBlock HorizontalAlignment="Center" Style="{StaticResource SpSubtitleTextStyle}" Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}" />
+          <TextBlock HorizontalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}" TextAlignment="Center" />
+        </StackPanel>
+      </Grid>
+    </Grid>
+
+    <!-- Divider between list and reader -->
+    <Rectangle
+        x:Name="PaneDivider"
+        Grid.Column="1"
+        Width="1"
+        HorizontalAlignment="Left"
+        Fill="{ThemeResource SpStrokeBrush}" />
+
+    <!-- ============================ Reading pane ============================ -->
+    <Grid x:Name="ReaderHost" Grid.Column="1" Margin="1,0,0,0" Background="{ThemeResource SpReaderBrush}">
+      <controls:ReadingPane x:Name="Reader" />
+    </Grid>
+  </Grid>
+</Page>

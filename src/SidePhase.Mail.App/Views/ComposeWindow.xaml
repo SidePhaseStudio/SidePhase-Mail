@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="SidePhase.Mail.App.Views.ComposeWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:h="using:SidePhase.Mail.App.Helpers"
+    xmlns:models="using:SidePhase.Mail.Core.Models"
+    xmlns:vm="using:SidePhase.Mail.App.ViewModels"
+    Title="New message">
+
+  <Grid
+      x:Name="RootGrid"
+      AllowDrop="True"
+      DragLeave="OnDragLeave"
+      DragOver="OnDragOver"
+      Drop="OnDrop">
+    <Grid.Resources>
+      <!-- Borderless fields: the layout's hairlines provide the structure. -->
+      <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+    </Grid.Resources>
+
+    <Grid.RowDefinitions>
+      <RowDefinition Height="48" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <Border x:Name="SolidLayer" Grid.RowSpan="7" Background="{ThemeResource SpWindowSolidBrush}" />
+    <Border Grid.RowSpan="7" Background="{ThemeResource SpWindowTintBrush}" />
+    <Border Grid.Row="1" Grid.RowSpan="6" Background="{ThemeResource SpReaderBrush}" BorderBrush="{ThemeResource SpStrokeBrush}" BorderThickness="0,1,0,0" />
+
+    <TitleBar x:Name="ComposeTitleBar" Title="{x:Bind ViewModel.WindowTitle}" Height="48">
+      <TitleBar.IconSource>
+        <ImageIconSource ImageSource="ms-appx:///Assets/AppLogo.png" />
+      </TitleBar.IconSource>
+      <TitleBar.RightHeader>
+        <Border Margin="0,0,12,0" Style="{StaticResource SpPillStyle}" Visibility="{x:Bind ViewModel.IsDemo}">
+          <TextBlock Style="{StaticResource SpPillTextStyle}" Text="DEMO — NOT DELIVERED" />
+        </Border>
+      </TitleBar.RightHeader>
+    </TitleBar>
+
+    <!-- Header fields -->
+    <Grid Grid.Row="1" Padding="24,6,24,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="72" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <TextBlock VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="From" />
+      <ComboBox
+          Grid.Column="1"
+          Margin="0,4"
+          MinWidth="280"
+          AutomationProperties.Name="From"
+          Background="Transparent"
+          BorderThickness="0"
+          ItemsSource="{x:Bind ViewModel.Accounts}"
+          SelectedIndex="{x:Bind ViewModel.SelectedAccountIndex, Mode=TwoWay}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="models:MailAccount">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind h:X.HexBrush(ColorHex)}" />
+              <TextBlock Text="{x:Bind DisplayName}" />
+              <TextBlock Foreground="{ThemeResource SpTextSecondaryBrush}" Text="{x:Bind EmailAddress}" />
+            </StackPanel>
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <Rectangle Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" />
+
+      <TextBlock Grid.Row="1" VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="To" />
+      <TextBox
+          x:Name="ToBox"
+          Grid.Row="1"
+          Grid.Column="1"
+          Padding="10,9,6,9"
+          AutomationProperties.Name="To"
+          IsSpellCheckEnabled="False"
+          PlaceholderText="name@example.com; another@example.com"
+          Text="{x:Bind ViewModel.To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+      <Button
+          Grid.Row="1"
+          Grid.Column="2"
+          Command="{x:Bind ViewModel.ToggleCcBccCommand}"
+          Content="Cc  Bcc"
+          Style="{StaticResource SpSubtleButtonStyle}"
+          ToolTipService.ToolTip="Show Cc and Bcc" />
+      <Rectangle Grid.Row="1" Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" />
+
+      <TextBlock Grid.Row="2" VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="Cc" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
+      <TextBox
+          Grid.Row="2"
+          Grid.Column="1"
+          Grid.ColumnSpan="2"
+          Padding="10,9,6,9"
+          AutomationProperties.Name="Cc"
+          IsSpellCheckEnabled="False"
+          Text="{x:Bind ViewModel.Cc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+          Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
+      <Rectangle Grid.Row="2" Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
+
+      <TextBlock Grid.Row="3" VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="Bcc" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
+      <TextBox
+          Grid.Row="3"
+          Grid.Column="1"
+          Grid.ColumnSpan="2"
+          Padding="10,9,6,9"
+          AutomationProperties.Name="Bcc"
+          IsSpellCheckEnabled="False"
+          Text="{x:Bind ViewModel.Bcc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+          Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
+      <Rectangle Grid.Row="3" Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
+
+      <TextBox
+          x:Name="SubjectBox"
+          Grid.Row="4"
+          Grid.ColumnSpan="3"
+          Margin="-10,4,0,0"
+          Padding="10,10,6,10"
+          AutomationProperties.Name="Subject"
+          FontFamily="{StaticResource SpDisplayFont}"
+          FontSize="18"
+          FontWeight="SemiBold"
+          PlaceholderText="Subject"
+          Text="{x:Bind ViewModel.Subject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+    </Grid>
+
+    <!-- Formatting toolbar -->
+    <Grid Grid.Row="2" Padding="18,4,18,4">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal" Spacing="2" Visibility="{x:Bind h:X.Collapsed(ViewModel.IsPlainText), Mode=OneWay}">
+        <Button AutomationProperties.Name="Bold" Click="OnBoldClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Bold (Ctrl+B)">
+          <FontIcon FontSize="14" Glyph="&#xE8DD;" />
+        </Button>
+        <Button AutomationProperties.Name="Italic" Click="OnItalicClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Italic (Ctrl+I)">
+          <FontIcon FontSize="14" Glyph="&#xE8DB;" />
+        </Button>
+        <Button AutomationProperties.Name="Underline" Click="OnUnderlineClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Underline (Ctrl+U)">
+          <FontIcon FontSize="14" Glyph="&#xE8DC;" />
+        </Button>
+        <Button AutomationProperties.Name="Bulleted list" Click="OnBulletsClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Bulleted list">
+          <FontIcon FontSize="14" Glyph="&#xE8FD;" />
+        </Button>
+        <Rectangle Style="{StaticResource SpVerticalDividerStyle}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+        <Button Click="OnAttachClick" Style="{StaticResource SpToolbarButtonStyle}" ToolTipService.ToolTip="Attach files (or drag them here)">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon FontSize="14" Glyph="&#xE723;" />
+            <TextBlock Text="Attach" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+      <ToggleSwitch
+          Grid.Column="2"
+          MinWidth="0"
+          IsOn="{x:Bind ViewModel.IsPlainText, Mode=TwoWay}"
+          OffContent="Rich text"
+          OnContent="Plain text"
+          Toggled="OnPlainTextToggled" />
+    </Grid>
+
+    <!-- Editor -->
+    <Grid Grid.Row="3" Padding="14,0,14,0">
+      <RichEditBox
+          x:Name="RichEditor"
+          Padding="10,8,10,16"
+          AutomationProperties.Name="Message"
+          FontFamily="{StaticResource SpTextFont}"
+          FontSize="14.5"
+          PlaceholderText="Write your message…"
+          TextChanged="OnEditorTextChanged"
+          Visibility="{x:Bind h:X.Collapsed(ViewModel.IsPlainText), Mode=OneWay}" />
+      <TextBox
+          x:Name="PlainEditor"
+          Padding="10,8,10,16"
+          AcceptsReturn="True"
+          AutomationProperties.Name="Message"
+          FontFamily="Cascadia Mono, Consolas"
+          FontSize="13.5"
+          PlaceholderText="Write your message…"
+          ScrollViewer.VerticalScrollBarVisibility="Auto"
+          TextChanged="OnEditorTextChanged"
+          TextWrapping="Wrap"
+          Visibility="{x:Bind ViewModel.IsPlainText, Mode=OneWay}" />
+    </Grid>
+
+    <!-- Quoted original -->
+    <Expander
+        Grid.Row="4"
+        Margin="24,0,24,6"
+        HorizontalAlignment="Stretch"
+        HorizontalContentAlignment="Stretch"
+        CornerRadius="8"
+        Header="Original message"
+        Visibility="{x:Bind ViewModel.HasQuotedText}">
+      <ScrollViewer MaxHeight="180">
+        <TextBlock Style="{StaticResource SpCaptionTextStyle}" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.QuotedText}" />
+      </ScrollViewer>
+    </Expander>
+
+    <!-- Attachments -->
+    <ScrollViewer
+        Grid.Row="5"
+        Padding="24,0,24,8"
+        HorizontalScrollBarVisibility="Auto"
+        HorizontalScrollMode="Auto"
+        VerticalScrollBarVisibility="Disabled"
+        VerticalScrollMode="Disabled">
+      <ItemsRepeater ItemsSource="{x:Bind ViewModel.Attachments}">
+        <ItemsRepeater.Layout>
+          <StackLayout Orientation="Horizontal" Spacing="8" />
+        </ItemsRepeater.Layout>
+        <ItemsRepeater.ItemTemplate>
+          <DataTemplate x:DataType="vm:ComposeAttachmentViewModel">
+            <Border Padding="10,6,4,6" Background="{ThemeResource SpCardBrush}" BorderBrush="{ThemeResource SpStrokeBrush}" BorderThickness="1" CornerRadius="8">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon VerticalAlignment="Center" FontSize="14" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="&#xE723;" />
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock MaxWidth="200" FontSize="12.5" Text="{x:Bind FileName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock FontSize="11" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind SizeText}" />
+                </StackPanel>
+                <Button AutomationProperties.Name="Remove attachment" Command="{x:Bind RemoveCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Remove">
+                  <FontIcon FontSize="11" Glyph="&#xE711;" />
+                </Button>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsRepeater.ItemTemplate>
+      </ItemsRepeater>
+    </ScrollViewer>
+
+    <!-- Footer -->
+    <Grid Grid.Row="6" Padding="24,10,20,16" BorderBrush="{ThemeResource SpDividerBrush}" BorderThickness="0,1,0,0" ColumnSpacing="8">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <StackPanel VerticalAlignment="Center" Spacing="6">
+        <TextBlock
+            Style="{StaticResource SpCaptionTextStyle}"
+            Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+            Visibility="{x:Bind h:X.Collapsed(ViewModel.StatusIsError), Mode=OneWay}" />
+        <TextBlock
+            Foreground="{ThemeResource SpDangerBrush}"
+            Style="{StaticResource SpCaptionTextStyle}"
+            Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+            Visibility="{x:Bind ViewModel.StatusIsError, Mode=OneWay}" />
+        <ProgressBar MaxWidth="260" HorizontalAlignment="Left" Maximum="100" Visibility="{x:Bind ViewModel.IsSending, Mode=OneWay}" Value="{x:Bind ViewModel.SendProgress, Mode=OneWay}" />
+      </StackPanel>
+      <Button Grid.Column="1" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" Style="{StaticResource SpSubtleButtonStyle}" />
+      <Button Grid.Column="2" Command="{x:Bind ViewModel.SaveDraftCommand}" Content="Save draft" Style="{StaticResource SpSecondaryButtonStyle}" />
+      <Button Grid.Column="3" MinWidth="110" Command="{x:Bind ViewModel.SendCommand}" Style="{StaticResource SpPrimaryButtonStyle}" ToolTipService.ToolTip="Send (Ctrl+Enter)">
+        <Button.KeyboardAccelerators>
+          <KeyboardAccelerator Key="Enter" Modifiers="Control" />
+        </Button.KeyboardAccelerators>
+        <Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind h:X.Collapsed(ViewModel.IsSending), Mode=OneWay}">
+            <FontIcon FontSize="14" Glyph="&#xE724;" />
+            <TextBlock Text="Send" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.IsSending, Mode=OneWay}">
+            <ProgressRing Width="14" Height="14" Foreground="White" IsActive="{x:Bind ViewModel.IsSending, Mode=OneWay}" />
+            <TextBlock Text="Sending…" />
+          </StackPanel>
+        </Grid>
+      </Button>
+    </Grid>
+
+    <!-- Drag & drop overlay -->
+    <Grid x:Name="DropOverlay" Grid.Row="1" Grid.RowSpan="6" Margin="12" IsHitTestVisible="False" Visibility="Collapsed">
+      <Rectangle Fill="{ThemeResource SpSelectionBrush}" RadiusX="12" RadiusY="12" Stroke="{ThemeResource SpAccentBrush}" StrokeDashArray="4,3" StrokeThickness="2" />
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+        <FontIcon FontSize="28" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="&#xE723;" />
+        <TextBlock Style="{StaticResource SpSubtitleTextStyle}" Text="Drop files to attach" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

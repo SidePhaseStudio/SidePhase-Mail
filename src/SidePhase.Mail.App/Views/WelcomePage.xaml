@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="SidePhase.Mail.App.Views.WelcomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:SidePhase.Mail.App.Controls"
+    Background="Transparent">
+
+  <Grid Background="{ThemeResource SpLayerBrush}">
+    <ScrollViewer>
+      <StackPanel
+          MaxWidth="460"
+          Margin="24,48"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Spacing="14">
+        <StackPanel.ChildrenTransitions>
+          <TransitionCollection>
+            <EntranceThemeTransition FromVerticalOffset="24" IsStaggeringEnabled="True" />
+          </TransitionCollection>
+        </StackPanel.ChildrenTransitions>
+
+        <controls:BrandMark Width="76" Height="76" HorizontalAlignment="Center" />
+
+        <TextBlock
+            Margin="0,10,0,0"
+            HorizontalAlignment="Center"
+            Style="{StaticResource SpDisplayTextStyle}"
+            Text="Welcome to SidePhase Mail" />
+        <TextBlock
+            HorizontalAlignment="Center"
+            Style="{StaticResource SpSecondaryTextStyle}"
+            FontSize="14"
+            Text="A calm, fast home for all of your email."
+            TextAlignment="Center" />
+
+        <StackPanel Margin="0,18,0,0" Spacing="8">
+          <Button HorizontalAlignment="Stretch" IsEnabled="False" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
+            <Grid ColumnSpacing="12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <FontIcon FontSize="16" Glyph="&#xE715;" />
+              <TextBlock Grid.Column="1" Text="Continue with Google" />
+            </Grid>
+          </Button>
+          <Button HorizontalAlignment="Stretch" IsEnabled="False" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
+            <Grid ColumnSpacing="12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <FontIcon FontSize="16" Glyph="&#xE715;" />
+              <TextBlock Grid.Column="1" Text="Continue with Microsoft" />
+            </Grid>
+          </Button>
+          <Button HorizontalAlignment="Stretch" IsEnabled="False" Style="{StaticResource SpSecondaryButtonStyle}" Padding="16,11">
+            <Grid ColumnSpacing="12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <FontIcon FontSize="16" Glyph="&#xE8FA;" />
+              <TextBlock Grid.Column="1" Text="Add another email account" />
+            </Grid>
+          </Button>
+
+          <Border Margin="0,4,0,0" Padding="14,10" Background="{ThemeResource SpCardBrush}" BorderBrush="{ThemeResource SpStrokeBrush}" BorderThickness="1" CornerRadius="8">
+            <Grid ColumnSpacing="10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <FontIcon Margin="0,2,0,0" VerticalAlignment="Top" FontSize="14" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="&#xE946;" />
+              <TextBlock Grid.Column="1" Style="{StaticResource SpCaptionTextStyle}">
+                <Run FontWeight="SemiBold" Text="Not available in this preview." />
+                <Run Text="Connecting Google, Microsoft and IMAP accounts arrives in Milestone 2, using each provider's secure sign-in (OAuth) — SidePhase Mail will never ask for your Google or Microsoft password." />
+              </TextBlock>
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <Button
+            Margin="0,10,0,0"
+            HorizontalAlignment="Stretch"
+            Click="OnExploreDemoClick"
+            Style="{StaticResource SpPrimaryButtonStyle}"
+            Padding="16,11">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="Explore the demo inbox" />
+            <FontIcon FontSize="12" Glyph="&#xE72A;" />
+          </StackPanel>
+        </Button>
+        <TextBlock
+            HorizontalAlignment="Center"
+            Style="{StaticResource SpCaptionTextStyle}"
+            Text="The demo uses fictional sample messages. Nothing is sent or received."
+            TextAlignment="Center" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Page>

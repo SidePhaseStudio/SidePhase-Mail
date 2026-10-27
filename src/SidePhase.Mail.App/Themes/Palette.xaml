@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SidePhase Mail design tokens.
+
+  "Default" is the dark theme (Dark Glass / Solid Dark), "Light" is Light Glass / Solid Light and
+  "HighContrast" maps everything to Windows system colours so contrast themes are always respected.
+
+  Accent-derived brushes are recoloured at runtime by ThemeService (accent colour setting). Keep their
+  keys in sync with ThemeService.AccentBrushKeys.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <FontFamily x:Key="SpDisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
+  <FontFamily x:Key="SpTextFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+  <FontFamily x:Key="SpSmallFont">Segoe UI Variable Small, Segoe UI</FontFamily>
+  <FontFamily x:Key="SpIconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+  <CornerRadius x:Key="SpCornerSmall">4</CornerRadius>
+  <CornerRadius x:Key="SpCornerMedium">6</CornerRadius>
+  <CornerRadius x:Key="SpCornerLarge">8</CornerRadius>
+  <CornerRadius x:Key="SpCornerXLarge">12</CornerRadius>
+
+  <!-- Default accent (#8B7CFF) for controls that use the colour resources directly. -->
+  <Color x:Key="SystemAccentColor">#8B7CFF</Color>
+  <Color x:Key="SystemAccentColorLight1">#A196FF</Color>
+  <Color x:Key="SystemAccentColorLight2">#B7AFFF</Color>
+  <Color x:Key="SystemAccentColorLight3">#CDC8FF</Color>
+  <Color x:Key="SystemAccentColorDark1">#7364F2</Color>
+  <Color x:Key="SystemAccentColorDark2">#5B4BD8</Color>
+  <Color x:Key="SystemAccentColorDark3">#4536B5</Color>
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!-- ================================ DARK ================================ -->
+    <ResourceDictionary x:Key="Default">
+      <Color x:Key="SpBackgroundColor">#0B0D12</Color>
+      <Color x:Key="SpSurfaceColor">#151820</Color>
+      <Color x:Key="SpElevatedColor">#1D222C</Color>
+
+      <!-- Window layers -->
+      <SolidColorBrush x:Key="SpWindowSolidBrush" Color="#0B0D12" />
+      <SolidColorBrush x:Key="SpWindowTintBrush" Color="#0B0D12" Opacity="0.62" />
+      <SolidColorBrush x:Key="SpLayerBrush" Color="#151820" Opacity="0.78" />
+      <SolidColorBrush x:Key="SpReaderBrush" Color="#171A23" Opacity="0.86" />
+      <SolidColorBrush x:Key="SpElevatedBrush" Color="#1D222C" Opacity="0.96" />
+      <SolidColorBrush x:Key="SpFlyoutBrush" Color="#1D222C" />
+
+      <!-- Cards & strokes -->
+      <SolidColorBrush x:Key="SpCardBrush" Color="#FFFFFF" Opacity="0.035" />
+      <SolidColorBrush x:Key="SpCardHoverBrush" Color="#FFFFFF" Opacity="0.06" />
+      <SolidColorBrush x:Key="SpStrokeBrush" Color="#FFFFFF" Opacity="0.075" />
+      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="#FFFFFF" Opacity="0.14" />
+      <SolidColorBrush x:Key="SpDividerBrush" Color="#FFFFFF" Opacity="0.055" />
+      <SolidColorBrush x:Key="SpHoverBrush" Color="#FFFFFF" Opacity="0.045" />
+      <SolidColorBrush x:Key="SpPressedBrush" Color="#FFFFFF" Opacity="0.03" />
+      <SolidColorBrush x:Key="SpInputBrush" Color="#FFFFFF" Opacity="0.05" />
+
+      <!-- Text -->
+      <SolidColorBrush x:Key="SpTextPrimaryBrush" Color="#F5F6FA" />
+      <SolidColorBrush x:Key="SpTextSubtleBrush" Color="#C9CED9" />
+      <SolidColorBrush x:Key="SpTextSecondaryBrush" Color="#9DA5B4" />
+      <SolidColorBrush x:Key="SpTextTertiaryBrush" Color="#737B8C" />
+
+      <!-- Accent (recoloured at runtime) -->
+      <SolidColorBrush x:Key="SpAccentBrush" Color="#8B7CFF" />
+      <SolidColorBrush x:Key="SpAccentTextBrush" Color="#A99DFF" />
+      <SolidColorBrush x:Key="SpAccentFillBrush" Color="#6E5EF0" />
+      <SolidColorBrush x:Key="SpSelectionBrush" Color="#8B7CFF" Opacity="0.16" />
+      <SolidColorBrush x:Key="SpSelectionHoverBrush" Color="#8B7CFF" Opacity="0.22" />
+      <SolidColorBrush x:Key="SpBadgeBrush" Color="#8B7CFF" Opacity="0.2" />
+      <SolidColorBrush x:Key="SpBadgeTextBrush" Color="#CFC8FF" />
+
+      <!-- Status -->
+      <SolidColorBrush x:Key="SpStarBrush" Color="#F5C542" />
+      <SolidColorBrush x:Key="SpDangerBrush" Color="#FF7A86" />
+      <SolidColorBrush x:Key="SpDangerTintBrush" Color="#FF7A86" Opacity="0.14" />
+      <SolidColorBrush x:Key="SpWarningBrush" Color="#F5B754" />
+      <SolidColorBrush x:Key="SpWarningTintBrush" Color="#F5B754" Opacity="0.14" />
+      <SolidColorBrush x:Key="SpSuccessBrush" Color="#4CC38A" />
+
+      <!-- Fluent overrides: let Mica show through the navigation pane -->
+      <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+      <StaticResource x:Key="NavigationViewItemBackgroundSelected" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundSelectedPointerOver" ResourceKey="SpSelectionHoverBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundSelectedPressed" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundPointerOver" ResourceKey="SpHoverBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundPressed" ResourceKey="SpPressedBrush" />
+      <StaticResource x:Key="NavigationViewSelectionIndicatorForeground" ResourceKey="SpAccentBrush" />
+
+      <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="SpSelectionHoverBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SpHoverBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SpPressedBrush" />
+      <StaticResource x:Key="ListViewItemSelectionIndicatorBrush" ResourceKey="SpAccentBrush" />
+
+      <!-- Fluent accent overrides (recoloured at runtime) -->
+      <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#6E5EF0" />
+      <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#6E5EF0" Opacity="0.9" />
+      <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#6E5EF0" Opacity="0.8" />
+      <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6E5EF0" />
+      <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#A99DFF" />
+      <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#A99DFF" />
+      <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#8B7CFF" />
+      <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#FFFFFF" Opacity="0.8" />
+    </ResourceDictionary>
+
+    <!-- ================================ LIGHT ================================ -->
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="SpBackgroundColor">#F3F4F8</Color>
+      <Color x:Key="SpSurfaceColor">#FFFFFF</Color>
+      <Color x:Key="SpElevatedColor">#FFFFFF</Color>
+
+      <SolidColorBrush x:Key="SpWindowSolidBrush" Color="#EEF0F5" />
+      <SolidColorBrush x:Key="SpWindowTintBrush" Color="#F3F4F8" Opacity="0.45" />
+      <SolidColorBrush x:Key="SpLayerBrush" Color="#FFFFFF" Opacity="0.72" />
+      <SolidColorBrush x:Key="SpReaderBrush" Color="#FFFFFF" Opacity="0.88" />
+      <SolidColorBrush x:Key="SpElevatedBrush" Color="#FFFFFF" Opacity="0.98" />
+      <SolidColorBrush x:Key="SpFlyoutBrush" Color="#FFFFFF" />
+
+      <SolidColorBrush x:Key="SpCardBrush" Color="#FFFFFF" Opacity="0.7" />
+      <SolidColorBrush x:Key="SpCardHoverBrush" Color="#FFFFFF" Opacity="0.95" />
+      <SolidColorBrush x:Key="SpStrokeBrush" Color="#000000" Opacity="0.07" />
+      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="#000000" Opacity="0.13" />
+      <SolidColorBrush x:Key="SpDividerBrush" Color="#000000" Opacity="0.06" />
+      <SolidColorBrush x:Key="SpHoverBrush" Color="#000000" Opacity="0.04" />
+      <SolidColorBrush x:Key="SpPressedBrush" Color="#000000" Opacity="0.025" />
+      <SolidColorBrush x:Key="SpInputBrush" Color="#FFFFFF" Opacity="0.8" />
+
+      <SolidColorBrush x:Key="SpTextPrimaryBrush" Color="#14161C" />
+      <SolidColorBrush x:Key="SpTextSubtleBrush" Color="#2F3440" />
+      <SolidColorBrush x:Key="SpTextSecondaryBrush" Color="#5B6272" />
+      <SolidColorBrush x:Key="SpTextTertiaryBrush" Color="#7D8494" />
+
+      <SolidColorBrush x:Key="SpAccentBrush" Color="#6A5AE0" />
+      <SolidColorBrush x:Key="SpAccentTextBrush" Color="#5847D6" />
+      <SolidColorBrush x:Key="SpAccentFillBrush" Color="#6A5AE0" />
+      <SolidColorBrush x:Key="SpSelectionBrush" Color="#6A5AE0" Opacity="0.12" />
+      <SolidColorBrush x:Key="SpSelectionHoverBrush" Color="#6A5AE0" Opacity="0.17" />
+      <SolidColorBrush x:Key="SpBadgeBrush" Color="#6A5AE0" Opacity="0.13" />
+      <SolidColorBrush x:Key="SpBadgeTextBrush" Color="#4A3BC4" />
+
+      <SolidColorBrush x:Key="SpStarBrush" Color="#D49A00" />
+      <SolidColorBrush x:Key="SpDangerBrush" Color="#C42B3B" />
+      <SolidColorBrush x:Key="SpDangerTintBrush" Color="#C42B3B" Opacity="0.1" />
+      <SolidColorBrush x:Key="SpWarningBrush" Color="#9A6400" />
+      <SolidColorBrush x:Key="SpWarningTintBrush" Color="#D49A00" Opacity="0.12" />
+      <SolidColorBrush x:Key="SpSuccessBrush" Color="#107C41" />
+
+      <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+      <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+      <StaticResource x:Key="NavigationViewItemBackgroundSelected" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundSelectedPointerOver" ResourceKey="SpSelectionHoverBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundSelectedPressed" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundPointerOver" ResourceKey="SpHoverBrush" />
+      <StaticResource x:Key="NavigationViewItemBackgroundPressed" ResourceKey="SpPressedBrush" />
+      <StaticResource x:Key="NavigationViewSelectionIndicatorForeground" ResourceKey="SpAccentBrush" />
+
+      <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="SpSelectionHoverBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="SpSelectionBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SpHoverBrush" />
+      <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SpPressedBrush" />
+      <StaticResource x:Key="ListViewItemSelectionIndicatorBrush" ResourceKey="SpAccentBrush" />
+
+      <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#6A5AE0" />
+      <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#6A5AE0" Opacity="0.9" />
+      <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#6A5AE0" Opacity="0.8" />
+      <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6A5AE0" />
+      <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#5847D6" />
+      <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#5847D6" />
+      <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#6A5AE0" />
+      <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#FFFFFF" Opacity="0.8" />
+    </ResourceDictionary>
+
+    <!-- ============================ HIGH CONTRAST ============================ -->
+    <ResourceDictionary x:Key="HighContrast">
+      <Color x:Key="SpBackgroundColor">#000000</Color>
+      <Color x:Key="SpSurfaceColor">#000000</Color>
+      <Color x:Key="SpElevatedColor">#000000</Color>
+
+      <SolidColorBrush x:Key="SpWindowSolidBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpWindowTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpLayerBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpReaderBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpElevatedBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpFlyoutBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpCardHoverBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpStrokeStrongBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpInputBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpTextPrimaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpTextSubtleBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpTextSecondaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpTextTertiaryBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+      <SolidColorBrush x:Key="SpAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpAccentTextBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+      <SolidColorBrush x:Key="SpAccentFillBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpSelectionBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpSelectionHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpBadgeBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+      <SolidColorBrush x:Key="SpBadgeTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+      <SolidColorBrush x:Key="SpStarBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpDangerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpDangerTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpWarningBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+      <SolidColorBrush x:Key="SpWarningTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+      <SolidColorBrush x:Key="SpSuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

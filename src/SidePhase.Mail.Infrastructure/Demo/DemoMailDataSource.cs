@@ -1,0 +1,303 @@
+using SidePhase.Mail.Core.Abstractions;
+using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Rendering;
+
+namespace SidePhase.Mail.Infrastructure.Demo;
+
+/// <summary>
+/// In-memory mail store filled with clearly labelled demonstration content. It never opens a network connection,
+/// never sends mail and is reset by "Clear local data".
+/// </summary>
+public sealed class DemoMailDataSource : IMailDataSource
+{
+    private readonly IClock _clock;
+    private readonly Lock _gate = new();
+    private readonly TimeSpan _latency;
+
+    private List<MailAccount> _accounts = [];
+    private List<MailFolder> _folders = [];
+    private Dictionary<Guid, MessageSummary> _messages = [];
+    private Dictionary<Guid, MessageBody> _bodies = [];
+    private Dictionary<Guid, DraftMessage> _drafts = [];
+
+    public DemoMailDataSource(IClock clock)
+        : this(clock, TimeSpan.FromMilliseconds(450))
+    {
+    }
+
+    internal DemoMailDataSource(IClock clock, TimeSpan simulatedLatency)
+    {
+        _clock = clock;
+        _latency = simulatedLatency;
+        Seed();
+    }
+
+    public bool IsDemo => true;
+
+    public event EventHandler<MailDataChangedEventArgs>? DataChanged;
+
+    public Task<IReadOnlyList<MailAccount>> GetAccountsAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_gate) return Task.FromResult<IReadOnlyList<MailAccount>>(_accounts.ToList());
+    }
+
+    public Task<IReadOnlyList<MailFolder>> GetFoldersAsync(Guid accountId, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult<IReadOnlyList<MailFolder>>(
+                _folders.Where(f => f.AccountId == accountId).OrderBy(f => f.SortOrder).ToList());
+        }
+    }
+
+    public Task<IReadOnlyList<MessageSummary>> GetMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_gate) return Task.FromResult<IReadOnlyList<MessageSummary>>(_messages.Values.ToList());
+    }
+
+    public Task<MessageSummary?> GetMessageAsync(Guid messageId, CancellationToken cancellationToken = default)
+    {
+        lock (_gate) return Task.FromResult(_messages.GetValueOrDefault(messageId));
+    }
+
+    public async Task<MessageBody?> GetMessageBodyAsync(Guid messageId, CancellationToken cancellationToken = default)
+    {
+        // A short, cancellable delay keeps the UI honest about bodies being loaded on demand.
+        await Task.Delay(_latency / 6, cancellationToken).ConfigureAwait(false);
+        lock (_gate) return _bodies.GetValueOrDefault(messageId);
+    }
+
+    public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) =>
+        UpdateFlags(messageIds, m => m with { IsRead = isRead });
+
+    public Task SetStarredAsync(IReadOnlyCollection<Guid> messageIds, bool isStarred, CancellationToken cancellationToken = default) =>
+        UpdateFlags(messageIds, m => m with { IsStarred = isStarred });
+
+    public Task SetPinnedAsync(IReadOnlyCollection<Guid> messageIds, bool isPinned, CancellationToken cancellationToken = default)
+    {
+        var now = _clock.Now;
+        return UpdateFlags(messageIds, m => m with { IsPinned = isPinned, PinnedAt = isPinned ? now : null });
+    }
+
+    public Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default)
+    {
+        var moves = new List<MoveRecord>();
+        lock (_gate)
+        {
+            foreach (var id in messageIds)
+            {
+                if (!_messages.TryGetValue(id, out var m)) continue;
+                var folder = _folders.FirstOrDefault(f => f.AccountId == m.AccountId && f.Kind == target);
+                if (folder is null || folder.Id == m.FolderId) continue;
+                moves.Add(new MoveRecord(id, m.FolderId));
+                _messages[id] = m with { FolderId = folder.Id, FolderKind = folder.Kind };
+            }
+        }
+
+        Raise(MailDataChangeKind.Moved, moves.Select(m => m.MessageId).ToArray());
+        return Task.FromResult<IReadOnlyList<MoveRecord>>(moves);
+    }
+
+    public Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default)
+    {
+        var restored = new List<Guid>();
+        lock (_gate)
+        {
+            foreach (var move in moves)
+            {
+                if (!_messages.TryGetValue(move.MessageId, out var m)) continue;
+                var folder = _folders.FirstOrDefault(f => f.Id == move.FromFolderId);
+                if (folder is null) continue;
+                _messages[move.MessageId] = m with { FolderId = folder.Id, FolderKind = folder.Kind };
+                restored.Add(move.MessageId);
+            }
+        }
+
+        Raise(MailDataChangeKind.Moved, restored);
+        return Task.CompletedTask;
+    }
+
+    public Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default)
+    {
+        var removed = new List<Guid>();
+        lock (_gate)
+        {
+            foreach (var id in messageIds)
+            {
+                if (_messages.TryGetValue(id, out var m) && m.FolderKind == FolderKind.Trash)
+                {
+                    _messages.Remove(id);
+                    _bodies.Remove(id);
+                    _drafts.Remove(id);
+                    removed.Add(id);
+                }
+            }
+        }
+
+        Raise(MailDataChangeKind.Removed, removed);
+        return Task.CompletedTask;
+    }
+
+    public Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        Guid id;
+        bool isNew;
+        lock (_gate)
+        {
+            var account = _accounts.First(a => a.Id == draft.AccountId);
+            var drafts = _folders.First(f => f.AccountId == account.Id && f.Kind == FolderKind.Drafts);
+            id = draft.DraftId ?? Guid.NewGuid();
+            isNew = !_messages.ContainsKey(id);
+            var stored = draft with { DraftId = id };
+            _drafts[id] = stored;
+            _messages[id] = new MessageSummary
+            {
+                Id = id,
+                AccountId = account.Id,
+                FolderId = drafts.Id,
+                FolderKind = FolderKind.Drafts,
+                From = account.Address,
+                To = draft.To,
+                Cc = draft.Cc,
+                Subject = draft.Subject,
+                Preview = HtmlText.Preview(draft.TextBody),
+                Date = _clock.Now,
+                IsRead = true,
+                HasAttachments = draft.Attachments.Count > 0,
+            };
+            _bodies[id] = new MessageBody
+            {
+                MessageId = id,
+                HtmlBody = draft.IsPlainText ? null : ComposeHtml(draft),
+                TextBody = ComposeText(draft),
+                Attachments = draft.Attachments.Select(ToAttachmentInfo).ToList(),
+                Bcc = draft.Bcc,
+            };
+        }
+
+        Raise(isNew ? MailDataChangeKind.Added : MailDataChangeKind.FlagsChanged, [id]);
+        return Task.FromResult(id);
+    }
+
+    public Task<DraftMessage?> GetDraftAsync(Guid draftId, CancellationToken cancellationToken = default)
+    {
+        lock (_gate) return Task.FromResult(_drafts.GetValueOrDefault(draftId));
+    }
+
+    public async Task<SendResult> SendAsync(DraftMessage draft, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        if (!draft.HasAnyRecipient)
+        {
+            return new SendResult(false, "Add at least one recipient before sending.");
+        }
+
+        // Simulated progress so the compose window's feedback can be exercised. Nothing leaves this computer.
+        for (var step = 1; step <= 5; step++)
+        {
+            await Task.Delay(_latency / 3, cancellationToken).ConfigureAwait(false);
+            progress?.Report(step / 5.0);
+        }
+
+        var id = Guid.NewGuid();
+        lock (_gate)
+        {
+            var account = _accounts.First(a => a.Id == draft.AccountId);
+            var sent = _folders.First(f => f.AccountId == account.Id && f.Kind == FolderKind.Sent);
+            _messages[id] = new MessageSummary
+            {
+                Id = id,
+                AccountId = account.Id,
+                FolderId = sent.Id,
+                FolderKind = FolderKind.Sent,
+                MessageIdHeader = $"<{id:N}@sidephase-demo.example>",
+                From = account.Address,
+                To = draft.To,
+                Cc = draft.Cc,
+                Subject = draft.Subject,
+                Preview = HtmlText.Preview(draft.TextBody),
+                Date = _clock.Now,
+                IsRead = true,
+                HasAttachments = draft.Attachments.Count > 0,
+            };
+            _bodies[id] = new MessageBody
+            {
+                MessageId = id,
+                HtmlBody = draft.IsPlainText ? null : ComposeHtml(draft),
+                TextBody = ComposeText(draft),
+                Attachments = draft.Attachments.Select(ToAttachmentInfo).ToList(),
+                Bcc = draft.Bcc,
+            };
+
+            if (draft.DraftId is { } draftId)
+            {
+                _messages.Remove(draftId);
+                _bodies.Remove(draftId);
+                _drafts.Remove(draftId);
+            }
+        }
+
+        Raise(MailDataChangeKind.Added, draft.DraftId is { } d ? [id, d] : [id]);
+        return new SendResult(true, "Demo mode: the message was saved to Sent but was not delivered to anyone.", id);
+    }
+
+    public async Task<SyncResult> SyncAsync(CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(_latency * 2, cancellationToken).ConfigureAwait(false);
+        return new SyncResult(true, 0, "Demonstration data is up to date. Real synchronisation arrives with Milestone 2.");
+    }
+
+    public Task ClearLocalDataAsync(CancellationToken cancellationToken = default)
+    {
+        Seed();
+        Raise(MailDataChangeKind.Reset, []);
+        return Task.CompletedTask;
+    }
+
+    private void Seed()
+    {
+        var data = DemoDataSeeder.Create(_clock.Now);
+        lock (_gate)
+        {
+            _accounts = data.Accounts.ToList();
+            _folders = data.Folders.ToList();
+            _messages = data.Messages.ToDictionary(m => m.Id);
+            _bodies = data.Bodies.ToDictionary(b => b.MessageId);
+            _drafts = data.Drafts.ToDictionary(d => d.DraftId!.Value);
+        }
+    }
+
+    private Task UpdateFlags(IReadOnlyCollection<Guid> ids, Func<MessageSummary, MessageSummary> update)
+    {
+        var changed = new List<Guid>();
+        lock (_gate)
+        {
+            foreach (var id in ids)
+            {
+                if (!_messages.TryGetValue(id, out var m)) continue;
+                var next = update(m);
+                if (next == m) continue;
+                _messages[id] = next;
+                changed.Add(id);
+            }
+        }
+
+        Raise(MailDataChangeKind.FlagsChanged, changed);
+        return Task.CompletedTask;
+    }
+
+    private void Raise(MailDataChangeKind kind, IReadOnlyCollection<Guid> ids)
+    {
+        if (kind != MailDataChangeKind.Reset && ids.Count == 0) return;
+        DataChanged?.Invoke(this, new MailDataChangedEventArgs(kind, ids));
+    }
+
+    private static string ComposeHtml(DraftMessage draft) =>
+        (draft.HtmlBody ?? PlainTextHtml.Convert(draft.TextBody)) + (draft.QuotedHtml ?? string.Empty);
+
+    private static string ComposeText(DraftMessage draft) =>
+        draft.TextBody + (draft.QuotedText is { Length: > 0 } q ? "\n\n" + q : string.Empty);
+
+    private static AttachmentInfo ToAttachmentInfo(DraftAttachment a) => new(a.FileName, a.ContentType, a.SizeBytes);
+}

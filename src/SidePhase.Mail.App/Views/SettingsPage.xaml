@@ -1,0 +1,407 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="SidePhase.Mail.App.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:SidePhase.Mail.App.Controls"
+    xmlns:h="using:SidePhase.Mail.App.Helpers"
+    xmlns:vm="using:SidePhase.Mail.App.ViewModels"
+    Background="Transparent">
+
+  <Page.Resources>
+    <Style x:Key="SectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource SpSubtitleTextStyle}">
+      <Setter Property="Margin" Value="2,22,0,6" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <DataTemplate x:Key="RuleTemplate" x:DataType="vm:SenderRuleItemViewModel">
+      <Grid Padding="12,6,6,6" ColumnSpacing="10" CornerRadius="6" Background="{ThemeResource SpCardBrush}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock VerticalAlignment="Center" FontSize="13" IsTextSelectionEnabled="True" Text="{x:Bind Value}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind AddedText}" />
+        <Button
+            Grid.Column="2"
+            AutomationProperties.Name="Remove"
+            Command="{x:Bind RemoveCommand}"
+            Style="{StaticResource SpQuickActionButtonStyle}"
+            ToolTipService.ToolTip="Remove">
+          <FontIcon FontSize="12" Glyph="&#xE711;" />
+        </Button>
+      </Grid>
+    </DataTemplate>
+  </Page.Resources>
+
+  <Grid Background="{ThemeResource SpLayerBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Padding="36,26,36,0" Spacing="10">
+      <TextBlock Style="{StaticResource SpTitleTextStyle}" FontSize="28" Text="Settings" />
+      <SelectorBar x:Name="SectionBar" SelectionChanged="OnSectionChanged">
+        <SelectorBarItem IsSelected="True" Tag="appearance" Text="Appearance">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE790;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+        <SelectorBarItem Tag="accounts" Text="Accounts">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE77B;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+        <SelectorBarItem Tag="mail" Text="Mail">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE715;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+        <SelectorBarItem Tag="privacy" Text="Privacy">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE72E;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+        <SelectorBarItem Tag="about" Text="About">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE946;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+      </SelectorBar>
+    </StackPanel>
+
+    <ScrollViewer x:Name="ContentScroller" Grid.Row="1">
+      <Grid MaxWidth="900" Padding="36,0,36,40" HorizontalAlignment="Stretch">
+
+        <!-- ============================ Appearance ============================ -->
+        <StackPanel x:Name="AppearanceSection" Spacing="4">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Theme" />
+          <controls:SettingsCard Description="{x:Bind ViewModel.ThemeNote, Mode=OneWay}" Glyph="&#xE790;" Header="App theme">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Dark Glass" />
+              <ComboBoxItem Content="Light Glass" />
+              <ComboBoxItem Content="Solid Dark" />
+              <ComboBoxItem Content="Solid Light" />
+              <ComboBoxItem Content="Follow Windows theme" />
+            </ComboBox>
+          </controls:SettingsCard>
+
+          <Border Style="{StaticResource SpCardStyle}">
+            <StackPanel Spacing="12">
+              <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <FontIcon VerticalAlignment="Center" FontSize="18" Foreground="{ThemeResource SpTextSecondaryBrush}" Glyph="&#xE771;" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock FontSize="14" Text="Accent colour" />
+                  <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Used for selection, unread markers and primary buttons." />
+                </StackPanel>
+              </Grid>
+              <ItemsRepeater Margin="34,0,0,0" ItemsSource="{x:Bind ViewModel.AccentOptions}">
+                <ItemsRepeater.Layout>
+                  <StackLayout Orientation="Horizontal" Spacing="10" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AccentOptionViewModel">
+                    <Button
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        AutomationProperties.Name="{x:Bind Name}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{x:Bind SelectCommand}"
+                        CornerRadius="17"
+                        ToolTipService.ToolTip="{x:Bind Name}">
+                      <Grid>
+                        <Ellipse
+                            Width="34"
+                            Height="34"
+                            Stroke="{ThemeResource SpTextPrimaryBrush}"
+                            StrokeThickness="2"
+                            Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                        <Ellipse Width="26" Height="26" Fill="{x:Bind h:X.HexBrush(Hex)}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+              </ItemsRepeater>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Layout" />
+          <controls:SettingsCard Description="Compact fits more messages on screen and hides previews." Glyph="&#xE8FD;" Header="Message list density">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.DensityIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Comfortable" />
+              <ComboBoxItem Content="Compact" />
+            </ComboBox>
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Where messages open when you select them." Glyph="&#xE8A1;" Header="Reading pane">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.ReadingPaneIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Right" />
+              <ComboBoxItem Content="Bottom" />
+            </ComboBox>
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="You can also use the button at the top-left of the window." Glyph="&#xE700;" Header="Collapse the sidebar">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.SidebarCollapsed, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Glyph="&#xE8C3;" Header="Show unread counts in the sidebar">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.ShowUnreadBadges, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <HyperlinkButton Margin="0,6,0,0" Command="{x:Bind ViewModel.ResetAppearanceCommand}" Content="Restore the default look" />
+        </StackPanel>
+
+        <!-- ============================ Accounts ============================ -->
+        <StackPanel x:Name="AccountsSection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Your accounts" />
+          <ItemsRepeater ItemsSource="{x:Bind ViewModel.Accounts}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="4" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+              <DataTemplate x:DataType="vm:AccountSettingsViewModel">
+                <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="8">
+                  <Expander.Header>
+                    <Grid Padding="0,10" ColumnSpacing="14">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <Ellipse Width="12" Height="12" VerticalAlignment="Center" Fill="{x:Bind h:X.HexBrush(ColorHex)}" />
+                      <StackPanel Grid.Column="1" Spacing="1">
+                        <TextBlock FontSize="14" Text="{x:Bind Name}" />
+                        <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind Address}" />
+                        <TextBlock Style="{StaticResource SpCaptionTextStyle}" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind ProviderText}" />
+                      </StackPanel>
+                    </Grid>
+                  </Expander.Header>
+                  <StackPanel Spacing="12">
+                    <TextBlock FontSize="13" Text="Signature" />
+                    <TextBox
+                        MinHeight="88"
+                        AcceptsReturn="True"
+                        PlaceholderText="Added to the end of new messages from this account"
+                        Text="{x:Bind Signature, Mode=TwoWay}"
+                        TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="Re-authenticate" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
+                      <Button Content="Remove account" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Demonstration accounts can't be removed or re-authenticated. Real accounts (Milestone 2) can be removed here at any time; removing one never deletes mail on the server." />
+                  </StackPanel>
+                </Expander>
+              </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+          </ItemsRepeater>
+
+          <controls:SettingsCard Description="Google, Microsoft and IMAP accounts arrive in Milestone 2." Glyph="&#xE8FA;" Header="Add an account">
+            <Button Click="OnAddAccountClick" Content="Add account…" Style="{StaticResource SpSecondaryButtonStyle}" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Synchronisation" />
+          <controls:SettingsCard Description="How often to check for new mail while SidePhase Mail is open. Applies once real accounts are connected." Glyph="&#xE895;" Header="Check for new mail">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.SyncIntervalIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Every minute" />
+              <ComboBoxItem Content="Every 5 minutes" />
+              <ComboBoxItem Content="Every 15 minutes" />
+              <ComboBoxItem Content="Every 30 minutes" />
+              <ComboBoxItem Content="Every hour" />
+            </ComboBox>
+          </controls:SettingsCard>
+        </StackPanel>
+
+        <!-- ============================ Mail ============================ -->
+        <StackPanel x:Name="MailSection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Reading" />
+          <controls:SettingsCard Glyph="&#xE8C3;" Header="Mark messages as read when opened">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.MarkAsReadOnOpen, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Desktop notifications arrive in Milestone 3. Blocked senders never notify you." Glyph="&#xEA8F;" Header="Notifications">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Pinned messages" />
+          <controls:SettingsCard Description="Pinned messages stay above everything else, in every account." Glyph="&#xE718;" Header="Show the pinned section">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.ShowPinnedSection, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Glyph="&#xE70D;" Header="Collapse the pinned section">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.PinnedSectionCollapsed, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Writing" />
+          <controls:SettingsCard Glyph="&#xE70F;" Header="Default message format">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.ComposeFormatIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Rich text" />
+              <ComboBoxItem Content="Plain text" />
+            </ComboBox>
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Spam and junk" />
+          <Border Style="{StaticResource SpCardStyle}">
+            <Grid ColumnSpacing="16" RowSpacing="8">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <FontIcon VerticalAlignment="Center" FontSize="18" Foreground="{ThemeResource SpTextSecondaryBrush}" Glyph="&#xEA18;" />
+              <StackPanel Grid.Column="1" Spacing="2">
+                <TextBlock FontSize="14" Text="SpamAssassin threshold" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Messages scoring at or above this are treated as spam. Lower is stricter. Nothing is ever deleted automatically." />
+              </StackPanel>
+              <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="20" FontWeight="SemiBold" Foreground="{ThemeResource SpAccentTextBrush}" Text="{x:Bind ViewModel.SpamThresholdText, Mode=OneWay}" />
+              <Slider
+                  Grid.Row="1"
+                  Grid.Column="1"
+                  Grid.ColumnSpan="2"
+                  AutomationProperties.Name="SpamAssassin threshold"
+                  Maximum="15"
+                  Minimum="1"
+                  StepFrequency="0.5"
+                  TickFrequency="1"
+                  TickPlacement="Outside"
+                  Value="{x:Bind ViewModel.SpamThreshold, Mode=TwoWay}" />
+            </Grid>
+          </Border>
+          <controls:SettingsCard Description="High-scoring Inbox messages appear in Junk inside SidePhase Mail. They aren't moved on the server." Glyph="&#xE7BA;" Header="Filter high scores into Junk">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.TreatHighScoresAsJunk, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Pre-tick &quot;block the whole domain&quot; (never offered for shared providers such as gmail.com)." Glyph="&#xE8F8;" Header="Send the Bugger Back! blocks the domain by default">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.BuggerBackBlocksDomain, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Senders" />
+          <TextBlock Margin="2,0,0,4" Foreground="{ThemeResource SpDangerBrush}" Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.RuleError, Mode=OneWay}" Visibility="{x:Bind h:X.VisibleIfText(ViewModel.RuleError), Mode=OneWay}" />
+
+          <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="8">
+            <Expander.Header>
+              <StackPanel Padding="0,10" Spacing="1">
+                <TextBlock FontSize="14" Text="Trusted senders" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.TrustedCountText, Mode=OneWay}" />
+              </StackPanel>
+            </Expander.Header>
+            <StackPanel Spacing="6">
+              <ItemsRepeater ItemTemplate="{StaticResource RuleTemplate}" ItemsSource="{x:Bind ViewModel.TrustedSenders}">
+                <ItemsRepeater.Layout>
+                  <StackLayout Spacing="4" />
+                </ItemsRepeater.Layout>
+              </ItemsRepeater>
+              <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox PlaceholderText="name@example.com" Text="{x:Bind ViewModel.NewTrustedSender, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="1" Command="{x:Bind ViewModel.AddTrustedSenderCommand}" Content="Trust" Style="{StaticResource SpSecondaryButtonStyle}" />
+              </Grid>
+            </StackPanel>
+          </Expander>
+
+          <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="8">
+            <Expander.Header>
+              <StackPanel Padding="0,10" Spacing="1">
+                <TextBlock FontSize="14" Text="Blocked senders" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.BlockedSendersCountText, Mode=OneWay}" />
+              </StackPanel>
+            </Expander.Header>
+            <StackPanel Spacing="6">
+              <ItemsRepeater ItemTemplate="{StaticResource RuleTemplate}" ItemsSource="{x:Bind ViewModel.BlockedSenders}">
+                <ItemsRepeater.Layout>
+                  <StackLayout Spacing="4" />
+                </ItemsRepeater.Layout>
+              </ItemsRepeater>
+              <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox PlaceholderText="name@example.com" Text="{x:Bind ViewModel.NewBlockedSender, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="1" Command="{x:Bind ViewModel.AddBlockedSenderCommand}" Content="Block" Style="{StaticResource SpSecondaryButtonStyle}" />
+              </Grid>
+            </StackPanel>
+          </Expander>
+
+          <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" CornerRadius="8">
+            <Expander.Header>
+              <StackPanel Padding="0,10" Spacing="1">
+                <TextBlock FontSize="14" Text="Blocked domains" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.BlockedDomainsCountText, Mode=OneWay}" />
+              </StackPanel>
+            </Expander.Header>
+            <StackPanel Spacing="6">
+              <ItemsRepeater ItemTemplate="{StaticResource RuleTemplate}" ItemsSource="{x:Bind ViewModel.BlockedDomains}">
+                <ItemsRepeater.Layout>
+                  <StackLayout Spacing="4" />
+                </ItemsRepeater.Layout>
+              </ItemsRepeater>
+              <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox PlaceholderText="example.com" Text="{x:Bind ViewModel.NewBlockedDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="1" Command="{x:Bind ViewModel.AddBlockedDomainCommand}" Content="Block" Style="{StaticResource SpSecondaryButtonStyle}" />
+              </Grid>
+            </StackPanel>
+          </Expander>
+        </StackPanel>
+
+        <!-- ============================ Privacy ============================ -->
+        <StackPanel x:Name="PrivacySection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Content" />
+          <controls:SettingsCard Description="Stops senders tracking when you open a message. You can still show images for a single message." Glyph="&#xE91B;" Header="Block remote images">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.BlockRemoteImages, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Scripts in emails never run, and links always open in your web browser." Glyph="&#xE72E;" Header="Safe message rendering">
+            <TextBlock VerticalAlignment="Center" Foreground="{ThemeResource SpSuccessBrush}" Text="Always on" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Data on this PC" />
+          <controls:SettingsCard Description="{x:Bind ViewModel.DataFolder}" Glyph="&#xE8B7;" Header="App data folder">
+            <Button Command="{x:Bind ViewModel.OpenDataFolderCommand}" Content="Open folder" Style="{StaticResource SpSecondaryButtonStyle}" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Removes cached mail from this PC. Nothing is ever deleted from your mail server." Glyph="&#xE74D;" Header="Clear local data">
+            <Button Command="{x:Bind ViewModel.ClearLocalDataCommand}" Content="Clear…" Style="{StaticResource SpSecondaryButtonStyle}" />
+          </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Credentials" />
+          <controls:SettingsCard Description="{x:Bind ViewModel.CredentialSummary}" Glyph="&#xE8D7;" Header="Stored sign-ins">
+            <TextBlock VerticalAlignment="Center" Style="{StaticResource SpCaptionTextStyle}" Text="Passwords are never stored for Google or Microsoft." />
+          </controls:SettingsCard>
+        </StackPanel>
+
+        <!-- ============================ About ============================ -->
+        <StackPanel x:Name="AboutSection" Spacing="4" Visibility="Collapsed">
+          <Border Margin="0,22,0,0" Style="{StaticResource SpCardStyle}" Padding="24">
+            <Grid ColumnSpacing="20">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <controls:BrandMark Width="64" Height="64" VerticalAlignment="Top" />
+              <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Style="{StaticResource SpTitleTextStyle}" Text="SidePhase Mail" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.VersionText}" />
+                <TextBlock Style="{StaticResource SpSecondaryTextStyle}" Text="A premium email client for Windows 11 by SidePhase Studio." />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="This preview shows demonstration data: fictional people and companies on reserved .example domains. No real email is sent or received." />
+                <StackPanel Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                  <HyperlinkButton Content="Project on GitHub" NavigateUri="https://github.com/SidePhaseStudio/SidePhase-Mail" />
+                  <HyperlinkButton Command="{x:Bind ViewModel.ShowWelcomeCommand}" Content="Show welcome screen" />
+                </StackPanel>
+              </StackPanel>
+            </Grid>
+          </Border>
+          <TextBlock Margin="2,12,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Built with WinUI 3, the Windows App SDK and .NET. Mail engine (MailKit/MimeKit) and SQLite cache arrive in Milestone 2." />
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+</Page>

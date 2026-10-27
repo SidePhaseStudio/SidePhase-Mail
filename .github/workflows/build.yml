@@ -1,0 +1,130 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  CONFIGURATION: Release
+
+jobs:
+  windows-x64:
+    name: Windows x64 (build, test, package)
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Show toolchain
+        run: |
+          dotnet --info
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version
+
+      - name: Restore
+        run: |
+          dotnet restore tests/SidePhase.Mail.Tests/SidePhase.Mail.Tests.csproj
+          dotnet restore src/SidePhase.Mail.App/SidePhase.Mail.App.csproj -p:Platform=x64 -r win-x64
+
+      - name: Run unit tests
+        run: >
+          dotnet test tests/SidePhase.Mail.Tests/SidePhase.Mail.Tests.csproj
+          -c $env:CONFIGURATION --no-restore
+          --logger "trx;LogFileName=test-results.trx"
+          --logger "console;verbosity=normal"
+          --results-directory artifacts/test-results
+
+      - name: Build and publish SidePhase Mail (self-contained, unpackaged)
+        run: >
+          dotnet publish src/SidePhase.Mail.App/SidePhase.Mail.App.csproj
+          -c $env:CONFIGURATION -r win-x64 -p:Platform=x64 --no-restore
+          -o artifacts/SidePhaseMail-win-x64
+          -bl:artifacts/logs/publish.binlog
+
+      - name: Verify the application was produced
+        shell: pwsh
+        run: |
+          $out = "artifacts/SidePhaseMail-win-x64"
+          $required = @(
+            "SidePhaseMail.exe",
+            "SidePhaseMail.dll",
+            "SidePhase.Mail.Core.dll",
+            "SidePhase.Mail.Infrastructure.dll",
+            "Microsoft.WinUI.dll",
+            "Microsoft.Web.WebView2.Core.dll",
+            "SidePhaseMail.pri",
+            "Assets/AppIcon.ico"
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $out $_)) }
+          if ($missing) {
+            Write-Host "Published folder contents:"
+            Get-ChildItem $out | Select-Object -First 200 | Format-Table Name, Length
+            Write-Error "Missing expected files: $($missing -join ', ')"
+            exit 1
+          }
+          $exe = Get-Item (Join-Path $out "SidePhaseMail.exe")
+          if ($exe.Length -lt 50KB) { Write-Error "SidePhaseMail.exe looks invalid ($($exe.Length) bytes)"; exit 1 }
+          $size = (Get-ChildItem $out -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Host ("Application folder OK: {0:N1} MB, {1} files" -f $size, (Get-ChildItem $out -Recurse -File).Count)
+
+      - name: Add run instructions
+        shell: pwsh
+        run: |
+          @"
+          SidePhase Mail — Milestone 1 preview (Windows x64)
+          ===================================================
+
+          1. Extract this whole folder anywhere (for example your Desktop).
+          2. Double-click SidePhaseMail.exe.
+
+          No installer is needed: .NET and the Windows App SDK are bundled.
+          Requirements: Windows 10 1809+ (Windows 11 recommended for the Mica glass effect)
+          and the Microsoft Edge WebView2 Runtime (pre-installed on Windows 11).
+
+          This build shows DEMONSTRATION DATA only. No email is sent or received.
+          Windows SmartScreen may warn because the build is unsigned: choose "More info" > "Run anyway".
+
+          Commit: $env:GITHUB_SHA
+          "@ | Set-Content -Encoding utf8 artifacts/SidePhaseMail-win-x64/README-FIRST.txt
+
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: SidePhaseMail-win-x64
+          path: artifacts/SidePhaseMail-win-x64/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results/
+          if-no-files-found: warn
+
+      - name: Upload build log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: artifacts/logs/
+          if-no-files-found: ignore
