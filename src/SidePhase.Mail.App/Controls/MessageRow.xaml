@@ -115,8 +115,9 @@
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
-      <!-- Line 1: unread dot, sender, indicators, date / quick actions -->
-      <Grid ColumnSpacing="6">
+      <!-- Line 1: unread dot, sender, indicators, date / quick actions.
+           Fixed height so showing the hover actions never changes the row height (which made the list jump). -->
+      <Grid Height="20" ColumnSpacing="6">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
@@ -182,8 +183,9 @@
         <StackPanel
             Grid.Column="2"
             Grid.ColumnSpan="2"
-            Margin="0,-5,-4,-5"
+            Margin="0,-7,-4,-7"
             Padding="2"
+            VerticalAlignment="Center"
             HorizontalAlignment="Right"
             Background="{ThemeResource SpAcrylicBrush}"
             BorderBrush="{ThemeResource SpStrokeStrongBrush}"
