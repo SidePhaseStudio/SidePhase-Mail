@@ -70,7 +70,7 @@ jobs:
             "SidePhase.Mail.Infrastructure.dll",
             "Microsoft.WinUI.dll",
             "Microsoft.Web.WebView2.Core.dll",
-            "resources.pri",
+            "SidePhaseMail.pri",
             "Assets/AppIcon.ico"
           )
           $missing = $required | Where-Object { -not (Test-Path (Join-Path $out $_)) }

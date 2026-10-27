@@ -52,7 +52,7 @@ faster start-up. Only the WebView2 Runtime must be present on the target PC.
 2. Runs the xUnit test suite (results uploaded as the `test-results` artifact).
 3. Publishes the app for win-x64 (self-contained, unpackaged, ReadyToRun).
 4. **Verifies** that `SidePhaseMail.exe`, the app/engine assemblies, the WinUI and WebView2 assemblies,
-   `resources.pri` and the icon exist — the job fails if anything is missing.
+   `SidePhaseMail.pri` (compiled XAML resources) and the icon exist — the job fails if anything is missing.
 5. Uploads the runnable folder as the `SidePhaseMail-win-x64` artifact (kept 30 days). On failure the
    MSBuild binary log is uploaded as `build-logs` (open it with the [MSBuild Structured Log Viewer](https://msbuildlog.com/)).
 
