@@ -1,5 +1,6 @@
 using MailKit;
 using MailKit.Net.Imap;
+using MailKit.Search;
 using MimeKit;
 
 namespace SidePhase.Mail.Infrastructure.Mail;
@@ -29,7 +30,20 @@ public static class ImapOperations
     {
         var destination = await client.GetFolderAsync(destinationPath, ct).ConfigureAwait(false);
         var source = await OpenAsync(client, sourcePath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
-        var newUid = await source.MoveToAsync(new UniqueId(source.UidValidity, uid), destination, ct).ConfigureAwait(false);
+        var id = new UniqueId(source.UidValidity, uid);
+        UniqueId? newUid;
+        if ((client.Capabilities & (ImapCapabilities.Move | ImapCapabilities.UidPlus)) != 0)
+        {
+            newUid = await source.MoveToAsync(id, destination, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            // No MOVE and no UID EXPUNGE: copy, then only flag the original. A plain EXPUNGE could also remove
+            // messages another client flagged for deletion, so it's left for the server or the user to purge.
+            newUid = await source.CopyToAsync(id, destination, ct).ConfigureAwait(false);
+            await source.StoreAsync(id, new StoreFlagsRequest(StoreAction.Add, MessageFlags.Deleted) { Silent = true }, ct).ConfigureAwait(false);
+        }
+
         return new MoveResult(newUid?.Id, newUid?.Validity ?? 0);
     }
 
@@ -60,6 +74,15 @@ public static class ImapOperations
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadOnly, ct).ConfigureAwait(false);
         // MailKit uses BODY.PEEK, so downloading a message doesn't mark it as read on the server.
         return await folder.GetMessageAsync(new UniqueId(folder.UidValidity, uid), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Finds a message's UID in a folder by its Message-ID header (after a move whose new UID wasn't reported).</summary>
+    public static async Task<(uint Uid, uint UidValidity)?> FindByMessageIdAsync(ImapClient client, string folderPath, string messageId, CancellationToken ct)
+    {
+        var folder = await OpenAsync(client, folderPath, FolderAccess.ReadOnly, ct).ConfigureAwait(false);
+        var bare = messageId.Trim().Trim('<', '>');
+        var uids = await folder.SearchAsync(SearchQuery.HeaderContains("Message-ID", bare).And(SearchQuery.NotDeleted), ct).ConfigureAwait(false);
+        return uids.Count == 0 ? null : (uids[^1].Id, folder.UidValidity);
     }
 
     public static async Task<string> CreateFolderAsync(ImapClient client, string name, CancellationToken ct)

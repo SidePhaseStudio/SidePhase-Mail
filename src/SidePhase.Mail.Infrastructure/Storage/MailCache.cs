@@ -379,6 +379,51 @@ public sealed class MailCache(MailDatabase database)
         return removed;
     }
 
+    /// <summary>
+    /// Re-homes a cached message after a server-side move: the row (and its cached body) gets the id derived from the
+    /// destination folder and new UID, so the list updates immediately instead of waiting for the next sync.
+    /// </summary>
+    public async Task MoveCachedMessageAsync(Guid oldId, Guid newId, Guid folderId, uint uidValidity, uint uid, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT OR IGNORE INTO messages (id, account_id, folder_id, uid, uid_validity, message_id_header, identity_key, from_name, from_address,
+                    to_json, cc_json, subject, preview, date, is_read, is_starred, has_attachments, spam_json, size, in_reply_to, references_json)
+                SELECT $new, account_id, $f, $uid, $uv, message_id_header, identity_key, from_name, from_address,
+                    to_json, cc_json, subject, preview, date, is_read, is_starred, has_attachments, spam_json, size, in_reply_to, references_json
+                FROM messages WHERE id = $old;
+                INSERT OR IGNORE INTO bodies (message_id, html, text, attachments_json, bcc_json, cached_at)
+                SELECT $new, html, text, attachments_json, bcc_json, cached_at FROM bodies WHERE message_id = $old;
+                DELETE FROM messages WHERE id = $old;
+                """;
+            cmd.Parameters.AddWithValue("$new", newId.ToString());
+            cmd.Parameters.AddWithValue("$old", oldId.ToString());
+            cmd.Parameters.AddWithValue("$f", folderId.ToString());
+            cmd.Parameters.AddWithValue("$uid", (long)uid);
+            cmd.Parameters.AddWithValue("$uv", (long)uidValidity);
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Message-ID and References of a cached message, for threading replies.</summary>
+    public async Task<(string? MessageId, IReadOnlyList<string> References)> GetThreadHeadersAsync(Guid messageId, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT message_id_header, references_json FROM messages WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await r.ReadAsync(ct).ConfigureAwait(false)) return (null, []);
+        var refs = r.IsDBNull(1) ? [] : JsonSerializer.Deserialize<List<string>>(r.GetString(1), Json) ?? [];
+        return (r.IsDBNull(0) ? null : r.GetString(0), refs);
+    }
+
     public async Task DeleteMessageAsync(Guid messageId, CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);

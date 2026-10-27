@@ -10,8 +10,8 @@ internal sealed class FakeTokenHandler(HttpStatusCode status, string json) : Htt
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        Requests.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
-        return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        Requests.Add(request.Content is null ? request.RequestUri!.AbsoluteUri : await request.Content.ReadAsStringAsync(cancellationToken));
+        return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json"), RequestMessage = request };
     }
 }
 

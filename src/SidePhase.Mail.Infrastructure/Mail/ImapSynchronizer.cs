@@ -97,7 +97,8 @@ public sealed class ImapSynchronizer(MailCache cache)
         await remote.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
         try
         {
-            var serverUids = (await remote.SearchAsync(SearchQuery.All, ct).ConfigureAwait(false)).Select(u => u.Id).ToList();
+            // Messages flagged \Deleted (awaiting expunge) are treated as gone.
+            var serverUids = (await remote.SearchAsync(SearchQuery.NotDeleted, ct).ConfigureAwait(false)).Select(u => u.Id).ToList();
             var validity = remote.UidValidity;
             var cachedUids = folder.UidValidity == validity
                 ? await cache.GetUidsAsync(folder.Id, validity, ct).ConfigureAwait(false)
