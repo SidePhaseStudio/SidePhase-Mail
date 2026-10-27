@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="SidePhase.Mail.App.Controls.MessageRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:h="using:SidePhase.Mail.App.Helpers"
+    HorizontalContentAlignment="Stretch"
+    AutomationProperties.Name="{x:Bind Item.AutomationName, Mode=OneWay}">
+
+  <Grid
+      x:Name="RootGrid"
+      Padding="{x:Bind h:X.RowPadding(Item.IsCompact), Mode=OneWay}"
+      Background="Transparent"
+      ColumnSpacing="12"
+      PointerCanceled="OnPointerExited"
+      PointerCaptureLost="OnPointerExited"
+      PointerEntered="OnPointerEntered"
+      PointerExited="OnPointerExited">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <Grid.ContextFlyout>
+      <MenuFlyout>
+        <MenuFlyoutItem Command="{x:Bind Item.ReplyCommand, Mode=OneWay}" Text="Reply">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE8CA;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Command="{x:Bind Item.ReplyAllCommand, Mode=OneWay}" Text="Reply all">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE8C2;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Command="{x:Bind Item.ForwardCommand, Mode=OneWay}" Text="Forward">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE89C;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem Command="{x:Bind Item.TogglePinCommand, Mode=OneWay}" Text="{x:Bind Item.PinMenuText, Mode=OneWay}">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="{x:Bind Item.PinGlyph, Mode=OneWay}" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Command="{x:Bind Item.ToggleStarCommand, Mode=OneWay}" Text="{x:Bind Item.StarMenuText, Mode=OneWay}">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="{x:Bind Item.StarGlyph, Mode=OneWay}" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Command="{x:Bind Item.ToggleReadCommand, Mode=OneWay}" Text="{x:Bind Item.ReadMenuText, Mode=OneWay}">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="{x:Bind Item.ReadGlyph, Mode=OneWay}" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem Command="{x:Bind Item.ArchiveCommand, Mode=OneWay}" Text="Archive">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE7B8;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Command="{x:Bind Item.ToggleJunkCommand, Mode=OneWay}" Text="{x:Bind Item.JunkMenuText, Mode=OneWay}">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="{x:Bind Item.JunkGlyph, Mode=OneWay}" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Command="{x:Bind Item.DeleteCommand, Mode=OneWay}" Text="Delete">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE74D;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem Command="{x:Bind Item.SendTheBuggerBackCommand, Mode=OneWay}" Text="Send the Bugger Back!">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE8F8;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
+      </MenuFlyout>
+    </Grid.ContextFlyout>
+
+    <!-- Avatar -->
+    <Grid
+        Width="{x:Bind h:X.AvatarSize(Item.IsCompact), Mode=OneWay}"
+        Height="{x:Bind h:X.AvatarSize(Item.IsCompact), Mode=OneWay}"
+        Margin="2,1,0,0"
+        VerticalAlignment="Top">
+      <Ellipse Fill="{x:Bind h:X.AvatarBrush(Item.AvatarIndex), Mode=OneWay}" />
+      <Ellipse Stroke="#1FFFFFFF" StrokeThickness="1" />
+      <TextBlock
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          FontFamily="{StaticResource SpSmallFont}"
+          FontSize="{x:Bind h:X.AvatarFontSize(Item.IsCompact), Mode=OneWay}"
+          FontWeight="SemiBold"
+          Foreground="White"
+          Text="{x:Bind Item.Initials, Mode=OneWay}" />
+    </Grid>
+
+    <Grid Grid.Column="1" RowSpacing="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <!-- Line 1: unread dot, sender, indicators, date / quick actions -->
+      <Grid ColumnSpacing="6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Ellipse
+            Width="7"
+            Height="7"
+            Margin="0,1,0,0"
+            VerticalAlignment="Center"
+            Fill="{ThemeResource SpAccentBrush}"
+            Visibility="{x:Bind Item.IsUnread, Mode=OneWay}" />
+
+        <TextBlock
+            Grid.Column="1"
+            FontFamily="{StaticResource SpTextFont}"
+            FontSize="14"
+            FontWeight="{x:Bind h:X.Weight(Item.IsUnread), Mode=OneWay}"
+            Foreground="{ThemeResource SpTextPrimaryBrush}"
+            MaxLines="1"
+            Text="{x:Bind Item.SenderName, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis" />
+
+        <StackPanel
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            Orientation="Horizontal"
+            Spacing="6"
+            Visibility="{x:Bind h:X.Collapsed(IsHovered), Mode=OneWay}">
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpTextSecondaryBrush}"
+              Glyph="&#xE723;"
+              Visibility="{x:Bind Item.HasAttachments, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpAccentTextBrush}"
+              Glyph="&#xE840;"
+              Visibility="{x:Bind Item.IsPinned, Mode=OneWay}" />
+        </StackPanel>
+
+        <Grid Grid.Column="3" Visibility="{x:Bind h:X.Collapsed(IsHovered), Mode=OneWay}">
+          <TextBlock
+              VerticalAlignment="Center"
+              FontFamily="{StaticResource SpSmallFont}"
+              FontSize="12"
+              FontWeight="SemiBold"
+              Foreground="{ThemeResource SpAccentTextBrush}"
+              Text="{x:Bind Item.DateText, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsUnread, Mode=OneWay}" />
+          <TextBlock
+              VerticalAlignment="Center"
+              FontFamily="{StaticResource SpSmallFont}"
+              FontSize="12"
+              Foreground="{ThemeResource SpTextTertiaryBrush}"
+              Text="{x:Bind Item.DateText, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsRead, Mode=OneWay}" />
+        </Grid>
+
+        <!-- Hover quick actions -->
+        <StackPanel
+            Grid.Column="2"
+            Grid.ColumnSpan="2"
+            Margin="0,-5,-4,-5"
+            Padding="2"
+            HorizontalAlignment="Right"
+            Background="{ThemeResource SpElevatedBrush}"
+            BorderBrush="{ThemeResource SpStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="6"
+            Orientation="Horizontal"
+            Spacing="0"
+            Visibility="{x:Bind IsHovered, Mode=OneWay}">
+          <Button
+              AutomationProperties.Name="Archive"
+              Command="{x:Bind Item.ArchiveCommand, Mode=OneWay}"
+              Style="{StaticResource SpQuickActionButtonStyle}"
+              ToolTipService.ToolTip="Archive">
+            <FontIcon FontSize="13" Glyph="&#xE7B8;" />
+          </Button>
+          <Button
+              AutomationProperties.Name="Delete"
+              Command="{x:Bind Item.DeleteCommand, Mode=OneWay}"
+              Style="{StaticResource SpQuickActionButtonStyle}"
+              ToolTipService.ToolTip="Delete">
+            <FontIcon FontSize="13" Glyph="&#xE74D;" />
+          </Button>
+          <Button
+              AutomationProperties.Name="{x:Bind Item.ReadMenuText, Mode=OneWay}"
+              Command="{x:Bind Item.ToggleReadCommand, Mode=OneWay}"
+              Style="{StaticResource SpQuickActionButtonStyle}"
+              ToolTipService.ToolTip="{x:Bind Item.ReadMenuText, Mode=OneWay}">
+            <FontIcon FontSize="13" Glyph="{x:Bind Item.ReadGlyph, Mode=OneWay}" />
+          </Button>
+          <Button
+              AutomationProperties.Name="{x:Bind Item.PinMenuText, Mode=OneWay}"
+              Command="{x:Bind Item.TogglePinCommand, Mode=OneWay}"
+              Style="{StaticResource SpQuickActionButtonStyle}"
+              ToolTipService.ToolTip="{x:Bind Item.PinMenuText, Mode=OneWay}">
+            <FontIcon FontSize="13" Glyph="{x:Bind Item.PinGlyph, Mode=OneWay}" />
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <!-- Line 2: subject, tags, star -->
+      <Grid Grid.Row="1" ColumnSpacing="6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Border
+            Padding="6,0,6,1"
+            VerticalAlignment="Center"
+            Background="{ThemeResource SpDangerTintBrush}"
+            CornerRadius="4"
+            Visibility="{x:Bind Item.IsDraft, Mode=OneWay}">
+          <TextBlock
+              FontSize="11"
+              FontWeight="SemiBold"
+              Foreground="{ThemeResource SpDangerBrush}"
+              Text="Draft" />
+        </Border>
+
+        <TextBlock
+            Grid.Column="1"
+            FontFamily="{StaticResource SpTextFont}"
+            FontSize="13"
+            Foreground="{ThemeResource SpTextSubtleBrush}"
+            MaxLines="1"
+            Opacity="{x:Bind h:X.Opacity(Item.IsUnread, 0.82), Mode=OneWay}"
+            Text="{x:Bind Item.Subject, Mode=OneWay}"
+            TextTrimming="CharacterEllipsis" />
+
+        <Border
+            Grid.Column="2"
+            Padding="6,0,6,1"
+            VerticalAlignment="Center"
+            Background="{ThemeResource SpWarningTintBrush}"
+            CornerRadius="4"
+            Visibility="{x:Bind Item.HasSpamTag, Mode=OneWay}">
+          <TextBlock
+              FontSize="11"
+              FontWeight="SemiBold"
+              Foreground="{ThemeResource SpWarningBrush}"
+              Text="{x:Bind Item.SpamTag, Mode=OneWay}" />
+        </Border>
+
+        <Button
+            Grid.Column="3"
+            Width="24"
+            Height="22"
+            MinWidth="24"
+            MinHeight="22"
+            Margin="0,-2,-4,-2"
+            Padding="0"
+            AutomationProperties.Name="{x:Bind Item.StarMenuText, Mode=OneWay}"
+            Command="{x:Bind Item.ToggleStarCommand, Mode=OneWay}"
+            Opacity="{x:Bind h:X.StarOpacity(Item.IsStarred, IsHovered), Mode=OneWay}"
+            Style="{StaticResource SpQuickActionButtonStyle}"
+            ToolTipService.ToolTip="{x:Bind Item.StarMenuText, Mode=OneWay}">
+          <Grid>
+            <FontIcon
+                FontSize="13"
+                Foreground="{ThemeResource SpStarBrush}"
+                Glyph="&#xE735;"
+                Visibility="{x:Bind Item.IsStarred, Mode=OneWay}" />
+            <FontIcon
+                FontSize="13"
+                Glyph="&#xE734;"
+                Visibility="{x:Bind h:X.Collapsed(Item.IsStarred), Mode=OneWay}" />
+          </Grid>
+        </Button>
+      </Grid>
+
+      <!-- Line 3: preview (hidden in compact density) -->
+      <TextBlock
+          Grid.Row="2"
+          Margin="0,1,24,0"
+          FontFamily="{StaticResource SpTextFont}"
+          FontSize="12.5"
+          Foreground="{ThemeResource SpTextTertiaryBrush}"
+          MaxLines="1"
+          Text="{x:Bind Item.Preview, Mode=OneWay}"
+          TextTrimming="CharacterEllipsis"
+          Visibility="{x:Bind Item.HasPreview, Mode=OneWay}" />
+    </Grid>
+  </Grid>
+</UserControl>

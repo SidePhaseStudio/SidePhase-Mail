@@ -325,7 +325,7 @@ public static class DemoDataSeeder
                 <p>Great session today. Summary of what we agreed:</p>
                 <ul>
                   <li>Sidebar stays translucent; selection uses the accent at low opacity.</li>
-                  <li>Unread rows get a slim accent bar and semibold sender — no bold subjects.</li>
+                  <li>Unread rows get a small accent dot and a semibold sender — no bold subjects.</li>
                   <li>Quick actions appear on hover only, so the list stays calm.</li>
                   <li>Compact density hides the preview line.</li>
                 </ul>
