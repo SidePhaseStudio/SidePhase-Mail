@@ -26,7 +26,7 @@ public sealed partial class ReadingPane : UserControl
 
     public ReadingPaneViewModel ViewModel { get; }
 
-    public static InfoBarSeverity SpamSeverity(bool severe) => severe ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+    public InfoBarSeverity SpamSeverity(bool severe) => severe ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
