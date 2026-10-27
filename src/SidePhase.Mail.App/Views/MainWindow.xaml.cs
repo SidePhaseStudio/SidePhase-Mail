@@ -3,6 +3,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.App.ViewModels;
@@ -37,6 +38,10 @@ public sealed partial class MainWindow : Window
         WindowHelper.SetMinimumSize(this, 960, 600);
 
         App.GetService<ThemeService>().Register(this, RootGrid, SolidLayer);
+
+        // Lift toasts above the content so the theme shadow is visible (Translation can't be set in XAML).
+        ToastBar.Shadow = new ThemeShadow();
+        ToastBar.Translation = new System.Numerics.Vector3(0, 0, 32);
 
         _toastTimer = DispatcherQueue.CreateTimer();
         _toastTimer.IsRepeating = false;

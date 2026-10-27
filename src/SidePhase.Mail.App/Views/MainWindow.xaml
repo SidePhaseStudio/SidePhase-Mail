@@ -150,11 +150,7 @@
         BorderBrush="{ThemeResource SpStrokeStrongBrush}"
         CornerRadius="10"
         IsClosable="True"
-        IsOpen="False"
-        Translation="0,0,32">
-      <InfoBar.Shadow>
-        <ThemeShadow />
-      </InfoBar.Shadow>
+        IsOpen="False">
       <InfoBar.ActionButton>
         <Button x:Name="ToastActionButton" Click="OnToastActionClick" Style="{StaticResource SpSecondaryButtonStyle}" />
       </InfoBar.ActionButton>
