@@ -85,6 +85,49 @@ jobs:
           $size = (Get-ChildItem $out -Recurse | Measure-Object Length -Sum).Sum / 1MB
           Write-Host ("Application folder OK: {0:N1} MB, {1} files" -f $size, (Get-ChildItem $out -Recurse -File).Count)
 
+      - name: Smoke test (launch the app and keep it running)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/smoke | Out-Null
+          $env:SIDEPHASE_NO_ERROR_DIALOG = "1"
+          $start = Get-Date
+          $exe = Resolve-Path artifacts/SidePhaseMail-win-x64/SidePhaseMail.exe
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          Start-Sleep -Seconds 25
+          $p.Refresh()
+          $alive = -not $p.HasExited
+          Write-Host "Running after 25 s: $alive   Window title: '$($p.MainWindowTitle)'"
+
+          try {
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("$PWD/artifacts/smoke/screenshot.png")
+          } catch { Write-Host "Screenshot not available: $_" }
+
+          if ($alive) { Stop-Process -Id $p.Id -Force } else { Write-Host "Exit code: $($p.ExitCode)" }
+
+          Write-Host "---- Application event log since launch ----"
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start } -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting', 'SideBySide', 'Application Hang') } |
+            Format-List TimeCreated, ProviderName, Id, Message | Out-String -Width 400 | Tee-Object artifacts/smoke/eventlog.txt
+
+          $log = Join-Path $env:LOCALAPPDATA "SidePhase Mail/Logs"
+          if (Test-Path $log) {
+            Get-ChildItem $log | ForEach-Object { Write-Host "---- $($_.Name) ----"; Get-Content $_.FullName; Copy-Item $_.FullName artifacts/smoke/ }
+          }
+
+          if (-not $alive) { Write-Error "SidePhase Mail exited during start-up."; exit 1 }
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test
+          path: artifacts/smoke/
+          if-no-files-found: ignore
+
       - name: Add run instructions
         shell: pwsh
         run: |
