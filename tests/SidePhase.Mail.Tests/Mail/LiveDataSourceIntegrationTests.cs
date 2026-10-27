@@ -138,6 +138,11 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         Assert.False(received.IsRead);
         await WaitForAsync(_app.Mail, m => m.Subject == subject && m.AccountId == alice.Id && m.FolderKind == FolderKind.Sent);
 
+        // Exactly one Sent copy, even after the background follow-up work and another sync.
+        await Task.Delay(2500);
+        await _app.Mail.SyncAsync();
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == subject && m.AccountId == alice.Id && m.FolderKind == FolderKind.Sent);
+
         var body = await _app.Mail.GetMessageBodyAsync(received.Id);
         Assert.Contains("First message", body!.TextBody);
 

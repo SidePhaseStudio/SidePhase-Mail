@@ -62,6 +62,9 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public string ReadGlyph => IsUnread ? Glyphs.MailRead : Glyphs.Mail;
     public string ReadMenuText => IsUnread ? "Mark as read" : "Mark as unread";
     public string JunkMenuText => IsInJunk ? "Not junk" : "Move to Junk";
+    public string ReadTooltip => IsUnread ? "Mark as read (Ctrl+Q)" : "Mark as unread (Ctrl+U)";
+    public string PinTooltip => PinMenuText + " (Ctrl+Shift+P)";
+    public string StarTooltip => StarMenuText + " (Insert)";
     public string JunkGlyph => IsInJunk ? Glyphs.Accept : Glyphs.Junk;
 
     public string AutomationName { get; private set; } = string.Empty;

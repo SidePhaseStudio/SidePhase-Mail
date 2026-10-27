@@ -183,8 +183,14 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             if (_refreshQueued) return;
             _refreshQueued = true;
-            _ = RefreshCountsAsync();
+            _ = RefreshCountsSoonAsync();
         });
+    }
+
+    private async Task RefreshCountsSoonAsync()
+    {
+        await Task.Delay(200);
+        await RefreshCountsAsync();
     }
 
     private async Task RefreshCountsAsync()

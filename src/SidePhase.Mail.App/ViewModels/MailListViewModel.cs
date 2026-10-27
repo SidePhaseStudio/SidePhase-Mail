@@ -234,14 +234,21 @@ public sealed partial class MailListViewModel : ObservableObject
         _settings.Update(s => s.PinnedSectionCollapsed = !header.IsCollapsed);
     }
 
+    /// <summary>Coalesces bursts of change events (e.g. a sync adding messages in batches) into one reload.</summary>
     private void QueueRefresh()
     {
         _ui.Post(() =>
         {
             if (_refreshQueued) return;
             _refreshQueued = true;
-            _ = RefreshAsync();
+            _ = RefreshSoonAsync();
         });
+    }
+
+    private async Task RefreshSoonAsync()
+    {
+        await Task.Delay(150);
+        await RefreshAsync();
     }
 
     public async Task RefreshAsync()

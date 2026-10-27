@@ -52,31 +52,40 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     // ------------------------------------------------------------------ reads (cache only)
 
-    public async Task<IReadOnlyList<MailAccount>> GetAccountsAsync(CancellationToken cancellationToken = default) =>
-        (await GetStoredAccountsAsync(cancellationToken).ConfigureAwait(false)).Select(a => a.Account).ToList();
+    // Reads run on the thread pool: SQLite I/O is synchronous, and callers are usually on the UI thread.
 
-    public async Task<IReadOnlyList<MailFolder>> GetFoldersAsync(Guid accountId, CancellationToken cancellationToken = default)
-    {
-        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-        return (await _cache.GetFoldersAsync(accountId, cancellationToken).ConfigureAwait(false))
-            .Where(f => f.Synchronize)
-            .Select(f => f.ToMailFolder())
-            .ToList();
-    }
+    public Task<IReadOnlyList<MailAccount>> GetAccountsAsync(CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<MailAccount>>(async () =>
+            (await GetStoredAccountsAsync(cancellationToken).ConfigureAwait(false)).Select(a => a.Account).ToList(), cancellationToken);
 
-    public async Task<IReadOnlyList<MessageSummary>> GetMessagesAsync(CancellationToken cancellationToken = default)
-    {
-        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-        return await _cache.GetSummariesAsync(cancellationToken).ConfigureAwait(false);
-    }
+    public Task<IReadOnlyList<MailFolder>> GetFoldersAsync(Guid accountId, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<MailFolder>>(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            return (await _cache.GetFoldersAsync(accountId, cancellationToken).ConfigureAwait(false))
+                .Where(f => f.Synchronize)
+                .Select(f => f.ToMailFolder())
+                .ToList();
+        }, cancellationToken);
 
-    public async Task<MessageSummary?> GetMessageAsync(Guid messageId, CancellationToken cancellationToken = default)
-    {
-        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-        return await _cache.GetSummaryAsync(messageId, cancellationToken).ConfigureAwait(false);
-    }
+    public Task<IReadOnlyList<MessageSummary>> GetMessagesAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            return await _cache.GetSummariesAsync(cancellationToken).ConfigureAwait(false);
+        }, cancellationToken);
 
-    public async Task<MessageBody?> GetMessageBodyAsync(Guid messageId, CancellationToken cancellationToken = default)
+    public Task<MessageSummary?> GetMessageAsync(Guid messageId, CancellationToken cancellationToken = default) =>
+        Task.Run(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            return await _cache.GetSummaryAsync(messageId, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken);
+
+    public Task<MessageBody?> GetMessageBodyAsync(Guid messageId, CancellationToken cancellationToken = default) =>
+        Task.Run(() => LoadBodyAsync(messageId, cancellationToken), cancellationToken);
+
+    private async Task<MessageBody?> LoadBodyAsync(Guid messageId, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         if (await _cache.GetBodyAsync(messageId, cancellationToken).ConfigureAwait(false) is { } cached) return cached;
@@ -271,6 +280,20 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     {
         var result = await _imap.RunAsync(account, async client =>
         {
+            // Teach server-side spam filters: junk in, or rescued out of junk.
+            var junkChange = destination.Kind == FolderKind.Junk ? true : reference.FolderKind == FolderKind.Junk ? false : (bool?)null;
+            if (junkChange is { } isJunk)
+            {
+                try
+                {
+                    await ImapOperations.SetJunkKeywordAsync(client, reference.FolderPath, reference.Uid, isJunk, ct).ConfigureAwait(false);
+                }
+                catch (MailKit.Net.Imap.ImapCommandException)
+                {
+                    // Keywords are a hint; the move itself is what matters.
+                }
+            }
+
             var moved = await ImapOperations.MoveAsync(client, reference.FolderPath, reference.Uid, destination.Path, ct).ConfigureAwait(false);
             if (moved.NewUid is null && reference.MessageIdHeader is { } mid)
             {
@@ -453,9 +476,10 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 return new SendResult(false, "Not sent. " + error.Message);
             }
 
-            // From here on the server has accepted the message. Follow-up steps never turn this into a failure.
-            var note = await AfterSendAsync(account, draft, mime).ConfigureAwait(false);
-            return new SendResult(true, "Sent." + note);
+            // From here on the server has accepted the message. Filing the Sent copy and tidying the draft happen in
+            // the background; a problem there is reported separately and never turns the send into a failure.
+            _ = Task.Run(() => AfterSendAsync(account, draft, mime));
+            return new SendResult(true, "Sent.");
         }
         finally
         {
@@ -463,9 +487,8 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
     }
 
-    private async Task<string> AfterSendAsync(StoredAccount account, DraftMessage draft, MimeMessage mime)
+    private async Task AfterSendAsync(StoredAccount account, DraftMessage draft, MimeMessage mime)
     {
-        var note = string.Empty;
         try
         {
             // Gmail and Outlook.com/Microsoft 365 save sent mail themselves; other servers need a copy appended.
@@ -476,13 +499,18 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 {
                     mime.Bcc.Clear();
                     foreach (var b in draft.Bcc) mime.Bcc.Add(new MailboxAddress(b.Name ?? string.Empty, b.Address));
-                    await _imap.RunAsync(account, c => ImapOperations.AppendAsync(c, sent.Path, mime, MessageFlags.Seen, CancellationToken.None), CancellationToken.None).ConfigureAwait(false);
+                    await _imap.RunAsync(account, async c =>
+                    {
+                        // Some servers file a copy of everything sent through SMTP themselves. Only add ours if the
+                        // server hasn't, so the message never appears twice in Sent.
+                        if (await SentCopyExistsAsync(c, sent.Path, mime.MessageId).ConfigureAwait(false)) return;
+                        await ImapOperations.AppendAsync(c, sent.Path, mime, MessageFlags.Seen, CancellationToken.None).ConfigureAwait(false);
+                    }, CancellationToken.None).ConfigureAwait(false);
                 }
             }
         }
         catch (Exception ex)
         {
-            note = " A copy couldn't be saved to your Sent folder.";
             Report(account, ex, "The message was sent, but a copy couldn't be saved to Sent");
         }
 
@@ -514,8 +542,24 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             // Tidying up drafts or marking the original as answered is cosmetic; the message was sent.
         }
 
-        _ = SyncAccountKindsAsync(account, [FolderKind.Sent, FolderKind.Drafts]);
-        return note;
+        await SyncAccountKindsAsync(account, [FolderKind.Sent, FolderKind.Drafts]).ConfigureAwait(false);
+        SendCompleted?.Invoke(this, draft);
+    }
+
+    /// <summary>Raised after a sent message's follow-up work (Sent copy, draft clean-up, Sent sync) has finished.</summary>
+    public event EventHandler<DraftMessage>? SendCompleted;
+
+    /// <summary>Checks for a server-filed Sent copy, giving the server a moment to file it first.</summary>
+    internal static async Task<bool> SentCopyExistsAsync(MailKit.Net.Imap.ImapClient client, string sentPath, string? messageId)
+    {
+        if (string.IsNullOrEmpty(messageId)) return false;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (attempt > 0) await Task.Delay(1500).ConfigureAwait(false);
+            if (await ImapOperations.FindByMessageIdAsync(client, sentPath, messageId, CancellationToken.None).ConfigureAwait(false) is not null) return true;
+        }
+
+        return false;
     }
 
     // ------------------------------------------------------------------ synchronisation

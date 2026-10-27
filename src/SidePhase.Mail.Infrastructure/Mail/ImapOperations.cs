@@ -19,6 +19,20 @@ public static class ImapOperations
         await folder.StoreAsync(new UniqueId(folder.UidValidity, uid), request, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Tags a message with the standard <c>$Junk</c> / <c>$NotJunk</c> keywords (RFC 5788 registry) so server-side
+    /// filters (e.g. Dovecot antispam, Fastmail) can learn from the user's choice. Skipped silently when the folder
+    /// doesn't accept custom keywords.
+    /// </summary>
+    public static async Task SetJunkKeywordAsync(ImapClient client, string folderPath, uint uid, bool isJunk, CancellationToken ct)
+    {
+        var folder = await OpenAsync(client, folderPath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
+        if (!folder.PermanentFlags.HasFlag(MessageFlags.UserDefined)) return;
+        var id = new UniqueId(folder.UidValidity, uid);
+        await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Add, [isJunk ? "$Junk" : "$NotJunk"]) { Silent = true }, ct).ConfigureAwait(false);
+        await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Remove, [isJunk ? "$NotJunk" : "$Junk"]) { Silent = true }, ct).ConfigureAwait(false);
+    }
+
     /// <summary>True if the folder lets clients set \Flagged permanently (otherwise stars are kept locally).</summary>
     public static async Task<bool> SupportsFlaggedAsync(ImapClient client, string folderPath, CancellationToken ct)
     {

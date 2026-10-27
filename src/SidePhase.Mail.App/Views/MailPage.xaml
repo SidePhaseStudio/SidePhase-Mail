@@ -231,6 +231,11 @@
             ShowsScrollingPlaceholders="False">
           <ListView.KeyboardAccelerators>
             <KeyboardAccelerator Key="Delete" Invoked="OnDeleteAccelerator" />
+            <KeyboardAccelerator Key="Back" Invoked="OnArchiveAccelerator" />
+            <KeyboardAccelerator Key="Q" Invoked="OnMarkReadAccelerator" Modifiers="Control" />
+            <KeyboardAccelerator Key="U" Invoked="OnMarkUnreadAccelerator" Modifiers="Control" />
+            <KeyboardAccelerator Key="P" Invoked="OnPinAccelerator" Modifiers="Control,Shift" />
+            <KeyboardAccelerator Key="Insert" Invoked="OnStarAccelerator" />
           </ListView.KeyboardAccelerators>
         </ListView>
 
