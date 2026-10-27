@@ -90,35 +90,47 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts/smoke | Out-Null
           $env:SIDEPHASE_NO_ERROR_DIALOG = "1"
-          $start = Get-Date
           $exe = Resolve-Path artifacts/SidePhaseMail-win-x64/SidePhaseMail.exe
-          $p = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
-          Start-Sleep -Seconds 25
-          $p.Refresh()
-          $alive = -not $p.HasExited
-          Write-Host "Running after 25 s: $alive   Window title: '$($p.MainWindowTitle)'"
+          $data = Join-Path $env:LOCALAPPDATA "SidePhase Mail"
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
-          try {
-            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-            $bmp.Save("$PWD/artifacts/smoke/screenshot.png")
-          } catch { Write-Host "Screenshot not available: $_" }
+          function Test-Launch([string] $name) {
+            $start = Get-Date
+            $p = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+            Start-Sleep -Seconds 25
+            $p.Refresh()
+            $alive = -not $p.HasExited
+            Write-Host "[$name] running after 25 s: $alive   window title: '$($p.MainWindowTitle)'"
+            try {
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("$PWD/artifacts/smoke/$name.png")
+            } catch { Write-Host "Screenshot not available: $_" }
+            if ($alive) { Stop-Process -Id $p.Id -Force; Start-Sleep -Seconds 2 } else { Write-Host "[$name] exit code: $($p.ExitCode)" }
 
-          if ($alive) { Stop-Process -Id $p.Id -Force } else { Write-Host "Exit code: $($p.ExitCode)" }
-
-          Write-Host "---- Application event log since launch ----"
-          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start } -ErrorAction SilentlyContinue |
-            Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting', 'SideBySide', 'Application Hang') } |
-            Format-List TimeCreated, ProviderName, Id, Message | Out-String -Width 400 | Tee-Object artifacts/smoke/eventlog.txt
-
-          $log = Join-Path $env:LOCALAPPDATA "SidePhase Mail/Logs"
-          if (Test-Path $log) {
-            Get-ChildItem $log | ForEach-Object { Write-Host "---- $($_.Name) ----"; Get-Content $_.FullName; Copy-Item $_.FullName artifacts/smoke/ }
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $start } -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting', 'SideBySide', 'Application Hang') } |
+              Format-List TimeCreated, ProviderName, Id, Message | Out-String -Width 400 | Tee-Object "artifacts/smoke/$name-eventlog.txt"
+            $logs = Join-Path $data "Logs"
+            if (Test-Path $logs) {
+              Get-ChildItem $logs | ForEach-Object {
+                Write-Host "---- [$name] $($_.Name) ----"; Get-Content $_.FullName
+                Copy-Item $_.FullName "artifacts/smoke/$name-$($_.Name)"; Remove-Item $_.FullName
+              }
+            }
+            return $alive
           }
 
-          if (-not $alive) { Write-Error "SidePhase Mail exited during start-up."; exit 1 }
+          # 1. First run: welcome screen.
+          $first = Test-Launch "first-run"
+
+          # 2. Returning user: straight into the inbox (message list and sidebar counts).
+          New-Item -ItemType Directory -Force $data | Out-Null
+          '{ "hasCompletedWelcome": true }' | Set-Content -Encoding utf8 (Join-Path $data "settings.json")
+          $inbox = Test-Launch "inbox"
+
+          if (-not ($first -and $inbox)) { Write-Error "SidePhase Mail exited during start-up (first run: $first, inbox: $inbox)."; exit 1 }
 
       - name: Upload smoke test results
         if: always()
