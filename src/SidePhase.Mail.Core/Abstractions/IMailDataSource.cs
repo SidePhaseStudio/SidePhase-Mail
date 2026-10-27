@@ -1,0 +1,78 @@
+using SidePhase.Mail.Core.Models;
+
+namespace SidePhase.Mail.Core.Abstractions;
+
+public enum MailDataChangeKind
+{
+    /// <summary>Flags such as read, starred or pinned changed.</summary>
+    FlagsChanged,
+    Moved,
+    Added,
+    Removed,
+
+    /// <summary>Accounts, folders or the whole store changed; reload everything.</summary>
+    Reset,
+}
+
+public sealed class MailDataChangedEventArgs(MailDataChangeKind kind, IReadOnlyCollection<Guid> messageIds) : EventArgs
+{
+    public MailDataChangeKind Kind { get; } = kind;
+    public IReadOnlyCollection<Guid> MessageIds { get; } = messageIds;
+}
+
+/// <summary>Where a message was before a move, so the move can be undone.</summary>
+public sealed record MoveRecord(Guid MessageId, Guid FromFolderId);
+
+public sealed record SendResult(bool Succeeded, string Message, Guid? SentMessageId = null);
+
+public sealed record SyncResult(bool Succeeded, int NewMessages, string Message);
+
+/// <summary>
+/// The application's single entry point to mail data. The UI only talks to this interface, so the demonstration
+/// store used in Milestone 1 can be replaced by the SQLite cache + IMAP/SMTP engine without touching view models.
+/// </summary>
+/// <remarks>Implementations may raise <see cref="DataChanged"/> on any thread.</remarks>
+public interface IMailDataSource
+{
+    /// <summary>True when the data is sample content that never touches a mail server.</summary>
+    bool IsDemo { get; }
+
+    event EventHandler<MailDataChangedEventArgs>? DataChanged;
+
+    Task<IReadOnlyList<MailAccount>> GetAccountsAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<MailFolder>> GetFoldersAsync(Guid accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns message summaries (never bodies) for every message in the store.</summary>
+    Task<IReadOnlyList<MessageSummary>> GetMessagesAsync(CancellationToken cancellationToken = default);
+
+    Task<MessageSummary?> GetMessageAsync(Guid messageId, CancellationToken cancellationToken = default);
+
+    Task<MessageBody?> GetMessageBodyAsync(Guid messageId, CancellationToken cancellationToken = default);
+
+    Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default);
+
+    Task SetStarredAsync(IReadOnlyCollection<Guid> messageIds, bool isStarred, CancellationToken cancellationToken = default);
+
+    Task SetPinnedAsync(IReadOnlyCollection<Guid> messageIds, bool isPinned, CancellationToken cancellationToken = default);
+
+    /// <summary>Moves messages to the folder of the given kind in each message's own account.</summary>
+    Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default);
+
+    /// <summary>Moves messages back to where they were (undo).</summary>
+    Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default);
+
+    /// <summary>Permanently deletes messages that are already in Trash.</summary>
+    Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default);
+
+    Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default);
+
+    Task<DraftMessage?> GetDraftAsync(Guid draftId, CancellationToken cancellationToken = default);
+
+    Task<SendResult> SendAsync(DraftMessage draft, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
+
+    Task<SyncResult> SyncAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Clears locally cached data. Never deletes anything on a mail server.</summary>
+    Task ClearLocalDataAsync(CancellationToken cancellationToken = default);
+}

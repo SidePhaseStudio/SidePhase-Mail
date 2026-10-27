@@ -1,0 +1,110 @@
+using SidePhase.Mail.Core.Models;
+
+namespace SidePhase.Mail.Core.Settings;
+
+public enum AppTheme
+{
+    DarkGlass,
+    LightGlass,
+    SolidDark,
+    SolidLight,
+    FollowWindows,
+}
+
+public enum ListDensity
+{
+    Comfortable,
+    Compact,
+}
+
+public enum ReadingPanePosition
+{
+    Right,
+    Bottom,
+}
+
+public enum ComposeFormat
+{
+    RichText,
+    PlainText,
+}
+
+public enum SenderRuleKind
+{
+    TrustedSender,
+    BlockedSender,
+    BlockedDomain,
+}
+
+public sealed record SenderRule(SenderRuleKind Kind, string Value, DateTimeOffset CreatedAt)
+{
+    public string NormalizedValue => Value.Trim().ToLowerInvariant();
+}
+
+/// <summary>
+/// User preferences. Plain mutable POCO so it serialises cleanly; mutate through
+/// <see cref="Abstractions.ISettingsService.Update"/> so changes are saved and broadcast.
+/// </summary>
+public sealed class AppSettings
+{
+    public const int CurrentVersion = 1;
+    public const string DefaultAccent = "#8B7CFF";
+
+    public int Version { get; set; } = CurrentVersion;
+    public bool HasCompletedWelcome { get; set; }
+
+    // Appearance
+    public AppTheme Theme { get; set; } = AppTheme.DarkGlass;
+    public string AccentColor { get; set; } = DefaultAccent;
+    public ListDensity Density { get; set; } = ListDensity.Comfortable;
+    public bool SidebarStartsCollapsed { get; set; }
+    public bool ShowUnreadBadges { get; set; } = true;
+    public ReadingPanePosition ReadingPane { get; set; } = ReadingPanePosition.Right;
+
+    // Mail
+    public bool NotificationsEnabled { get; set; } = true;
+    public bool ShowPinnedSection { get; set; } = true;
+    public bool PinnedSectionCollapsed { get; set; }
+    public bool MarkAsReadOnOpen { get; set; } = true;
+    public ComposeFormat DefaultComposeFormat { get; set; } = ComposeFormat.RichText;
+    public int SyncIntervalMinutes { get; set; } = 5;
+
+    // Spam
+    public double SpamThreshold { get; set; } = 5.0;
+    public bool TreatHighScoresAsJunk { get; set; } = true;
+    public bool BuggerBackBlocksDomainByDefault { get; set; }
+    public List<SenderRule> SenderRules { get; set; } = [];
+
+    // Privacy
+    public bool BlockRemoteImages { get; set; } = true;
+
+    /// <summary>Signature per account id.</summary>
+    public Dictionary<Guid, string> Signatures { get; set; } = [];
+
+    public AppSettings Clone()
+    {
+        var copy = (AppSettings)MemberwiseClone();
+        copy.SenderRules = [.. SenderRules];
+        copy.Signatures = new Dictionary<Guid, string>(Signatures);
+        return copy;
+    }
+
+    /// <summary>Repairs out-of-range values from older or hand-edited settings files.</summary>
+    public void Normalize()
+    {
+        if (!Enum.IsDefined(Theme)) Theme = AppTheme.DarkGlass;
+        if (!Enum.IsDefined(Density)) Density = ListDensity.Comfortable;
+        if (!Enum.IsDefined(ReadingPane)) ReadingPane = ReadingPanePosition.Right;
+        if (!Enum.IsDefined(DefaultComposeFormat)) DefaultComposeFormat = ComposeFormat.RichText;
+        if (!Formatting.ColorMath.TryParseHex(AccentColor, out _)) AccentColor = DefaultAccent;
+        if (double.IsNaN(SpamThreshold) || SpamThreshold < 1 || SpamThreshold > 20) SpamThreshold = 5.0;
+        if (SyncIntervalMinutes is < 1 or > 240) SyncIntervalMinutes = 5;
+        SenderRules ??= [];
+        Signatures ??= [];
+        SenderRules = SenderRules
+            .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Value))
+            .DistinctBy(r => (r.Kind, r.NormalizedValue))
+            .ToList();
+        Version = CurrentVersion;
+    }
+}
