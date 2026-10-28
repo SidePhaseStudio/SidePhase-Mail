@@ -18,12 +18,68 @@ public sealed record MessageDisplayContext(DateTimeOffset Now, SpamVerdict Verdi
 public sealed partial class MessageItemViewModel : ObservableObject
 {
     private readonly MessageCommandService _commands;
+    private readonly Action<MessageItemViewModel>? _toggleConversation;
+    private IReadOnlyList<MessageSummary> _inView = [];
 
-    public MessageItemViewModel(MessageSummary summary, MessageDisplayContext context, MessageCommandService commands)
+    public MessageItemViewModel(
+        MessageSummary summary,
+        MessageDisplayContext context,
+        MessageCommandService commands,
+        Action<MessageItemViewModel>? toggleConversation = null,
+        bool isThreadChild = false)
     {
         _commands = commands;
+        _toggleConversation = toggleConversation;
+        IsThreadChild = isThreadChild;
         Summary = summary;
         Apply(summary, context);
+    }
+
+    /// <summary>A message shown inside an expanded conversation (indented, compact).</summary>
+    public bool IsThreadChild { get; }
+
+    /// <summary>The conversation this row heads (conversation view), or null for a single message.</summary>
+    public Guid? ConversationKey { get; private set; }
+
+    /// <summary>Messages in the conversation, oldest first (including your own replies from Sent).</summary>
+    public IReadOnlyList<MessageSummary> ConversationMessages { get; private set; } = [];
+
+    public int ConversationCount => ConversationMessages.Count;
+    public bool IsConversation => ConversationCount > 1;
+    public string ConversationCountText => ConversationCount.ToString(CultureInfo.CurrentCulture);
+    public bool IsExpanded { get; private set; }
+    public string ExpandGlyph => IsExpanded ? "\uE70E" : "\uE70D";
+    public string ExpandTooltip => IsExpanded ? "Collapse conversation" : $"Show all {ConversationCount} messages";
+
+    /// <summary>What list actions (archive, delete, read) apply to: the whole conversation in view, or this message.</summary>
+    private IReadOnlyList<MessageSummary> Targets => IsConversation && _inView.Count > 0 ? _inView : [Summary];
+
+    /// <summary>Makes this row the head of a conversation (or a single message again when <paramref name="conversation"/> is null).</summary>
+    public void SetConversation(Guid? key, IReadOnlyList<MessageSummary>? conversation, IReadOnlyList<MessageSummary>? inView, bool expanded)
+    {
+        ConversationKey = key;
+        ConversationMessages = conversation ?? [];
+        _inView = inView ?? [];
+        IsExpanded = expanded && IsConversation;
+        if (IsConversation)
+        {
+            // Like Gmail: the people in the conversation, and unread if anything in it is unread.
+            var names = ConversationMessages.Select(m => m.FolderKind is FolderKind.Sent or FolderKind.Drafts ? "me" : FirstName(m.From))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            SenderName = names.Count <= 3 ? string.Join(", ", names) : $"{names[0]} … {string.Join(", ", names.TakeLast(2))}";
+            IsUnread = _inView.Any(m => !m.IsRead);
+            HasAttachments = ConversationMessages.Any(m => m.HasAttachments);
+        }
+
+        OnPropertyChanged(string.Empty);
+    }
+
+    private static string FirstName(EmailAddress address)
+    {
+        var name = address.DisplayName;
+        var space = name.IndexOf(' ');
+        return space > 0 && !name.Contains('@') ? name[..space] : name;
     }
 
     public MessageSummary Summary { get; private set; }
@@ -164,16 +220,19 @@ public sealed partial class MessageItemViewModel : ObservableObject
     private Task TogglePinAsync() => _commands.TogglePinAsync(Summary);
 
     [RelayCommand]
-    private Task ToggleReadAsync() => _commands.SetReadAsync(Summary, IsUnread);
+    private Task ToggleReadAsync() => _commands.SetReadAsync(IsUnread ? Targets : [Summary], IsUnread);
 
     [RelayCommand]
-    private Task ArchiveAsync() => _commands.ArchiveAsync(Summary);
+    private Task ArchiveAsync() => _commands.ArchiveAsync(Targets);
 
     [RelayCommand]
-    private Task DeleteAsync() => _commands.DeleteAsync(Summary);
+    private Task DeleteAsync() => _commands.DeleteAsync(Targets);
 
     [RelayCommand]
-    private Task ToggleJunkAsync() => IsInJunk ? _commands.NotJunkAsync(Summary) : _commands.MoveToJunkAsync(Summary);
+    private Task ToggleJunkAsync() => IsInJunk ? _commands.NotJunkAsync(Summary) : _commands.MoveToJunkAsync(Targets);
+
+    [RelayCommand]
+    private void ToggleConversation() => _toggleConversation?.Invoke(this);
 
     [RelayCommand]
     private Task ReplyAsync() => _commands.ReplyAsync(Summary, ComposeMode.Reply);

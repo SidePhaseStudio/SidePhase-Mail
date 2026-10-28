@@ -25,44 +25,60 @@ public sealed class MessageCommandService(
 
     public Task TogglePinAsync(MessageSummary message) => mail.SetPinnedAsync([message.Id], !message.IsPinned);
 
-    public Task SetReadAsync(MessageSummary message, bool isRead) => mail.SetReadAsync([message.Id], isRead);
+    public Task SetReadAsync(MessageSummary message, bool isRead) => SetReadAsync([message], isRead);
 
-    public async Task ArchiveAsync(MessageSummary message)
+    public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool isRead) =>
+        mail.SetReadAsync(messages.Where(m => m.IsRead != isRead).Select(m => m.Id).ToList(), isRead);
+
+    public Task ArchiveAsync(MessageSummary message) => ArchiveAsync([message]);
+
+    /// <summary>Archives one message or a whole conversation.</summary>
+    public async Task ArchiveAsync(IReadOnlyList<MessageSummary> messages)
     {
-        if (message.FolderKind == FolderKind.Archive)
+        var targets = messages.Where(m => m.FolderKind != FolderKind.Archive).Select(m => m.Id).ToList();
+        if (targets.Count == 0)
         {
-            toasts.Show("This message is already in Archive.");
+            toasts.Show(messages.Count == 1 ? "This message is already in Archive." : "These messages are already in Archive.");
             return;
         }
 
-        var moves = await mail.MoveToAsync([message.Id], FolderKind.Archive);
-        toasts.ShowWithUndo("Archived", () => mail.RestoreAsync(moves));
+        var moves = await mail.MoveToAsync(targets, FolderKind.Archive);
+        toasts.ShowWithUndo(targets.Count == 1 ? "Archived" : $"Archived {targets.Count} messages", () => mail.RestoreAsync(moves));
     }
 
-    public async Task DeleteAsync(MessageSummary message)
+    public Task DeleteAsync(MessageSummary message) => DeleteAsync([message]);
+
+    /// <summary>Moves to Trash, or deletes permanently (after asking) what is already in Trash.</summary>
+    public async Task DeleteAsync(IReadOnlyList<MessageSummary> messages)
     {
-        if (message.FolderKind == FolderKind.Trash)
+        var inTrash = messages.Where(m => m.FolderKind == FolderKind.Trash).ToList();
+        if (inTrash.Count > 0 && inTrash.Count == messages.Count)
         {
             var confirmed = await dialogs.ConfirmAsync(
                 "Delete permanently?",
-                $"\"{message.DisplaySubject}\" will be permanently deleted. This can't be undone.",
+                inTrash.Count == 1
+                    ? $"\"{inTrash[0].DisplaySubject}\" will be permanently deleted. This can't be undone."
+                    : $"{inTrash.Count} messages will be permanently deleted. This can't be undone.",
                 "Delete permanently");
             if (confirmed)
             {
-                await mail.DeletePermanentlyAsync([message.Id]);
-                toasts.Show("Message permanently deleted.");
+                await mail.DeletePermanentlyAsync(inTrash.Select(m => m.Id).ToList());
+                toasts.Show(inTrash.Count == 1 ? "Message permanently deleted." : "Messages permanently deleted.");
             }
 
             return;
         }
 
-        var moves = await mail.MoveToAsync([message.Id], FolderKind.Trash);
-        toasts.ShowWithUndo("Moved to Trash", () => mail.RestoreAsync(moves));
+        var targets = messages.Where(m => m.FolderKind != FolderKind.Trash).Select(m => m.Id).ToList();
+        var moves = await mail.MoveToAsync(targets, FolderKind.Trash);
+        toasts.ShowWithUndo(targets.Count == 1 ? "Moved to Trash" : $"Moved {targets.Count} messages to Trash", () => mail.RestoreAsync(moves));
     }
 
-    public async Task MoveToJunkAsync(MessageSummary message)
+    public Task MoveToJunkAsync(MessageSummary message) => MoveToJunkAsync([message]);
+
+    public async Task MoveToJunkAsync(IReadOnlyList<MessageSummary> messages)
     {
-        var moves = await mail.MoveToAsync([message.Id], FolderKind.Junk);
+        var moves = await mail.MoveToAsync(messages.Select(m => m.Id).ToList(), FolderKind.Junk);
         toasts.ShowWithUndo("Moved to Junk", () => mail.RestoreAsync(moves));
     }
 

@@ -53,6 +53,10 @@ public static class X
 
     public static Thickness RowPadding(bool compact) => compact ? new Thickness(10, 6, 10, 6) : new Thickness(10, 10, 10, 10);
 
+    /// <summary>Row padding; messages inside an expanded conversation are indented under it.</summary>
+    public static Thickness RowPadding(bool compact, bool threadChild) =>
+        threadChild ? new Thickness(46, 5, 10, 5) : RowPadding(compact);
+
     public static SolidColorBrush AvatarBrush(int index)
     {
         index = Math.Abs(index) % AvatarPalette.Length;

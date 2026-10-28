@@ -24,6 +24,8 @@ public sealed partial class MailListViewModel : ObservableObject
     private readonly MessageCommandService _commands;
     private readonly ToastService _toasts;
     private readonly Dictionary<Guid, MessageItemViewModel> _items = [];
+    private readonly Dictionary<Guid, MessageItemViewModel> _childItems = [];
+    private readonly HashSet<Guid> _expanded = [];
     private readonly Dictionary<MessageSectionKind, ListHeaderViewModel> _headers = [];
     private CancellationTokenSource? _searchDelay;
     private bool _refreshQueued;
@@ -191,9 +193,12 @@ public sealed partial class MailListViewModel : ObservableObject
 
         _ = Reading.ShowAsync(value?.Summary);
 
+        // Opening a conversation expands it, like Gmail.
+        if (value is { IsConversation: true, IsExpanded: false, ConversationKey: { } key } && _expanded.Add(key)) QueueRefresh();
+
         if (value is { IsUnread: true } && _settings.Current.MarkAsReadOnOpen)
         {
-            _ = _commands.SetReadAsync(value.Summary, true);
+            _ = _commands.SetReadAsync(value.IsConversation ? value.ConversationMessages : [value.Summary], true);
         }
     }
 
@@ -324,6 +329,13 @@ public sealed partial class MailListViewModel : ObservableObject
         return null;
     }
 
+    private void ToggleConversation(MessageItemViewModel head)
+    {
+        if (head.ConversationKey is not { } key) return;
+        if (!_expanded.Remove(key)) _expanded.Add(key);
+        _ = RefreshAsync();
+    }
+
     private void TogglePinnedSection(ListHeaderViewModel header)
     {
         _settings.Update(s => s.PinnedSectionCollapsed = !header.IsCollapsed);
@@ -362,6 +374,13 @@ public sealed partial class MailListViewModel : ObservableObject
         var settings = _settings.Current;
         var inScope = all.Where(m => MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk)).ToList();
 
+        // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
+        // Trash, Junk, drafts and snoozed messages only take part when they're what is being viewed.
+        var groupConversations = settings.ConversationView && Scope.FolderKind is not (FolderKind.Drafts or FolderKind.Trash or FolderKind.Junk);
+        var conversationContext = groupConversations
+            ? all.Where(m => m.FolderKind is not (FolderKind.Trash or FolderKind.Junk or FolderKind.Drafts) && !m.IsSnoozed && !_junk.IsLocallyJunk(m))
+            : null;
+
         var sections = MessageListBuilder.Build(inScope, new MessageListOptions
         {
             SearchText = SearchText,
@@ -372,12 +391,16 @@ public sealed partial class MailListViewModel : ObservableObject
             PinnedSectionCollapsed = settings.PinnedSectionCollapsed,
             Now = _clock.Now,
             FirstDayOfWeek = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek,
+            GroupConversations = groupConversations,
+            ConversationContext = conversationContext,
         });
 
         var now = _clock.Now;
         var compact = settings.Density == ListDensity.Compact;
         var desired = new List<object>();
         var seen = new HashSet<Guid>();
+        var seenChildren = new HashSet<Guid>();
+        var seenConversations = new HashSet<Guid>();
 
         foreach (var section in sections)
         {
@@ -411,13 +434,41 @@ public sealed partial class MailListViewModel : ObservableObject
                 }
                 else
                 {
-                    item = new MessageItemViewModel(message, context, _commands);
+                    item = new MessageItemViewModel(message, context, _commands, ToggleConversation);
                     _items[message.Id] = item;
                 }
 
                 item.SetCompact(compact);
                 seen.Add(message.Id);
                 desired.Add(item);
+
+                if (!section.Conversations.TryGetValue(message.Id, out var entry))
+                {
+                    item.SetConversation(null, null, null, expanded: false);
+                    continue;
+                }
+
+                var key = entry.Conversation.Key;
+                seenConversations.Add(key);
+                var expanded = _expanded.Contains(key);
+                item.SetConversation(key, entry.Conversation.Messages, entry.InView, expanded);
+                if (!expanded) continue;
+
+                // Expanded: every message in the conversation, oldest first, indented under the head row.
+                foreach (var child in entry.Conversation.Messages)
+                {
+                    var childContext = context with
+                    {
+                        Verdict = SpamClassifier.Classify(child.Spam, settings.SpamThreshold),
+                        IsLocallyJunk = _junk.IsLocallyJunk(child),
+                        IsSenderBlocked = _rules.IsBlocked(child.From),
+                    };
+                    if (_childItems.TryGetValue(child.Id, out var childItem)) childItem.Update(child, childContext);
+                    else _childItems[child.Id] = childItem = new MessageItemViewModel(child, childContext, _commands, isThreadChild: true);
+                    childItem.SetCompact(true);
+                    seenChildren.Add(child.Id);
+                    desired.Add(childItem);
+                }
             }
         }
 
@@ -425,6 +476,13 @@ public sealed partial class MailListViewModel : ObservableObject
         {
             _items.Remove(stale);
         }
+
+        foreach (var stale in _childItems.Keys.Where(id => !seenChildren.Contains(id)).ToList())
+        {
+            _childItems.Remove(stale);
+        }
+
+        _expanded.IntersectWith(seenConversations);
 
         var previous = SelectedItem;
         Entries.SyncTo(desired);

@@ -248,6 +248,13 @@
             <ToggleSwitch IsOn="{x:Bind ViewModel.NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
 
+          <controls:SettingsCard
+              Description="Group replies with the messages they answer, including your own replies from Sent, in one expandable row — like Gmail. Turn off to list every message separately."
+              Glyph="&#xE8BD;"
+              Header="Conversation view">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.ConversationView, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Pinned messages" />
           <controls:SettingsCard Description="Pinned messages stay above everything else, in every account." Glyph="&#xE718;" Header="Show the pinned section">
             <ToggleSwitch IsOn="{x:Bind ViewModel.ShowPinnedSection, Mode=TwoWay}" OffContent="Off" OnContent="On" />
