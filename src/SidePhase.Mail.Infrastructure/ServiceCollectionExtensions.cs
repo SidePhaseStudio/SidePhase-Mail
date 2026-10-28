@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SidePhase.Mail.Core.Abstractions;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Demo;
 using SidePhase.Mail.Infrastructure.Live;
@@ -42,6 +43,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MailDataSourceRouter>();
         services.AddSingleton<IMailDataSource>(sp => sp.GetRequiredService<MailDataSourceRouter>());
         services.AddSingleton<IAccountService, AccountService>();
+
+        // Outbox: Undo Send and Schedule send. Runs only while SidePhase Mail is open.
+        services.AddSingleton<IOutboxStore, SqliteOutboxStore>();
+        services.AddSingleton<IOutboxAttachmentStore, FileOutboxAttachmentStore>();
+        services.AddSingleton<IOutgoingTransport, OutboxTransport>();
+        services.AddSingleton(sp => new OutboxService(
+            sp.GetRequiredService<IOutboxStore>(),
+            sp.GetRequiredService<IOutgoingTransport>(),
+            sp.GetRequiredService<IClock>(),
+            sp.GetRequiredService<IOutboxAttachmentStore>()));
         return services;
     }
 }

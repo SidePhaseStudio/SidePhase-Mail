@@ -23,7 +23,11 @@ public sealed class MailDataChangedEventArgs(MailDataChangeKind kind, IReadOnlyC
 /// <summary>Where a message was before a move, so the move can be undone.</summary>
 public sealed record MoveRecord(Guid MessageId, Guid FromFolderId);
 
-public sealed record SendResult(bool Succeeded, string Message, Guid? SentMessageId = null);
+public sealed record SendResult(bool Succeeded, string Message, Guid? SentMessageId = null)
+{
+    /// <summary>How sure we are about the result (used by the outbox to decide whether a retry is safe).</summary>
+    public Scheduling.SendOutcome Outcome { get; init; } = Succeeded ? Scheduling.SendOutcome.Accepted : Scheduling.SendOutcome.Rejected;
+}
 
 public sealed record SyncResult(bool Succeeded, int NewMessages, string Message);
 

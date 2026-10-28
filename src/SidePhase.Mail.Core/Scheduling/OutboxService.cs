@@ -16,8 +16,10 @@ namespace SidePhase.Mail.Core.Scheduling;
 /// SidePhase Mail wasn't running is sent when the app next runs, unless it's more than
 /// <see cref="MissedSendLimit"/> late, in which case it waits for the user to decide.</para>
 /// </remarks>
-public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transport, IClock clock)
+public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transport, IClock clock, IOutboxAttachmentStore? attachments = null)
 {
+    private readonly IOutboxAttachmentStore _attachments = attachments ?? new NoOutboxAttachmentStore();
+
     public static readonly TimeSpan MissedSendLimit = TimeSpan.FromHours(24);
     public const int MaxAutomaticAttempts = 3;
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15)];
@@ -38,11 +40,13 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
         var now = clock.Now;
         if (kind == OutboxKind.Scheduled && sendAt <= now) throw new InvalidOperationException("Choose a time in the future.");
 
+        var id = Guid.NewGuid();
+        var kept = await _attachments.KeepAsync(id, draft, ct).ConfigureAwait(false);
         var item = new OutboxItem
         {
-            Id = Guid.NewGuid(),
+            Id = id,
             AccountId = draft.AccountId,
-            Draft = draft,
+            Draft = kept,
             SendAt = sendAt.ToUniversalTime(),
             Kind = kind,
             CreatedAt = now,
@@ -66,6 +70,7 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
         if (item is not { State: OutboxState.Queued }) return null;
         if (!await store.TryTransitionAsync(id, OutboxState.Queued, item with { State = OutboxState.Cancelled, UpdatedAt = clock.Now }, ct).ConfigureAwait(false)) return null;
         OnChanged();
+        // The attachment copies are kept until the item is pruned, so the reopened draft can still use them.
         return item.Draft;
     }
 
@@ -74,8 +79,11 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
             ? throw new InvalidOperationException("Choose a time in the future.")
             : UpdateQueuedAsync(id, i => i with { SendAt = sendAt.ToUniversalTime(), Kind = OutboxKind.Scheduled }, ct);
 
-    public Task<bool> UpdateDraftAsync(Guid id, DraftMessage draft, CancellationToken ct = default) =>
-        UpdateQueuedAsync(id, i => i with { Draft = draft, AccountId = draft.AccountId }, ct);
+    public async Task<bool> UpdateDraftAsync(Guid id, DraftMessage draft, CancellationToken ct = default)
+    {
+        var kept = await _attachments.KeepAsync(id, draft, ct).ConfigureAwait(false);
+        return await UpdateQueuedAsync(id, i => i with { Draft = kept, AccountId = kept.AccountId }, ct).ConfigureAwait(false);
+    }
 
     /// <summary>Sends a queued message straight away.</summary>
     public async Task<bool> SendNowAsync(Guid id, CancellationToken ct = default)
@@ -114,7 +122,9 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
         var cutoff = clock.Now - age;
         foreach (var item in await store.ListAsync(ct).ConfigureAwait(false))
         {
-            if (item.IsFinished && item.UpdatedAt < cutoff) await store.DeleteAsync(item.Id, ct).ConfigureAwait(false);
+            if (!item.IsFinished || item.UpdatedAt >= cutoff) continue;
+            await store.DeleteAsync(item.Id, ct).ConfigureAwait(false);
+            await _attachments.ReleaseAsync(item.Id, ct).ConfigureAwait(false);
         }
     }
 

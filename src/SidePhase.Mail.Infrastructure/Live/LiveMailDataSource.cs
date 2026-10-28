@@ -5,6 +5,7 @@ using MessageSummary = SidePhase.Mail.Core.Models.MessageSummary;
 using MimeKit;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Mail;
 using SidePhase.Mail.Infrastructure.Storage;
@@ -530,21 +531,26 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 return new SendResult(false, ex.Message);
             }
 
+            var tracker = new SmtpSendTracker();
             try
             {
                 var credential = await _credentials.GetAsync(account.Account.Id, account.Settings, ct: cancellationToken).ConfigureAwait(false);
                 using var smtp = await _connector.ConnectSmtpAsync(account.Settings.Smtp, credential, cancellationToken).ConfigureAwait(false);
-                await SmtpSender.SendAsync(smtp, mime, progress, cancellationToken).ConfigureAwait(false);
+                await SmtpSender.SendAsync(smtp, mime, progress, cancellationToken, tracker).ConfigureAwait(false);
                 try { await smtp.DisconnectAsync(true, CancellationToken.None).ConfigureAwait(false); } catch (Exception) { /* already sent */ }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !tracker.DataStarted)
             {
-                return new SendResult(false, "Sending was cancelled. The message was not sent.");
+                return new SendResult(false, "Sending was cancelled. The message was not sent.") { Outcome = SendOutcome.TemporaryFailure };
             }
             catch (Exception ex)
             {
+                var outcome = SmtpSender.Classify(ex, tracker.DataStarted);
                 var error = MailErrorTranslator.Describe(ex, account.Settings.Smtp.Host);
-                return new SendResult(false, "Not sent. " + error.Message);
+                var message = outcome == SendOutcome.Uncertain
+                    ? "The connection was lost just after the message was sent, so it may or may not have been delivered. Check your Sent folder before sending it again. (" + error.Message + ")"
+                    : "Not sent. " + error.Message;
+                return new SendResult(false, message) { Outcome = outcome };
             }
 
             // From here on the server has accepted the message. Filing the Sent copy and tidying the draft happen in

@@ -101,3 +101,19 @@ public interface IOutgoingTransport
 {
     Task<SendAttemptResult> SendAsync(OutboxItem item, CancellationToken ct);
 }
+
+/// <summary>
+/// Keeps private copies of a queued message's attachments, so a scheduled message can still be sent if the original
+/// files are moved or deleted in the meantime.
+/// </summary>
+public interface IOutboxAttachmentStore
+{
+    Task<DraftMessage> KeepAsync(Guid itemId, DraftMessage draft, CancellationToken ct = default);
+    Task ReleaseAsync(Guid itemId, CancellationToken ct = default);
+}
+
+public sealed class NoOutboxAttachmentStore : IOutboxAttachmentStore
+{
+    public Task<DraftMessage> KeepAsync(Guid itemId, DraftMessage draft, CancellationToken ct = default) => Task.FromResult(draft);
+    public Task ReleaseAsync(Guid itemId, CancellationToken ct = default) => Task.CompletedTask;
+}

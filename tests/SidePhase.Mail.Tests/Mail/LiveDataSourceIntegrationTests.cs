@@ -102,6 +102,35 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
     }
 
     [MailServerFact]
+    public async Task Outbox_sends_once_through_smtp_and_undo_prevents_sending()
+    {
+        var alice = await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        var bob = await _app.Accounts.AddAsync(Request(TestMailServer.User2, "Bob"));
+        var clock = new FixedClock(DateTimeOffset.UtcNow);
+        var outbox = new Core.Scheduling.OutboxService(
+            new SqliteOutboxStore(_app.Cache),
+            new OutboxTransport(new DemoMailDataSource(clock), _app.Live),
+            clock);
+        var sentSubject = "Outbox " + Guid.NewGuid().ToString("N")[..6];
+        var undoneSubject = "Undone " + Guid.NewGuid().ToString("N")[..6];
+        DraftMessage Draft(string subject) => new() { AccountId = alice.Id, To = [new EmailAddress(null, bob.EmailAddress)], Subject = subject, TextBody = "queued" };
+
+        var keep = await outbox.QueueAsync(Draft(sentSubject), clock.Now.AddSeconds(10), Core.Scheduling.OutboxKind.UndoWindow, isDemo: false);
+        var undo = await outbox.QueueAsync(Draft(undoneSubject), clock.Now.AddSeconds(10), Core.Scheduling.OutboxKind.UndoWindow, isDemo: false);
+        Assert.NotNull(await outbox.CancelAsync(undo.Id));
+
+        Assert.Equal(0, await outbox.ProcessDueAsync());
+        clock.Now = clock.Now.AddSeconds(10);
+        Assert.Equal(1, await outbox.ProcessDueAsync());
+        Assert.Equal(Core.Scheduling.OutboxState.Accepted, (await outbox.GetItemsAsync(false)).Single(i => i.Id == keep.Id).State);
+
+        await WaitForAsync(_app.Mail, m => m.Subject == sentSubject && m.AccountId == bob.Id);
+        await _app.Mail.SyncAsync();
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == sentSubject && m.AccountId == bob.Id);
+        Assert.DoesNotContain(await _app.Mail.GetMessagesAsync(), m => m.Subject == undoneSubject);
+    }
+
+    [MailServerFact]
     public async Task Search_finds_downloaded_text_and_older_mail_on_the_server()
     {
         var word = "zebra" + Guid.NewGuid().ToString("N")[..8];
