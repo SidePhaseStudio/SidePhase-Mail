@@ -131,6 +131,9 @@ public sealed class AppSettings
     /// <summary>The signature each account starts new messages with (missing = none).</summary>
     public Dictionary<Guid, Guid> DefaultSignatureIds { get; set; } = [];
 
+    /// <summary>The starter smart folders have been created (so deleting them is respected).</summary>
+    public bool SmartFoldersSeeded { get; set; }
+
     /// <summary>The old per-account signatures have been copied into the library.</summary>
     public bool SignaturesMigrated { get; set; }
 

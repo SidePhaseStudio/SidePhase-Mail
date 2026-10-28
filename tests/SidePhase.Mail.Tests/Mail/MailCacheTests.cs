@@ -371,6 +371,20 @@ public sealed class MailCacheTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Smart_folder_definitions_persist()
+    {
+        var store = new SqliteSmartFolderStore(_cache);
+        var folder = new SidePhase.Mail.Core.Organisation.SmartFolder { Id = Guid.NewGuid(), Name = "Bank", Query = "from:acme", Position = 3, CreatedAt = DateTimeOffset.UnixEpoch };
+        await store.SaveAsync(folder);
+        await store.SaveAsync(folder with { Name = "Bank mail" });
+        var saved = Assert.Single(await new SqliteSmartFolderStore(_cache).ListAsync());
+        Assert.Equal("Bank mail", saved.Name);
+        Assert.Equal("from:acme", saved.Query);
+        await store.DeleteAsync(folder.Id);
+        Assert.Empty(await store.ListAsync());
+    }
+
+    [Fact]
     public async Task Folder_upsert_keeps_sync_state()
     {
         var inbox = Folder("INBOX", FolderKind.Inbox);

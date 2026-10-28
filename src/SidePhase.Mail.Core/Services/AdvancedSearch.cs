@@ -31,6 +31,9 @@ public sealed record AdvancedSearch
     /// <summary>e.g. "5mb".</summary>
     public string LargerThan { get; init; } = string.Empty;
 
+    /// <summary>e.g. "7d" (received within the last week).</summary>
+    public string NewerThan { get; init; } = string.Empty;
+
     public string ToQuery()
     {
         var sb = new StringBuilder();
@@ -59,6 +62,7 @@ public sealed record AdvancedSearch
         Add("filename", FileName);
         Add("filetype", FileType);
         Add("larger", LargerThan);
+        Add("newer_than", NewerThan);
         return sb.ToString();
     }
 
@@ -87,6 +91,7 @@ public sealed record AdvancedSearch
                 ("filename", _) => result with { FileName = value },
                 ("filetype", _) => result with { FileType = value },
                 ("larger", _) => result with { LargerThan = value },
+                ("newer_than", _) => result with { NewerThan = value },
                 _ => Keep(result, term),
             };
         }

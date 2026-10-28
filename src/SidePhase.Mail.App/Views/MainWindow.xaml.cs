@@ -249,6 +249,12 @@ public sealed partial class MainWindow : Window
 
     private void OnNavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
+        if (args.InvokedItemContainer?.Tag is NavItemViewModel { PageTag: "new-smart-folder" })
+        {
+            _ = App.GetService<SmartFolderEditor>().EditAsync(null);
+            return;
+        }
+
         // Re-invoking the selected mailbox while in Settings returns to it.
         if (args.InvokedItemContainer?.Tag is NavItemViewModel { Scope: not null } item
             && ReferenceEquals(sender.SelectedItem, args.InvokedItemContainer)
@@ -331,7 +337,8 @@ public sealed partial class MainWindow : Window
         {
             Tag = model,
             Icon = icon,
-            SelectsOnInvoked = model.Scope is not null || model.PageTag is not null,
+            // "New smart folder…" is an action, so it isn't selected when clicked.
+            SelectsOnInvoked = model.Scope is not null || model.PageTag is "outbox",
         };
 
         if (model.Kind == NavItemKind.Account)
@@ -359,6 +366,19 @@ public sealed partial class MainWindow : Window
         if (model.Scope is { Kind: Core.Models.MailboxScopeKind.AccountFolder, FolderId: { } folderId })
         {
             container.ContextFlyout = CreateFolderMenu(folderId);
+        }
+        else if (model.SmartFolder is { } smart)
+        {
+            var editor = App.GetService<SmartFolderEditor>();
+            var edit = new MenuFlyoutItem { Text = "Edit smart folder…", Icon = new FontIcon { Glyph = Helpers.Glyphs.Edit } };
+            edit.Click += async (_, _) => await editor.EditAsync(smart);
+            var delete = new MenuFlyoutItem { Text = "Delete smart folder", Icon = new FontIcon { Glyph = Helpers.Glyphs.Delete } };
+            delete.Click += async (_, _) => await editor.DeleteAsync(smart);
+            var menu = new MenuFlyout();
+            menu.Items.Add(edit);
+            menu.Items.Add(delete);
+            container.ContextFlyout = menu;
+            ToolTipService.SetToolTip(container, $"{smart.Name} · {smart.Query}");
         }
 
         if (model.Children is { Count: > 0 } children)

@@ -25,6 +25,9 @@ public enum MailboxScopeKind
 
     /// <summary>Messages with a follow-up reminder.</summary>
     FollowUps,
+
+    /// <summary>A saved search (smart folder). Matching needs the folder's query, so lists handle it specially.</summary>
+    SmartFolder,
 }
 
 /// <summary>
@@ -44,6 +47,9 @@ public sealed record MailboxScope(
     public static MailboxScope FollowUps { get; } = new(MailboxScopeKind.FollowUps);
 
     public static MailboxScope Unified(FolderKind kind) => new(MailboxScopeKind.UnifiedFolder, kind);
+
+    /// <summary>A smart folder, identified by its id (carried in <see cref="FolderId"/>).</summary>
+    public static MailboxScope ForSmartFolder(Guid smartFolderId) => new(MailboxScopeKind.SmartFolder, FolderId: smartFolderId);
 
     public static MailboxScope ForFolder(MailFolder folder) =>
         new(MailboxScopeKind.AccountFolder, folder.Kind, folder.AccountId, folder.Id);

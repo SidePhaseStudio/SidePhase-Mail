@@ -133,3 +133,86 @@ public class AdvancedSearchFormTests
         Assert.Equal("category:finance hello is:followup", form.ToQuery());
     }
 }
+
+public class SmartFolderTests
+{
+    private static MessageSummary M(FolderKind kind = FolderKind.Inbox, bool read = false, string from = "bank@acme.example", long size = 100, DateTimeOffset? date = null) => new()
+    {
+        Id = Guid.NewGuid(),
+        AccountId = Guid.NewGuid(),
+        FolderId = Guid.NewGuid(),
+        FolderKind = kind,
+        From = new EmailAddress(null, from),
+        Subject = "Statement",
+        Date = date ?? DateTimeOffset.UtcNow,
+        IsRead = read,
+        Size = size,
+    };
+
+    private static Func<MessageSummary, bool> Filter(string query) =>
+        SidePhase.Mail.Core.Organisation.SmartFolderFilter.Build(
+            new SidePhase.Mail.Core.Organisation.SmartFolder { Id = Guid.NewGuid(), Name = "x", Query = query },
+            new SearchContext(),
+            _ => false);
+
+    [Fact]
+    public void Smart_folders_filter_without_touching_junk_trash_or_snoozed_mail()
+    {
+        var f = Filter("from:acme.example is:unread");
+        Assert.True(f(M()));
+        Assert.False(f(M(read: true)));
+        Assert.False(f(M(from: "friend@example.test")));
+        Assert.False(f(M(kind: FolderKind.Junk)));
+        Assert.False(f(M(kind: FolderKind.Trash)));
+        Assert.False(f(M() with { SnoozedUntil = DateTimeOffset.UtcNow.AddHours(1) }));
+        Assert.True(Filter("in:junk from:acme")(M(kind: FolderKind.Junk)));
+    }
+
+    [Fact]
+    public void Built_in_definitions_work()
+    {
+        Assert.True(Filter("larger:5mb")(M(size: 8L * 1024 * 1024)));
+        Assert.False(Filter("larger:5mb")(M(size: 1024)));
+        Assert.True(Filter("in:inbox newer_than:3d")(M()));
+        Assert.False(Filter("in:inbox newer_than:3d")(M(date: DateTimeOffset.UtcNow.AddDays(-10))));
+    }
+
+    [Fact]
+    public async Task Defaults_are_created_once_and_deleting_them_is_respected()
+    {
+        var store = new MemorySmartFolderStore();
+        var settings = new SidePhase.Mail.Core.Settings.SettingsService(new InMemorySettingsStore());
+        await settings.LoadAsync();
+        var service = new SidePhase.Mail.Core.Organisation.SmartFolderService(store, settings, new FixedClock(DateTimeOffset.UtcNow));
+
+        var first = await service.ListAsync();
+        Assert.Equal(SidePhase.Mail.Core.Organisation.SmartFolderService.Defaults.Count, first.Count);
+        await service.DeleteAsync(first[0].Id);
+        Assert.Equal(first.Count - 1, (await service.ListAsync()).Count);
+
+        var custom = await service.SaveAsync(new SidePhase.Mail.Core.Organisation.SmartFolder { Id = Guid.NewGuid(), Name = "  Bank  ", Query = "from:acme" });
+        Assert.Equal("Bank", custom.Name);
+        Assert.Equal(custom.Id, (await service.ListAsync())[^1].Id);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SaveAsync(custom with { Query = " " }));
+    }
+
+    private sealed class MemorySmartFolderStore : SidePhase.Mail.Core.Organisation.ISmartFolderStore
+    {
+        private readonly Dictionary<Guid, SidePhase.Mail.Core.Organisation.SmartFolder> _items = [];
+
+        public Task<IReadOnlyList<SidePhase.Mail.Core.Organisation.SmartFolder>> ListAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SidePhase.Mail.Core.Organisation.SmartFolder>>(_items.Values.ToList());
+
+        public Task SaveAsync(SidePhase.Mail.Core.Organisation.SmartFolder folder, CancellationToken ct = default)
+        {
+            _items[folder.Id] = folder;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(Guid id, CancellationToken ct = default)
+        {
+            _items.Remove(id);
+            return Task.CompletedTask;
+        }
+    }
+}

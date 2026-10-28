@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Composition;
 using SidePhase.Mail.Core.Contacts;
+using SidePhase.Mail.Core.Organisation;
 using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Demo;
@@ -59,6 +60,10 @@ public static class ServiceCollectionExtensions
         // Address book and recent recipients (this PC only).
         services.AddSingleton<IContactStore, SqliteContactStore>();
         services.AddSingleton<ContactService>();
+
+        // Smart folders (saved searches; never move mail).
+        services.AddSingleton<ISmartFolderStore, SqliteSmartFolderStore>();
+        services.AddSingleton<SmartFolderService>();
 
         // Crash recovery for messages being written.
         services.AddSingleton<IDraftRecoveryStore, FileDraftRecoveryStore>();

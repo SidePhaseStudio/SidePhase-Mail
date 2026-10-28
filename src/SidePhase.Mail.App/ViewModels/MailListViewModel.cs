@@ -6,6 +6,7 @@ using SidePhase.Mail.App.Services;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Collections;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Organisation;
 using SidePhase.Mail.Core.Services;
 using SidePhase.Mail.Core.Settings;
 using SidePhase.Mail.Core.Spam;
@@ -23,6 +24,7 @@ public sealed partial class MailListViewModel : ObservableObject
     private readonly IUiDispatcher _ui;
     private readonly MessageCommandService _commands;
     private readonly ToastService _toasts;
+    private readonly SmartFolderService _smartFolders;
     private readonly Dictionary<Guid, MessageItemViewModel> _items = [];
     private readonly Dictionary<Guid, MessageItemViewModel> _childItems = [];
     private readonly HashSet<Guid> _expanded = [];
@@ -45,8 +47,11 @@ public sealed partial class MailListViewModel : ObservableObject
         IUiDispatcher ui,
         MessageCommandService commands,
         ToastService toasts,
-        ReadingPaneViewModel reading)
+        ReadingPaneViewModel reading,
+        SmartFolderService smartFolders)
     {
+        _smartFolders = smartFolders;
+        _smartFolders.Changed += (_, _) => QueueRefresh();
         _mail = mail;
         _settings = settings;
         _rules = rules;
@@ -202,7 +207,7 @@ public sealed partial class MailListViewModel : ObservableObject
             _searchVersion++;
             _serverMatches = new HashSet<Guid>();
             HasServerResults = false;
-            SearchStatus = IsSearchActive ? "Searching messages stored on this PC" : string.Empty;
+            SearchStatus = SearchStatusText();
         }
 
         OnPropertyChanged(nameof(CanSearchServer));
@@ -424,12 +429,45 @@ public sealed partial class MailListViewModel : ObservableObject
             AccountNames = accounts.Select(a => a.DisplayName).ToList();
         }
 
+        // A smart folder is a saved search: look up its words in the local index, then filter.
+        Func<MessageSummary, bool>? smartFilter = null;
+        if (Scope.Kind == MailboxScopeKind.SmartFolder)
+        {
+            var smart = (await _smartFolders.ListAsync()).FirstOrDefault(f => f.Id == Scope.FolderId);
+            if (smart is not null)
+            {
+                var terms = SmartFolderFilter.IndexTerms(smart);
+                IReadOnlyDictionary<string, IReadOnlySet<Guid>> smartMatches = new Dictionary<string, IReadOnlySet<Guid>>();
+                if (terms.Count > 0)
+                {
+                    try
+                    {
+                        smartMatches = await _mail.SearchDownloadedTextAsync(terms);
+                    }
+                    catch (Exception)
+                    {
+                        // Headers and previews are still searched.
+                    }
+                }
+
+                smartFilter = SmartFolderFilter.Build(smart, new SearchContext
+                {
+                    Now = _clock.Now,
+                    BodyMatches = smartMatches,
+                    AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress),
+                    FolderNames = _folderNames,
+                }, _junk.IsLocallyJunk);
+            }
+
+            if (version != _refreshVersion) return;
+        }
+
         // "All mail" searches every account and folder; Junk and Trash only when asked for with in:.
         var searchEverywhere = IsSearchActive && SearchAllMail;
         var asksForJunkOrTrash = searchEverywhere && MessageSearch.Parse(SearchText).Any(t => t.Operator == "in");
         var inScope = all.Where(m => searchEverywhere
                 ? !m.IsSnoozed && (asksForJunkOrTrash || m.FolderKind is not (FolderKind.Junk or FolderKind.Trash))
-                : MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk))
+                : smartFilter?.Invoke(m) ?? MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk))
             .ToList();
 
         // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
@@ -590,6 +628,7 @@ public sealed partial class MailListViewModel : ObservableObject
             MailboxScopeKind.Pinned => ("No pinned messages", "Right-click any message and choose \"Pin to top\" to keep it here, above everything else."),
             MailboxScopeKind.Favourites => ("No favourites yet", "Star a message to add it to your favourites."),
             MailboxScopeKind.Snoozed => ("Nothing snoozed", "Right-click a message and choose Snooze to hide it until later. Snoozing is kept on this PC only and isn't shared with other mail apps."),
+            MailboxScopeKind.SmartFolder => ("Nothing here yet", "No messages stored on this PC match this smart folder. It updates by itself as mail arrives."),
             MailboxScopeKind.FollowUps => ("No follow-ups", "Right-click a message and choose \"Remind me to follow up\". You'll get a Windows notification when it's due."),
             _ when Scope.FolderKind == FolderKind.Junk => ("No junk", "Nice and tidy. Messages flagged by SpamAssassin or from blocked senders appear here."),
             _ => ("All caught up", $"There are no messages in {Title}."),

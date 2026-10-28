@@ -149,6 +149,7 @@ public partial class App : Application
         services.AddSingleton<DesktopNotificationService>();
         services.AddSingleton<NewMailCoordinator>();
         services.AddSingleton<TimedEventsWatcher>();
+        services.AddSingleton<SmartFolderEditor>();
 
         // View models
         services.AddSingleton<ShellViewModel>();
