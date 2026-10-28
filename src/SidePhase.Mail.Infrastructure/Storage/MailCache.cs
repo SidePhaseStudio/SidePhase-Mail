@@ -198,7 +198,7 @@ public sealed class MailCache(MailDatabase database)
         SELECT m.id, m.account_id, m.folder_id, f.kind, m.message_id_header, m.from_name, m.from_address, m.to_json, m.cc_json,
                m.subject, m.preview, m.date, m.is_read, m.is_starred, m.has_attachments, m.spam_json,
                p.pinned_at, CASE WHEN ls.identity_key IS NULL THEN 0 ELSE 1 END,
-               sz.until_utc, rm.due_utc, m.in_reply_to, m.references_json
+               sz.until_utc, rm.due_utc, m.in_reply_to, m.references_json, m.size
         FROM messages m
         JOIN folders f ON f.id = m.folder_id
         LEFT JOIN pins p ON p.account_id = m.account_id AND p.identity_key = m.identity_key
@@ -253,6 +253,7 @@ public sealed class MailCache(MailDatabase database)
                 SnoozedUntil = r.IsDBNull(18) ? null : DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(18)),
                 FollowUpAt = r.IsDBNull(19) ? null : DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(19)),
                 References = ReadReferences(r.IsDBNull(20) ? null : r.GetString(20), r.IsDBNull(21) ? null : r.GetString(21)),
+                Size = r.GetInt64(22),
             });
         }
 

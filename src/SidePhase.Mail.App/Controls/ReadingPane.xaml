@@ -259,6 +259,51 @@
 
       <!-- Banners -->
       <StackPanel Grid.Row="2" Padding="24,12,24,0" Spacing="8">
+        <!-- Conversation: the other messages in this thread; choose one to read or reply to it. -->
+        <Expander
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
+            CornerRadius="8"
+            Visibility="{x:Bind ViewModel.HasThread, Mode=OneWay}">
+          <Expander.Header>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <FontIcon FontSize="14" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="&#xE8BD;" />
+              <TextBlock VerticalAlignment="Center" FontSize="13" Text="{x:Bind ViewModel.ThreadSummary, Mode=OneWay}" />
+            </StackPanel>
+          </Expander.Header>
+          <ItemsRepeater ItemsSource="{x:Bind ViewModel.ThreadItems}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="2" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+              <DataTemplate x:DataType="vm:ThreadEntryViewModel">
+                <Button
+                    Padding="10,6"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    AutomationProperties.Name="{x:Bind AutomationName}"
+                    Command="{x:Bind OpenCommand}"
+                    Opacity="{x:Bind RowOpacity}"
+                    Style="{StaticResource SpSubtleButtonStyle}">
+                  <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="140" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{ThemeResource SpAccentBrush}" Visibility="{x:Bind IsUnread}" />
+                    <TextBlock Grid.Column="1" FontSize="12.5" FontWeight="{x:Bind h:X.Weight(IsCurrent)}" MaxLines="1" Text="{x:Bind Sender}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" FontSize="12" Foreground="{ThemeResource SpTextTertiaryBrush}" MaxLines="1" Text="{x:Bind Preview}" TextTrimming="CharacterEllipsis" />
+                    <FontIcon Grid.Column="3" FontSize="11" Foreground="{ThemeResource SpTextSecondaryBrush}" Glyph="&#xE723;" Visibility="{x:Bind HasAttachments}" />
+                    <TextBlock Grid.Column="4" FontSize="11.5" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind DateText}" />
+                  </Grid>
+                </Button>
+              </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+          </ItemsRepeater>
+        </Expander>
         <Expander
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Stretch"

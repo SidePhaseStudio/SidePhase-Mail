@@ -66,6 +66,7 @@ public sealed partial class MailListViewModel : ObservableObject
         SearchStatus = string.Empty;
 
         _mail.DataChanged += (_, _) => QueueRefresh();
+        Reading.ThreadMessageRequested += async (_, id) => await OpenInConversationAsync(id);
         _rules.RulesChanged += (_, _) => QueueRefresh();
         _settings.SettingsChanged += (_, _) => QueueRefresh();
     }
@@ -191,7 +192,7 @@ public sealed partial class MailListViewModel : ObservableObject
             _lastSelectedIndex = Entries.IndexOf(value);
         }
 
-        _ = Reading.ShowAsync(value?.Summary);
+        _ = Reading.ShowAsync(value?.Summary, value?.ThreadMessages);
 
         // Opening a conversation expands it, like Gmail.
         if (value is { IsConversation: true, IsExpanded: false, ConversationKey: { } key } && _expanded.Add(key)) QueueRefresh();
@@ -327,6 +328,16 @@ public sealed partial class MailListViewModel : ObservableObject
         }
 
         return null;
+    }
+
+    /// <summary>Opens a message from the reading pane's conversation list, expanding its conversation in the list.</summary>
+    private async Task OpenInConversationAsync(Guid messageId)
+    {
+        var head = Entries.OfType<MessageItemViewModel>().FirstOrDefault(i => !i.IsThreadChild && i.ConversationMessages.Any(m => m.Id == messageId));
+        if (head?.ConversationKey is { } key && _expanded.Add(key)) await RefreshAsync();
+        var target = Entries.OfType<MessageItemViewModel>().FirstOrDefault(i => i.IsThreadChild && i.Id == messageId)
+            ?? Entries.OfType<MessageItemViewModel>().FirstOrDefault(i => i.Id == messageId);
+        if (target is not null) SelectedItem = target;
     }
 
     private void ToggleConversation(MessageItemViewModel head)
@@ -466,6 +477,7 @@ public sealed partial class MailListViewModel : ObservableObject
                     if (_childItems.TryGetValue(child.Id, out var childItem)) childItem.Update(child, childContext);
                     else _childItems[child.Id] = childItem = new MessageItemViewModel(child, childContext, _commands, isThreadChild: true);
                     childItem.SetCompact(true);
+                    childItem.SetThread(entry.Conversation.Messages);
                     seenChildren.Add(child.Id);
                     desired.Add(childItem);
                 }

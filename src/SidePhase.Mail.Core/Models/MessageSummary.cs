@@ -35,6 +35,9 @@ public sealed record MessageSummary
     public DateTimeOffset? PinnedAt { get; init; }
     public bool HasAttachments { get; init; }
 
+    /// <summary>Size of the whole message on the server in bytes (0 if unknown).</summary>
+    public long Size { get; init; }
+
     /// <summary>When a snoozed message returns to its folder. Null when not snoozed (local to this PC).</summary>
     public DateTimeOffset? SnoozedUntil { get; init; }
 

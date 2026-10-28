@@ -119,10 +119,22 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     public string JunkLabel => IsInJunk ? "Not junk" : "Move to Junk";
     public string JunkGlyph => IsInJunk ? Glyphs.Accept : Glyphs.Junk;
 
-    public async Task ShowAsync(MessageSummary? message)
+    /// <summary>The other messages in the open message's conversation (conversation view), oldest first.</summary>
+    public ObservableCollection<ThreadEntryViewModel> ThreadItems { get; } = [];
+
+    [ObservableProperty] public partial bool HasThread { get; set; }
+    [ObservableProperty] public partial string ThreadSummary { get; set; } = string.Empty;
+
+    /// <summary>Raised when a message in the conversation list is chosen, so the message list can select it.</summary>
+    public event EventHandler<Guid>? ThreadMessageRequested;
+
+    public Task ShowAsync(MessageSummary? message) => ShowAsync(message, null);
+
+    public async Task ShowAsync(MessageSummary? message, IReadOnlyList<MessageSummary>? thread)
     {
         _loadCts?.Cancel();
         _loadCts = null;
+        UpdateThread(message, thread);
 
         if (message is null)
         {
@@ -189,6 +201,28 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         if (Message is null || Message.Id != message.Id || Message == message) return;
         Message = message;
         _ = ApplyHeaderAsync(message);
+    }
+
+    private void UpdateThread(MessageSummary? message, IReadOnlyList<MessageSummary>? thread)
+    {
+        ThreadItems.Clear();
+        if (message is null || thread is not { Count: > 1 })
+        {
+            HasThread = false;
+            return;
+        }
+
+        var now = _clock.Now;
+        foreach (var m in thread)
+        {
+            ThreadItems.Add(new ThreadEntryViewModel(m, m.Id == message.Id, now, id => ThreadMessageRequested?.Invoke(this, id)));
+        }
+
+        var people = thread.Select(m => m.From.Address).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var attachments = thread.Count(m => m.HasAttachments);
+        ThreadSummary = $"{thread.Count} messages in this conversation · {people} {(people == 1 ? "person" : "people")}"
+            + (attachments > 0 ? $" · {attachments} with attachments" : string.Empty);
+        HasThread = true;
     }
 
     private void RenderBody()
@@ -406,4 +440,24 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     }
 
     public Task ComposeToAsync(EmailAddress to) => _commands.ComposeNewAsync(Message?.AccountId, to);
+}
+
+/// <summary>One message in the reading pane's conversation list.</summary>
+public sealed partial class ThreadEntryViewModel(MessageSummary message, bool isCurrent, DateTimeOffset now, Action<Guid> open)
+{
+    public MessageSummary Message { get; } = message;
+    public bool IsCurrent { get; } = isCurrent;
+    public bool IsUnread => !Message.IsRead;
+    public bool HasAttachments => Message.HasAttachments;
+    public string Sender => Message.FolderKind is FolderKind.Sent or FolderKind.Drafts ? "You" : Message.From.DisplayName;
+    public string DateText { get; } = DateDisplayFormatter.ForList(message.Date, now);
+    public string Preview => Message.Preview;
+    public double RowOpacity => IsCurrent ? 1.0 : 0.82;
+    public string AutomationName => $"{Sender}, {DateText}{(IsCurrent ? ", open" : string.Empty)}{(IsUnread ? ", unread" : string.Empty)}";
+
+    [RelayCommand]
+    private void Open()
+    {
+        if (!IsCurrent) open(Message.Id);
+    }
 }

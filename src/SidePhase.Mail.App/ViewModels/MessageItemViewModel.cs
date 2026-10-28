@@ -44,6 +44,13 @@ public sealed partial class MessageItemViewModel : ObservableObject
     /// <summary>Messages in the conversation, oldest first (including your own replies from Sent).</summary>
     public IReadOnlyList<MessageSummary> ConversationMessages { get; private set; } = [];
 
+    /// <summary>The conversation this row belongs to (head or expanded child), for the reading pane.</summary>
+    public IReadOnlyList<MessageSummary> ThreadMessages => IsThreadChild ? _thread : ConversationMessages;
+
+    private IReadOnlyList<MessageSummary> _thread = [];
+
+    public void SetThread(IReadOnlyList<MessageSummary> thread) => _thread = thread;
+
     public int ConversationCount => ConversationMessages.Count;
     public bool IsConversation => ConversationCount > 1;
     public string ConversationCountText => ConversationCount.ToString(CultureInfo.CurrentCulture);
