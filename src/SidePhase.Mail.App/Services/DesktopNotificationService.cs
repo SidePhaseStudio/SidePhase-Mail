@@ -110,6 +110,36 @@ public sealed class DesktopNotificationService : IDisposable
         }
     }
 
+    /// <summary>Shows a "follow up" reminder for each message. Returns false if nothing could be shown.</summary>
+    public bool ShowFollowUps(IReadOnlyList<MessageSummary> messages)
+    {
+        if (messages.Count == 0 || !IsAvailable) return false;
+        try
+        {
+            foreach (var message in messages.Take(5))
+            {
+                var notification = new AppNotificationBuilder()
+                    .AddArgument(MessageIdArgument, message.Id.ToString())
+                    .AddText("Time to follow up")
+                    .AddText(message.DisplaySubject)
+                    .AddText(message.FolderKind == FolderKind.Sent
+                        ? "To " + string.Join(", ", message.To.Select(a => a.DisplayName))
+                        : "From " + message.From.DisplayName)
+                    .BuildNotification();
+                notification.Tag = "f" + message.Id.ToString("N")[..15];
+                notification.Group = "followups";
+                AppNotificationManager.Default.Show(notification);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Log("showing a reminder failed", ex);
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         if (!_registered) return;

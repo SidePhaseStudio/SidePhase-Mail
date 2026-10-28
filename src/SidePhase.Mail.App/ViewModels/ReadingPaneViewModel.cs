@@ -85,8 +85,16 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [ObservableProperty] public partial string AccountColor { get; set; }
     [ObservableProperty] public partial string FolderName { get; set; }
     [ObservableProperty] public partial bool HasAttachments { get; set; }
+    [ObservableProperty] public partial bool HasSeveralAttachments { get; set; }
+    [ObservableProperty] public partial string AttachmentsSummary { get; set; } = string.Empty;
     [ObservableProperty] public partial bool ShowRemoteContentBanner { get; set; }
     [ObservableProperty] public partial bool ShowSpamBanner { get; set; }
+    [ObservableProperty] public partial bool ShowFollowUpBanner { get; set; }
+    [ObservableProperty] public partial bool FollowUpIsOverdue { get; set; }
+    [ObservableProperty] public partial string FollowUpText { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool ShowSnoozeBanner { get; set; }
+    [ObservableProperty] public partial string SnoozeText { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool IsSnoozed { get; set; }
     [ObservableProperty] public partial bool SpamIsSevere { get; set; }
     [ObservableProperty] public partial string SpamTitle { get; set; }
     [ObservableProperty] public partial string SpamDetail { get; set; }
@@ -133,6 +141,8 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         Content = null;
         Attachments.Clear();
         HasAttachments = message.HasAttachments;
+        HasSeveralAttachments = false;
+        AttachmentsSummary = string.Empty;
         ShowRemoteContentBanner = false;
         IsLoading = true;
 
@@ -142,13 +152,25 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             if (cts.IsCancellationRequested) return;
             _body = body;
             var index = 0;
-            foreach (var attachment in body?.Attachments ?? [])
+            var all = body?.Attachments ?? [];
+            foreach (var attachment in all)
             {
                 var attachmentIndex = index++;
-                Attachments.Add(new AttachmentItemViewModel(attachment, a => _ = _commands.SaveAttachmentAsync(message, attachmentIndex, a)));
+                Attachments.Add(new AttachmentItemViewModel(
+                    attachment,
+                    a => _commands.PreviewAttachmentAsync(message, attachmentIndex, a),
+                    a => _commands.SaveAttachmentAsync(message, attachmentIndex, a),
+                    () => _commands.SaveAllAttachmentsAsync(message, all)));
             }
 
             HasAttachments = Attachments.Count > 0;
+            HasSeveralAttachments = Attachments.Count > 1;
+            AttachmentsSummary = Attachments.Count switch
+            {
+                0 => string.Empty,
+                1 => $"1 attachment · {FileSizeFormatter.Format(all.Sum(a => a.SizeBytes))}",
+                var n => $"{n} attachments · {FileSizeFormatter.Format(all.Sum(a => a.SizeBytes))}",
+            };
             RenderBody();
         }
         catch (OperationCanceledException)
@@ -207,6 +229,23 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
 
         FolderName = _junk.IsLocallyJunk(m) ? "Junk (filtered)" : _folders.TryGetValue(m.FolderId, out var f) ? f.Name : string.Empty;
         UpdateSpamBanner(m);
+        UpdateReminderBanners(m);
+    }
+
+    private void UpdateReminderBanners(MessageSummary m)
+    {
+        var now = _clock.Now;
+        IsSnoozed = m.SnoozedUntil is not null;
+        ShowSnoozeBanner = m.SnoozedUntil is not null;
+        SnoozeText = m.SnoozedUntil is { } until
+            ? $"Snoozed until {_commands.Describe(until)}. It returns to its folder then."
+            : string.Empty;
+
+        ShowFollowUpBanner = m.FollowUpAt is not null;
+        FollowUpIsOverdue = m.FollowUpAt is { } due && due <= now;
+        FollowUpText = m.FollowUpAt is { } at
+            ? FollowUpIsOverdue ? $"Follow-up overdue (was due {_commands.Describe(at)})." : $"Follow up {_commands.Describe(at)}."
+            : string.Empty;
     }
 
     private void UpdateSpamBanner(MessageSummary m)
@@ -328,6 +367,14 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         Message is null ? Task.CompletedTask
         : IsInJunk ? _commands.NotJunkAsync(Message)
         : _commands.MoveToJunkAsync(Message);
+
+    /// <param name="choice">A QuickTime name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task SnoozeAsync(string choice) => Message is null ? Task.CompletedTask : _commands.SnoozeAsync(Message, choice);
+
+    /// <param name="choice">A QuickTime name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task FollowUpAsync(string choice) => Message is null ? Task.CompletedTask : _commands.FollowUpAsync(Message, choice);
 
     [RelayCommand]
     private void ShowRemoteContent()

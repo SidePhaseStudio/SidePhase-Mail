@@ -9,7 +9,7 @@
 
   <Grid
       x:Name="RootGrid"
-      Padding="{x:Bind h:X.RowPadding(Item.IsCompact), Mode=OneWay}"
+      Padding="{x:Bind h:X.RowPadding(Item.IsCompact, Item.IsThreadChild), Mode=OneWay}"
       Background="Transparent"
       ColumnSpacing="12"
       PointerCanceled="OnPointerExited"
@@ -54,6 +54,38 @@
             <FontIcon Glyph="{x:Bind Item.ReadGlyph, Mode=OneWay}" />
           </MenuFlyoutItem.Icon>
         </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutSubItem Text="Snooze">
+          <MenuFlyoutSubItem.Icon>
+            <FontIcon Glyph="&#xE823;" />
+          </MenuFlyoutSubItem.Icon>
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="LaterToday" Text="Later today" />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="TomorrowMorning" Text="Tomorrow morning" />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="ThisWeekend" Text="This weekend" />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="NextWeek" Text="Next week" />
+          <MenuFlyoutSeparator />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="Custom" Text="Choose date and time…" />
+          <MenuFlyoutItem
+              Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}"
+              CommandParameter="Clear"
+              Text="Unsnooze"
+              Visibility="{x:Bind Item.IsSnoozed, Mode=OneWay}" />
+        </MenuFlyoutSubItem>
+        <MenuFlyoutSubItem Text="Remind me to follow up">
+          <MenuFlyoutSubItem.Icon>
+            <FontIcon Glyph="&#xE7C1;" />
+          </MenuFlyoutSubItem.Icon>
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="Tomorrow" Text="Tomorrow" />
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="InThreeDays" Text="In 3 days" />
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="NextWeek" Text="Next week" />
+          <MenuFlyoutSeparator />
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="Custom" Text="Custom…" />
+          <MenuFlyoutItem
+              Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}"
+              CommandParameter="Clear"
+              Text="Mark follow-up done"
+              Visibility="{x:Bind Item.HasFollowUp, Mode=OneWay}" />
+        </MenuFlyoutSubItem>
         <MenuFlyoutSeparator />
         <MenuFlyoutItem Command="{x:Bind Item.ArchiveCommand, Mode=OneWay}" Text="Archive">
           <MenuFlyoutItem.Icon>
@@ -143,6 +175,17 @@
             Orientation="Horizontal"
             Opacity="{x:Bind h:X.HideIf(IsHovered), Mode=OneWay}"
             Spacing="6">
+          <Border
+              Padding="5,0,5,1"
+              VerticalAlignment="Center"
+              Background="{ThemeResource SpCardBrush}"
+              BorderBrush="{ThemeResource SpStrokeBrush}"
+              BorderThickness="1"
+              CornerRadius="4"
+              ToolTipService.ToolTip="Messages in this conversation"
+              Visibility="{x:Bind Item.IsConversation, Mode=OneWay}">
+            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource SpTextSecondaryBrush}" Text="{x:Bind Item.ConversationCountText, Mode=OneWay}" />
+          </Border>
           <FontIcon
               FontSize="12"
               Foreground="{ThemeResource SpTextSecondaryBrush}"
@@ -153,6 +196,24 @@
               Foreground="{ThemeResource SpAccentTextBrush}"
               Glyph="&#xE840;"
               Visibility="{x:Bind Item.IsPinned, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpTextSecondaryBrush}"
+              Glyph="&#xE823;"
+              ToolTipService.ToolTip="{x:Bind Item.SnoozeTooltip, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsSnoozed, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpWarningBrush}"
+              Glyph="&#xE7C1;"
+              ToolTipService.ToolTip="{x:Bind Item.FollowUpTooltip, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsFollowUpPending, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpDangerBrush}"
+              Glyph="&#xE7C1;"
+              ToolTipService.ToolTip="{x:Bind Item.FollowUpTooltip, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsFollowUpOverdue, Mode=OneWay}" />
         </StackPanel>
 
         <Grid Grid.Column="3" Opacity="{x:Bind h:X.HideIf(IsHovered), Mode=OneWay}">
@@ -226,14 +287,32 @@
         </StackPanel>
       </Grid>
 
-      <!-- Line 2: subject, tags, star -->
+      <!-- Line 2: subject, tags, conversation toggle, star -->
       <Grid Grid.Row="1" ColumnSpacing="6">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
+
+        <Button
+            Grid.Column="3"
+            Width="24"
+            Height="22"
+            MinWidth="24"
+            MinHeight="22"
+            Margin="0,-2,0,-2"
+            Padding="0"
+            AutomationProperties.Name="{x:Bind Item.ExpandTooltip, Mode=OneWay}"
+            Command="{x:Bind Item.ToggleConversationCommand, Mode=OneWay}"
+            IsTabStop="False"
+            Style="{StaticResource SpQuickActionButtonStyle}"
+            ToolTipService.ToolTip="{x:Bind Item.ExpandTooltip, Mode=OneWay}"
+            Visibility="{x:Bind Item.IsConversation, Mode=OneWay}">
+          <FontIcon FontSize="11" Glyph="{x:Bind Item.ExpandGlyph, Mode=OneWay}" />
+        </Button>
 
         <Border
             Padding="6,0,6,1"
@@ -273,7 +352,7 @@
         </Border>
 
         <Button
-            Grid.Column="3"
+            Grid.Column="4"
             Width="24"
             Height="22"
             MinWidth="24"

@@ -5,6 +5,7 @@ using SidePhase.Mail.App.Helpers;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.Core.Formatting;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Core.Spam;
 
 namespace SidePhase.Mail.App.ViewModels;
@@ -17,12 +18,68 @@ public sealed record MessageDisplayContext(DateTimeOffset Now, SpamVerdict Verdi
 public sealed partial class MessageItemViewModel : ObservableObject
 {
     private readonly MessageCommandService _commands;
+    private readonly Action<MessageItemViewModel>? _toggleConversation;
+    private IReadOnlyList<MessageSummary> _inView = [];
 
-    public MessageItemViewModel(MessageSummary summary, MessageDisplayContext context, MessageCommandService commands)
+    public MessageItemViewModel(
+        MessageSummary summary,
+        MessageDisplayContext context,
+        MessageCommandService commands,
+        Action<MessageItemViewModel>? toggleConversation = null,
+        bool isThreadChild = false)
     {
         _commands = commands;
+        _toggleConversation = toggleConversation;
+        IsThreadChild = isThreadChild;
         Summary = summary;
         Apply(summary, context);
+    }
+
+    /// <summary>A message shown inside an expanded conversation (indented, compact).</summary>
+    public bool IsThreadChild { get; }
+
+    /// <summary>The conversation this row heads (conversation view), or null for a single message.</summary>
+    public Guid? ConversationKey { get; private set; }
+
+    /// <summary>Messages in the conversation, oldest first (including your own replies from Sent).</summary>
+    public IReadOnlyList<MessageSummary> ConversationMessages { get; private set; } = [];
+
+    public int ConversationCount => ConversationMessages.Count;
+    public bool IsConversation => ConversationCount > 1;
+    public string ConversationCountText => ConversationCount.ToString(CultureInfo.CurrentCulture);
+    public bool IsExpanded { get; private set; }
+    public string ExpandGlyph => IsExpanded ? "\uE70E" : "\uE70D";
+    public string ExpandTooltip => IsExpanded ? "Collapse conversation" : $"Show all {ConversationCount} messages";
+
+    /// <summary>What list actions (archive, delete, read) apply to: the whole conversation in view, or this message.</summary>
+    private IReadOnlyList<MessageSummary> Targets => IsConversation && _inView.Count > 0 ? _inView : [Summary];
+
+    /// <summary>Makes this row the head of a conversation (or a single message again when <paramref name="conversation"/> is null).</summary>
+    public void SetConversation(Guid? key, IReadOnlyList<MessageSummary>? conversation, IReadOnlyList<MessageSummary>? inView, bool expanded)
+    {
+        ConversationKey = key;
+        ConversationMessages = conversation ?? [];
+        _inView = inView ?? [];
+        IsExpanded = expanded && IsConversation;
+        if (IsConversation)
+        {
+            // Like Gmail: the people in the conversation, and unread if anything in it is unread.
+            var names = ConversationMessages.Select(m => m.FolderKind is FolderKind.Sent or FolderKind.Drafts ? "me" : FirstName(m.From))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            SenderName = names.Count <= 3 ? string.Join(", ", names) : $"{names[0]} … {string.Join(", ", names.TakeLast(2))}";
+            IsUnread = _inView.Any(m => !m.IsRead);
+            HasAttachments = ConversationMessages.Any(m => m.HasAttachments);
+        }
+
+        OnPropertyChanged(string.Empty);
+    }
+
+    private static string FirstName(EmailAddress address)
+    {
+        var name = address.DisplayName;
+        var space = name.IndexOf(' ');
+        return space > 0 && !name.Contains('@') ? name[..space] : name;
     }
 
     public MessageSummary Summary { get; private set; }
@@ -43,6 +100,15 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public bool IsDraft { get; private set; }
     public bool IsInJunk { get; private set; }
     public bool HasPreview => !IsCompact && Preview.Length > 0;
+
+    public bool IsSnoozed { get; private set; }
+    public bool IsNotSnoozed => !IsSnoozed;
+    public bool HasFollowUp { get; private set; }
+    public bool HasNoFollowUp => !HasFollowUp;
+    public bool IsFollowUpOverdue { get; private set; }
+    public bool IsFollowUpPending => HasFollowUp && !IsFollowUpOverdue;
+    public string FollowUpTooltip { get; private set; } = string.Empty;
+    public string SnoozeTooltip { get; private set; } = string.Empty;
 
     /// <summary>"Spam 14.2", "Suspicious" or empty.</summary>
     public string SpamTag { get; private set; } = string.Empty;
@@ -108,6 +174,14 @@ public sealed partial class MessageItemViewModel : ObservableObject
         Subject = m.DisplaySubject;
         Preview = m.Preview;
         DateText = DateDisplayFormatter.ForList(m.Date, context.Now);
+        IsSnoozed = m.SnoozedUntil is not null;
+        SnoozeTooltip = m.SnoozedUntil is { } until ? "Snoozed until " + QuickTimes.Describe(until, context.Now, TimeZoneInfo.Local) : string.Empty;
+        if (m.SnoozedUntil is { } back) DateText = QuickTimes.Describe(back, context.Now, TimeZoneInfo.Local);
+        HasFollowUp = m.FollowUpAt is not null;
+        IsFollowUpOverdue = m.FollowUpAt is { } due && due <= context.Now;
+        FollowUpTooltip = m.FollowUpAt is { } at
+            ? (IsFollowUpOverdue ? "Follow-up overdue since " : "Follow up ") + QuickTimes.Describe(at, context.Now, TimeZoneInfo.Local)
+            : string.Empty;
         IsUnread = !m.IsRead;
         IsStarred = m.IsStarred;
         IsPinned = m.IsPinned;
@@ -133,6 +207,8 @@ public sealed partial class MessageItemViewModel : ObservableObject
             SenderName,
             Subject,
             HasAttachments ? "has attachments" : null,
+            SnoozeTooltip,
+            FollowUpTooltip,
             DateText,
         }.Where(s => !string.IsNullOrEmpty(s)));
     }
@@ -144,16 +220,19 @@ public sealed partial class MessageItemViewModel : ObservableObject
     private Task TogglePinAsync() => _commands.TogglePinAsync(Summary);
 
     [RelayCommand]
-    private Task ToggleReadAsync() => _commands.SetReadAsync(Summary, IsUnread);
+    private Task ToggleReadAsync() => _commands.SetReadAsync(IsUnread ? Targets : [Summary], IsUnread);
 
     [RelayCommand]
-    private Task ArchiveAsync() => _commands.ArchiveAsync(Summary);
+    private Task ArchiveAsync() => _commands.ArchiveAsync(Targets);
 
     [RelayCommand]
-    private Task DeleteAsync() => _commands.DeleteAsync(Summary);
+    private Task DeleteAsync() => _commands.DeleteAsync(Targets);
 
     [RelayCommand]
-    private Task ToggleJunkAsync() => IsInJunk ? _commands.NotJunkAsync(Summary) : _commands.MoveToJunkAsync(Summary);
+    private Task ToggleJunkAsync() => IsInJunk ? _commands.NotJunkAsync(Summary) : _commands.MoveToJunkAsync(Targets);
+
+    [RelayCommand]
+    private void ToggleConversation() => _toggleConversation?.Invoke(this);
 
     [RelayCommand]
     private Task ReplyAsync() => _commands.ReplyAsync(Summary, ComposeMode.Reply);
@@ -163,4 +242,12 @@ public sealed partial class MessageItemViewModel : ObservableObject
 
     [RelayCommand]
     private Task ForwardAsync() => _commands.ReplyAsync(Summary, ComposeMode.Forward);
+
+    /// <param name="choice">A <see cref="QuickTime"/> name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task SnoozeAsync(string choice) => _commands.SnoozeAsync(Summary, choice);
+
+    /// <param name="choice">A <see cref="QuickTime"/> name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task FollowUpAsync(string choice) => _commands.FollowUpAsync(Summary, choice);
 }

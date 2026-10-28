@@ -76,6 +76,18 @@ public sealed class MailCache(MailDatabase database)
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>Renames or recolours an account. Only these two columns change: connection settings and saved sign-ins are untouched.</summary>
+    public async Task UpdateAccountAppearanceAsync(Guid accountId, string displayName, string? colorHex, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE accounts SET display_name = $name, color = $color WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", accountId.ToString());
+        cmd.Parameters.AddWithValue("$name", displayName);
+        cmd.Parameters.AddWithValue("$color", (object?)colorHex ?? DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     /// <summary>Deletes the account and, through cascades, its folders, messages, bodies, pins and drafts.</summary>
     public async Task DeleteAccountAsync(Guid accountId, CancellationToken ct = default)
     {
@@ -185,11 +197,14 @@ public sealed class MailCache(MailDatabase database)
     private const string SummarySelect = """
         SELECT m.id, m.account_id, m.folder_id, f.kind, m.message_id_header, m.from_name, m.from_address, m.to_json, m.cc_json,
                m.subject, m.preview, m.date, m.is_read, m.is_starred, m.has_attachments, m.spam_json,
-               p.pinned_at, CASE WHEN ls.identity_key IS NULL THEN 0 ELSE 1 END
+               p.pinned_at, CASE WHEN ls.identity_key IS NULL THEN 0 ELSE 1 END,
+               sz.until_utc, rm.due_utc, m.in_reply_to, m.references_json
         FROM messages m
         JOIN folders f ON f.id = m.folder_id
         LEFT JOIN pins p ON p.account_id = m.account_id AND p.identity_key = m.identity_key
         LEFT JOIN local_stars ls ON ls.account_id = m.account_id AND ls.identity_key = m.identity_key
+        LEFT JOIN snoozes sz ON sz.account_id = m.account_id AND sz.identity_key = m.identity_key
+        LEFT JOIN reminders rm ON rm.account_id = m.account_id AND rm.identity_key = m.identity_key
         """;
 
     public async Task<IReadOnlyList<MessageSummary>> GetSummariesAsync(CancellationToken ct = default)
@@ -235,10 +250,20 @@ public sealed class MailCache(MailDatabase database)
                 Spam = r.IsDBNull(15) ? SpamReport.None : JsonSerializer.Deserialize<SpamReport>(r.GetString(15), Json) ?? SpamReport.None,
                 IsPinned = pinnedAt is not null,
                 PinnedAt = pinnedAt,
+                SnoozedUntil = r.IsDBNull(18) ? null : DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(18)),
+                FollowUpAt = r.IsDBNull(19) ? null : DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(19)),
+                References = ReadReferences(r.IsDBNull(20) ? null : r.GetString(20), r.IsDBNull(21) ? null : r.GetString(21)),
             });
         }
 
         return result;
+    }
+
+    private static IReadOnlyList<string> ReadReferences(string? inReplyTo, string? referencesJson)
+    {
+        var refs = referencesJson is null ? [] : JsonSerializer.Deserialize<List<string>>(referencesJson, Json) ?? [];
+        if (!string.IsNullOrWhiteSpace(inReplyTo) && !refs.Contains(inReplyTo)) refs.Add(inReplyTo);
+        return refs;
     }
 
     public async Task<StoredMessageRef?> GetMessageRefAsync(Guid messageId, CancellationToken ct = default)
@@ -256,6 +281,20 @@ public sealed class MailCache(MailDatabase database)
             Guid.Parse(r.GetString(0)), Guid.Parse(r.GetString(1)), Guid.Parse(r.GetString(2)), r.GetString(3),
             (FolderKind)r.GetInt32(4), (uint)r.GetInt64(5), (uint)r.GetInt64(6), r.GetString(7),
             r.IsDBNull(8) ? null : r.GetString(8), r.GetBoolean(9), r.GetBoolean(10));
+    }
+
+    /// <summary>All cached copies of a message (any folder) by identity.</summary>
+    public async Task<IReadOnlyList<Guid>> FindAllByIdentityAsync(Guid accountId, string identityKey, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id FROM messages WHERE account_id = $a AND identity_key = $k";
+        cmd.Parameters.AddWithValue("$a", accountId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        var result = new List<Guid>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false)) result.Add(Guid.Parse(r.GetString(0)));
+        return result;
     }
 
     /// <summary>Finds a message in a folder by its identity (used after moves when the server didn't report the new UID).</summary>
@@ -538,6 +577,112 @@ public sealed class MailCache(MailDatabase database)
         cmd.Parameters.AddWithValue("$a", accountId.ToString());
         cmd.Parameters.AddWithValue("$k", identityKey);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ snooze & follow-up (keyed by identity, like pins)
+
+    public async Task SetSnoozeAsync(Guid accountId, string identityKey, DateTimeOffset? until, DateTimeOffset now, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        if (until is { } at)
+        {
+            cmd.CommandText = "INSERT INTO snoozes (account_id, identity_key, until_utc, created_at) VALUES ($a, $k, $u, $n) ON CONFLICT DO UPDATE SET until_utc = excluded.until_utc";
+            cmd.Parameters.AddWithValue("$u", at.ToUnixTimeMilliseconds());
+            cmd.Parameters.AddWithValue("$n", now.ToUnixTimeMilliseconds());
+        }
+        else
+        {
+            cmd.CommandText = "DELETE FROM snoozes WHERE account_id = $a AND identity_key = $k";
+        }
+
+        cmd.Parameters.AddWithValue("$a", accountId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Ends snoozes that have expired and returns the (account, identity) pairs that came back.</summary>
+    public async Task<IReadOnlyList<(Guid AccountId, string IdentityKey)>> ReleaseExpiredSnoozesAsync(DateTimeOffset now, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        var released = new List<(Guid, string)>();
+        await using (var select = c.CreateCommand())
+        {
+            select.Transaction = tx;
+            select.CommandText = "SELECT account_id, identity_key FROM snoozes WHERE until_utc <= $now";
+            select.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            await using var r = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await r.ReadAsync(ct).ConfigureAwait(false)) released.Add((Guid.Parse(r.GetString(0)), r.GetString(1)));
+        }
+
+        await using (var delete = c.CreateCommand())
+        {
+            delete.Transaction = tx;
+            delete.CommandText = "DELETE FROM snoozes WHERE until_utc <= $now";
+            delete.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return released;
+    }
+
+    public async Task SetFollowUpAsync(Guid accountId, string identityKey, DateTimeOffset? due, DateTimeOffset now, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        if (due is { } at)
+        {
+            // A new time also re-arms the notification.
+            cmd.CommandText = "INSERT INTO reminders (account_id, identity_key, due_utc, created_at) VALUES ($a, $k, $d, $n) ON CONFLICT DO UPDATE SET due_utc = excluded.due_utc, notified_at = NULL";
+            cmd.Parameters.AddWithValue("$d", at.ToUnixTimeMilliseconds());
+            cmd.Parameters.AddWithValue("$n", now.ToUnixTimeMilliseconds());
+        }
+        else
+        {
+            cmd.CommandText = "DELETE FROM reminders WHERE account_id = $a AND identity_key = $k";
+        }
+
+        cmd.Parameters.AddWithValue("$a", accountId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Due reminders that haven't been announced yet, marked as announced in the same transaction so a reminder is
+    /// never notified twice (even across restarts). Returns one cached message id per reminder where available.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> TakeDueRemindersAsync(DateTimeOffset now, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        var ids = new List<Guid>();
+        await using (var select = c.CreateCommand())
+        {
+            select.Transaction = tx;
+            select.CommandText = """
+                SELECT (SELECT m.id FROM messages m WHERE m.account_id = r.account_id AND m.identity_key = r.identity_key ORDER BY m.date DESC LIMIT 1)
+                FROM reminders r WHERE r.due_utc <= $now AND r.notified_at IS NULL
+                """;
+            select.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            await using var r = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await r.ReadAsync(ct).ConfigureAwait(false))
+            {
+                if (!r.IsDBNull(0)) ids.Add(Guid.Parse(r.GetString(0)));
+            }
+        }
+
+        await using (var update = c.CreateCommand())
+        {
+            update.Transaction = tx;
+            update.CommandText = "UPDATE reminders SET notified_at = $now WHERE due_utc <= $now AND notified_at IS NULL";
+            update.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            await update.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return ids;
     }
 
     // ------------------------------------------------------------------ drafts

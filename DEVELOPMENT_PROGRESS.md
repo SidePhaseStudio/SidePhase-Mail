@@ -2,7 +2,7 @@
 
 Legend: ✅ implemented · 🧪 implemented and covered by automated tests · 🔌 tested end-to-end against a real IMAP/SMTP server (CI) · ❔ implemented, not yet verified · 🟡 partial · ⏳ planned
 
-Automated tests: `tests/SidePhase.Mail.Tests` (~185 xUnit tests). Unit tests run on Windows and Linux; the
+Automated tests: `tests/SidePhase.Mail.Tests` (~295 xUnit tests). Unit tests run on Windows and Linux; the
 integration tests run in CI against a throwaway Dovecot/Postfix server (`scripts/ci/setup-test-mail-server.sh`), never real accounts.
 UI behaviour is verified manually on Windows; there are no automated UI tests yet.
 
@@ -32,7 +32,7 @@ UI behaviour is verified manually on Windows; there are no automated UI tests ye
 | Settings | ✅ | Appearance, Accounts, Mail, Privacy, About. Persisted to `%LOCALAPPDATA%\SidePhase Mail\settings.json`. |
 | Welcome screen | 🟡 | Google / Microsoft / other account buttons are disabled and labelled “Milestone 2”. |
 | Sample data clearly identified as demonstration content | 🧪 | “(demo)” accounts, DEMO DATA badge, `.example` domains only. |
-| Keyboard shortcuts | ✅ | Ctrl+N/R/Shift+R/F/E, F5, Delete, Ctrl+Enter. |
+| Keyboard shortcuts | ✅ | See Milestone 4 for the current list. |
 | GitHub Actions Windows build | ✅ | Tests, publish, verification of output, artifact upload. |
 
 ## Milestone 2 — Real email accounts
@@ -77,10 +77,31 @@ Verified by the user on Windows 11: adding a real IMAP account (not Gmail/Micros
 | Windows desktop notifications | ❔ | Windows App SDK notifications with sender, subject and preview; click opens the message; per-account mute; never for Junk/blocked senders; each message at most once; respects Windows notification settings; falls back to in-app notices. Notification logic is unit-tested; the Windows toasts themselves need checking on a PC. |
 | Responsiveness | ✅ | Cache reads run off the UI thread; bursts of sync events coalesce into one refresh; sent-mail follow-up (Sent copy, draft clean-up) runs after the send returns. |
 
+## Milestone 4 — Productivity
+
+Timed features (snooze, reminders, scheduled send, Undo Send) use a controllable clock in tests and store every time in
+UTC, so daylight-saving changes and time-zone moves don't shift them. A custom time zone with DST is used in the tests.
+UI items below compile and pass the CI smoke test; ❔ means not yet checked by hand on Windows.
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Snooze (Later today, Tomorrow morning, This weekend, Next week, choose date & time) | 🧪 / ❔ | Right-click or reading pane ⋯. Stored in SQLite by message identity, so it survives restarts, sync and moves; hidden everywhere except **Snoozed**; returns automatically (checked every 30 s and at start-up); Unsnooze early; every account. **Local to this PC: other mail apps still show the message in its folder.** |
+| Follow-up reminders (Tomorrow, In 3 days, Next week, custom) | 🧪 / ❔ | **Follow-ups** view, flag on the row (red when overdue), reading-pane banner with Mark done, Windows notification when due (in-app fallback), announced once per reminder. Never changes or sends the message. |
+| Schedule send | 🧪 / 🔌 / ❔ | Dropdown beside Send. Outbox state machine: Queued → Sending → Accepted / Failed / Uncertain (+ Cancelled), compare-and-set transitions so a message is sent at most once; attempts recorded; attachments copied privately until sent. Temporary failures retry (1, 5, 15 min); rejections fail; a broken connection after the data was sent is **Uncertain and never resent automatically** — the Scheduled page asks you. Never sent early after a clock change; more than a day late is held for you to decide. **The app must be running (it can be minimised); nothing is scheduled on the server.** |
+| Undo Send (off, 5, 10, 20, 30 s; default 10) | 🧪 / 🔌 / ❔ | "Sending… Undo" notice; Undo works only before the message reaches the SMTP server and reopens it for editing. A sent message can't be recalled. |
+| Scheduled page | ❔ | Send now, reschedule, edit, cancel, retry, "It was sent" / "Send again…" for uncertain deliveries, recent history. Sidebar badge counts what's waiting or needs attention. |
+| Conversation view (Settings › Mail, on by default) | 🧪 / ❔ | Gmail-style: one expandable row per conversation, linked by Message-ID/References/In-Reply-To (subject fallback only for header-less replies sharing a participant, within 60 days); includes your replies from Sent; actions apply to the whole conversation; never spans accounts. |
+| Contacts | 🧪 / ❔ | SQLite address book (names, several addresses, notes), search, add/edit/delete, vCard 2.1/3.0/4.0 import with merging, recent recipients. Kept on this PC only, never uploaded. Each contact records its source so Google/Microsoft/CardDAV sync can be added later (`IContactSyncSource`). |
+| Recipient autocomplete | 🧪 / ❔ | To/Cc/Bcc suggest contacts and people you've sent to, ranked by match, frequency and recency. |
+| Attachments | 🧪 / 🔌 / ❔ | Streamed to disk with progress (1 MB IMAP pieces → temporary file → decoded), never fully in memory; Save all into a folder with unique names; warnings for files that can run code and disguised names; safe file names; in-app preview for images and plain text only. Never opened or run. |
+| Compose | 🧪 / ❔ | Signature library with per-account defaults (old signatures migrated) and a per-message picker; crash-recovery copy every 5 s and Drafts autosave every 2 min; recovered messages offered at start-up; strikethrough, numbered lists, links (web/mailto only), clear formatting; standard HTML output; drag-and-drop attachments with duplicate-name numbering. |
+| Accounts | 🧪 / 🔌 / ❔ | Rename and colour (only those columns change; settings and saved sign-ins untouched), default sending account, per-account check interval, connection status, sign in again, safe removal. |
+| Shortcuts | ❔ | Ctrl+N, Ctrl+R, Ctrl+Shift+R, Ctrl+Shift+F (forward), Ctrl+F / Ctrl+E (search), F5, Delete → Trash, Backspace, Ctrl+Q/U, Ctrl+Shift+P, Insert; compose: Ctrl+Enter (optional confirmation), Ctrl+S, Ctrl+K, Esc. Reference in Settings › Shortcuts. |
+| Database migration | 🧪 | Schema 2 only adds tables; accounts, messages and saved sign-ins are untouched (tested from a schema-1 database). |
+
 ## Future
 
-Calendar, contacts, snooze, scheduled send, follow-up reminders, Discord and other services — the
-`IMailDataSource` boundary, the scope model and the sidebar's data-driven navigation leave room for these. Not started.
+Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side scheduled send where providers offer it.
 
 ## Known limitations
 
@@ -93,3 +114,7 @@ Calendar, contacts, snooze, scheduled send, follow-up reminders, Discord and oth
 * Drafts edited in another app open without their attachments.
 * Proton Mail Bridge (self-signed certificate) isn't supported.
 * No automated UI tests yet.
+* Snoozes, follow-up reminders and conversation grouping are local to this PC and don't sync to other mail apps.
+* Scheduled messages and Undo Send need SidePhase Mail to be running; a message that couldn't be sent within a day of its
+  time is held rather than sent late.
+* A message reopened from Undo Send, the Scheduled page or crash recovery keeps its text but loses rich formatting.

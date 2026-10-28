@@ -35,6 +35,19 @@ public sealed record MessageSummary
     public DateTimeOffset? PinnedAt { get; init; }
     public bool HasAttachments { get; init; }
 
+    /// <summary>When a snoozed message returns to its folder. Null when not snoozed (local to this PC).</summary>
+    public DateTimeOffset? SnoozedUntil { get; init; }
+
+    /// <summary>When to follow up on this message. Null when no reminder is set (local to this PC).</summary>
+    public DateTimeOffset? FollowUpAt { get; init; }
+
+    /// <summary>
+    /// Message-IDs of the messages this one replies to (References, then In-Reply-To), used to group conversations.
+    /// </summary>
+    public IReadOnlyList<string> References { get; init; } = [];
+
+    public bool IsSnoozed => SnoozedUntil is not null;
+
     public SpamReport Spam { get; init; } = SpamReport.None;
 
     public string DisplaySubject => string.IsNullOrWhiteSpace(Subject) ? "(No subject)" : Subject;

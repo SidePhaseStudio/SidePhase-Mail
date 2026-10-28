@@ -41,5 +41,11 @@ public sealed record DraftMessage
 
     public IReadOnlyList<DraftAttachment> Attachments { get; init; } = [];
 
+    /// <summary>
+    /// The body already includes the signature (a message brought back from the outbox for editing), so compose
+    /// must not add it again.
+    /// </summary>
+    public bool BodyIncludesSignature { get; init; }
+
     public bool HasAnyRecipient => To.Count + Cc.Count + Bcc.Count > 0;
 }

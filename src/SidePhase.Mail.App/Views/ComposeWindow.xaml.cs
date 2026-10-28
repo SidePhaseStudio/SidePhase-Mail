@@ -2,9 +2,12 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using SidePhase.Mail.App.Helpers;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.App.ViewModels;
+using SidePhase.Mail.Core.Composition;
+using SidePhase.Mail.Core.Contacts;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -33,12 +36,15 @@ public sealed partial class ComposeWindow : Window
         App.GetService<ThemeService>().Register(this, RootGrid, SolidLayer);
 
         ViewModel.BodyProvider = GetBody;
+        ViewModel.PickScheduleTime = async choice =>
+            await App.GetService<MessageCommandService>().ResolveTimeAsync(choice, "Schedule send", "Schedule", root: RootGrid.XamlRoot);
         ViewModel.CloseRequested += (_, _) =>
         {
             _closeConfirmed = true;
             Close();
         };
         AppWindow.Closing += OnClosing;
+        Closed += async (_, _) => await ViewModel.CloseAsync();
         RootGrid.Loaded += OnLoaded;
     }
 
@@ -49,9 +55,10 @@ public sealed partial class ComposeWindow : Window
         await ViewModel.InitializeAsync();
 
         var body = ViewModel.InitialBodyText.Replace("\r\n", "\r").Replace('\n', '\r');
-        if (ViewModel.IsNewMessage && ViewModel.Signature.Length > 0)
+        if (ViewModel.IsNewMessage && !ViewModel.BodyIncludesSignature && ViewModel.Signature.Length > 0)
         {
-            body += "\r\r" + ViewModel.Signature.Replace("\r\n", "\r").Replace('\n', '\r');
+            _insertedSignature = ViewModel.Signature;
+            body += "\r\r" + ToRich(ViewModel.Signature);
         }
 
         RichEditor.Document.SetText(TextSetOptions.None, body);
@@ -59,9 +66,130 @@ public sealed partial class ComposeWindow : Window
         PlainEditor.Text = body.Replace("\r", Environment.NewLine);
         _editorReady = true;
         ViewModel.IsDirty = false;
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(ComposeViewModel.Signature)) ReplaceSignature(ViewModel.Signature);
+        };
 
         if (string.IsNullOrWhiteSpace(ViewModel.To)) ToBox.Focus(FocusState.Programmatic);
         else RichEditor.Focus(FocusState.Programmatic);
+    }
+
+    private string _insertedSignature = string.Empty;
+
+    private static string ToRich(string text) => text.Replace("\r\n", "\r").Replace('\n', '\r');
+
+    private static string ToPlain(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", Environment.NewLine);
+
+    /// <summary>
+    /// Swaps the signature in the message for another (or removes it). Only the signature that was put in is
+    /// replaced; if it has been edited away, the new one is added at the end.
+    /// </summary>
+    private void ReplaceSignature(string signature)
+    {
+        if (!_editorReady || signature == _insertedSignature) return;
+        var old = _insertedSignature;
+        _insertedSignature = signature;
+
+        if (ViewModel.IsPlainText)
+        {
+            var text = PlainEditor.Text;
+            var oldPlain = ToPlain(old);
+            var newPlain = ToPlain(signature);
+            var separator = Environment.NewLine + Environment.NewLine;
+            var at = oldPlain.Length > 0 ? text.LastIndexOf(oldPlain, StringComparison.Ordinal) : -1;
+            if (at >= 0)
+            {
+                var start = newPlain.Length == 0 && at >= separator.Length && text.AsSpan(at - separator.Length, separator.Length).SequenceEqual(separator.AsSpan()) ? at - separator.Length : at;
+                PlainEditor.Text = text[..start] + newPlain + text[(at + oldPlain.Length)..];
+            }
+            else if (newPlain.Length > 0)
+            {
+                PlainEditor.Text = text.TrimEnd() + separator + newPlain;
+            }
+        }
+        else
+        {
+            var document = RichEditor.Document;
+            document.GetText(TextGetOptions.None, out var text);
+            var oldRich = ToRich(old);
+            var newRich = ToRich(signature);
+            var at = oldRich.Length > 0 ? text.LastIndexOf(oldRich, StringComparison.Ordinal) : -1;
+            if (at >= 0)
+            {
+                var start = newRich.Length == 0 && at >= 2 && text.AsSpan(at - 2, 2).SequenceEqual("\r\r".AsSpan()) ? at - 2 : at;
+                document.GetRange(start, at + oldRich.Length).Text = newRich;
+            }
+            else if (newRich.Length > 0)
+            {
+                var end = text.TrimEnd('\r').Length;
+                document.GetRange(end, text.Length).Text = "\r\r" + newRich;
+            }
+        }
+
+        ViewModel.IsDirty = true;
+    }
+
+    private void OnStrikethroughClick(object sender, RoutedEventArgs e) =>
+        ApplyFormat(s => s.CharacterFormat.Strikethrough = FormatEffect.Toggle);
+
+    private void OnNumberedListClick(object sender, RoutedEventArgs e) =>
+        ApplyFormat(s =>
+        {
+            var numbered = s.ParagraphFormat.ListType is not (MarkerType.None or MarkerType.Undefined or MarkerType.Bullet);
+            s.ParagraphFormat.ListType = numbered ? MarkerType.None : MarkerType.Arabic;
+            if (!numbered) s.ParagraphFormat.ListStyle = MarkerStyle.Period;
+        });
+
+    private void OnClearFormattingClick(object sender, RoutedEventArgs e) =>
+        ApplyFormat(s =>
+        {
+            s.CharacterFormat.Bold = FormatEffect.Off;
+            s.CharacterFormat.Italic = FormatEffect.Off;
+            s.CharacterFormat.Underline = UnderlineType.None;
+            s.CharacterFormat.Strikethrough = FormatEffect.Off;
+            s.ParagraphFormat.ListType = MarkerType.None;
+            if (!string.IsNullOrEmpty(s.Link)) s.Link = string.Empty;
+        });
+
+    /// <summary>Turns the selected text into a link (web or mailto addresses only).</summary>
+    private async void OnLinkClick(object sender, RoutedEventArgs e)
+    {
+        var selection = RichEditor.Document.Selection;
+        if (selection is null) return;
+        var start = selection.StartPosition;
+        var end = selection.EndPosition;
+        selection.GetText(TextGetOptions.None, out var selected);
+
+        var box = new TextBox { Header = "Web address", PlaceholderText = "https://example.com", Text = Uri.IsWellFormedUriString(selected.Trim(), UriKind.Absolute) ? selected.Trim() : string.Empty };
+        var dialog = new ContentDialog
+        {
+            Title = "Insert link",
+            Content = box,
+            PrimaryButtonText = "Insert",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await App.GetService<DialogService>().ShowAsync(dialog, RootGrid.XamlRoot) != ContentDialogResult.Primary) return;
+
+        var raw = box.Text.Trim();
+        if (!raw.Contains("://", StringComparison.Ordinal) && !raw.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)) raw = "https://" + raw;
+        if (RichTextHtmlExporter.SafeLink(raw) is not { } url)
+        {
+            ViewModel.StatusText = "Links must be web (https://) or email (mailto:) addresses.";
+            return;
+        }
+
+        var range = RichEditor.Document.GetRange(start, end);
+        if (end == start)
+        {
+            range.Text = url;
+            range = RichEditor.Document.GetRange(start, start + url.Length);
+        }
+
+        range.Link = "\"" + url + "\"";
+        RichEditor.Focus(FocusState.Programmatic);
+        ViewModel.IsDirty = true;
     }
 
     private ComposeBody GetBody()
@@ -73,6 +201,65 @@ public sealed partial class ComposeWindow : Window
 
         RichEditor.Document.GetText(TextGetOptions.None, out var text);
         return new ComposeBody(text.Replace('\r', '\n').TrimEnd(), RichTextHtmlExporter.Export(RichEditor.Document));
+    }
+
+    /// <summary>Suggests contacts and recent recipients for the address being typed.</summary>
+    private async void OnRecipientTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
+        var text = sender.Text;
+        var token = RecipientParser.LastToken(text);
+        if (token.Length == 0)
+        {
+            sender.ItemsSource = null;
+            return;
+        }
+
+        try
+        {
+            var already = RecipientParser.Parse(text).Addresses.Select(a => a.Address);
+            var suggestions = await App.GetService<ContactService>().SuggestAsync(token, 8, already);
+            if (sender.Text == text) sender.ItemsSource = suggestions.Select(s => new RecipientSuggestionItem(s)).ToList();
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Log("recipient suggestions", ex);
+        }
+    }
+
+    private void OnRecipientQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is not RecipientSuggestionItem chosen) return;
+        sender.Text = RecipientParser.ReplaceLastToken(sender.Text, chosen.Suggestion.Address);
+        sender.ItemsSource = null;
+    }
+
+    /// <summary>Ctrl+Enter sends, after asking first if the user turned that on in Settings.</summary>
+    private async void OnSendAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (!ViewModel.SendCommand.CanExecute(null)) return;
+        if (App.GetService<Core.Abstractions.ISettingsService>().Current.ConfirmCtrlEnterSend)
+        {
+            var confirmed = await App.GetService<DialogService>().ConfirmAsync(
+                "Send this message?", "You pressed Ctrl+Enter.", "Send", root: RootGrid.XamlRoot);
+            if (!confirmed) return;
+        }
+
+        await ViewModel.SendCommand.ExecuteAsync(null);
+    }
+
+    private async void OnSaveAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.SaveDraftCommand.CanExecute(null)) await ViewModel.SaveDraftCommand.ExecuteAsync(null);
+    }
+
+    /// <summary>Esc closes the window (asking to save the draft if there are changes).</summary>
+    private void OnEscapeInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        Close();
     }
 
     private void OnEditorTextChanged(object sender, RoutedEventArgs e)
@@ -207,4 +394,10 @@ public sealed partial class ComposeWindow : Window
 
         if (_closeConfirmed) Close();
     }
+}
+
+/// <summary>A suggestion as shown in the recipient dropdown (ToString is what the list displays).</summary>
+internal sealed record RecipientSuggestionItem(RecipientSuggestion Suggestion)
+{
+    public override string ToString() => Suggestion.IsContact ? Suggestion.Text : Suggestion.Text + "  · recent";
 }

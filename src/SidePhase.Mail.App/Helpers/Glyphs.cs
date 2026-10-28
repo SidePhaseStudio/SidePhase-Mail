@@ -35,6 +35,9 @@ public static class Glyphs
     public const string Accept = "";
     public const string Info = "";
     public const string Sync = "";
+    public const string Snooze = "";
+    public const string Flag = "";
+    public const string Scheduled = "";
 
     public static string ForFolder(FolderKind kind) => kind switch
     {

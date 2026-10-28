@@ -69,7 +69,7 @@
                   <TextBlock Text="Reply all" />
                 </StackPanel>
               </Button>
-              <Button Command="{x:Bind ViewModel.ForwardCommand}" Style="{StaticResource SpToolbarButtonStyle}" ToolTipService.ToolTip="Forward (Ctrl+F)">
+              <Button Command="{x:Bind ViewModel.ForwardCommand}" Style="{StaticResource SpToolbarButtonStyle}" ToolTipService.ToolTip="Forward (Ctrl+Shift+F)">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <FontIcon FontSize="15" Glyph="&#xE89C;" />
                   <TextBlock Text="Forward" />
@@ -133,6 +133,38 @@
                       <FontIcon Glyph="{x:Bind ViewModel.JunkGlyph, Mode=OneWay}" />
                     </MenuFlyoutItem.Icon>
                   </MenuFlyoutItem>
+                  <MenuFlyoutSeparator />
+                  <MenuFlyoutSubItem Text="Snooze">
+                    <MenuFlyoutSubItem.Icon>
+                      <FontIcon Glyph="&#xE823;" />
+                    </MenuFlyoutSubItem.Icon>
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="LaterToday" Text="Later today" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="TomorrowMorning" Text="Tomorrow morning" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="ThisWeekend" Text="This weekend" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="NextWeek" Text="Next week" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="Custom" Text="Choose date and time…" />
+                    <MenuFlyoutItem
+                        Command="{x:Bind ViewModel.SnoozeCommand}"
+                        CommandParameter="Clear"
+                        Text="Unsnooze"
+                        Visibility="{x:Bind ViewModel.IsSnoozed, Mode=OneWay}" />
+                  </MenuFlyoutSubItem>
+                  <MenuFlyoutSubItem Text="Remind me to follow up">
+                    <MenuFlyoutSubItem.Icon>
+                      <FontIcon Glyph="&#xE7C1;" />
+                    </MenuFlyoutSubItem.Icon>
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="Tomorrow" Text="Tomorrow" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="InThreeDays" Text="In 3 days" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="NextWeek" Text="Next week" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="Custom" Text="Custom…" />
+                    <MenuFlyoutItem
+                        Command="{x:Bind ViewModel.FollowUpCommand}"
+                        CommandParameter="Clear"
+                        Text="Mark follow-up done"
+                        Visibility="{x:Bind ViewModel.ShowFollowUpBanner, Mode=OneWay}" />
+                  </MenuFlyoutSubItem>
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
@@ -261,6 +293,32 @@
           </InfoBar.ActionButton>
         </InfoBar>
         <InfoBar
+            CornerRadius="8"
+            IsClosable="False"
+            IsOpen="{x:Bind ViewModel.ShowFollowUpBanner, Mode=OneWay}"
+            Message="{x:Bind ViewModel.FollowUpText, Mode=OneWay}"
+            Severity="{x:Bind FollowUpSeverity(ViewModel.FollowUpIsOverdue), Mode=OneWay}">
+          <InfoBar.IconSource>
+            <FontIconSource Glyph="&#xE7C1;" />
+          </InfoBar.IconSource>
+          <InfoBar.ActionButton>
+            <Button Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="Clear" Content="Mark done" />
+          </InfoBar.ActionButton>
+        </InfoBar>
+        <InfoBar
+            CornerRadius="8"
+            IsClosable="False"
+            IsOpen="{x:Bind ViewModel.ShowSnoozeBanner, Mode=OneWay}"
+            Message="{x:Bind ViewModel.SnoozeText, Mode=OneWay}"
+            Severity="Informational">
+          <InfoBar.IconSource>
+            <FontIconSource Glyph="&#xE823;" />
+          </InfoBar.IconSource>
+          <InfoBar.ActionButton>
+            <Button Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="Clear" Content="Unsnooze" />
+          </InfoBar.ActionButton>
+        </InfoBar>
+        <InfoBar
             Title="Remote images blocked"
             CornerRadius="8"
             IsClosable="False"
@@ -285,6 +343,11 @@
           VerticalScrollBarVisibility="Disabled"
           VerticalScrollMode="Disabled"
           Visibility="{x:Bind ViewModel.HasAttachments, Mode=OneWay}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+        <StackPanel VerticalAlignment="Center" Spacing="4" Visibility="{x:Bind ViewModel.HasSeveralAttachments, Mode=OneWay}">
+          <TextBlock FontSize="11" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind ViewModel.AttachmentsSummary, Mode=OneWay}" />
+          <Button Click="OnSaveAllClick" Content="Save all…" Style="{StaticResource SpSecondaryButtonStyle}" ToolTipService.ToolTip="Save every attachment into a folder (existing files are never overwritten)" />
+        </StackPanel>
         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Attachments}">
           <ItemsRepeater.Layout>
             <StackLayout Orientation="Horizontal" Spacing="8" />
@@ -301,7 +364,14 @@
                   BorderBrush="{ThemeResource SpStrokeBrush}"
                   Command="{x:Bind OpenCommand}"
                   CornerRadius="8"
-                  ToolTipService.ToolTip="{x:Bind FileName}">
+                  ToolTipService.ToolTip="{x:Bind Tooltip}">
+                <Button.ContextFlyout>
+                  <MenuFlyout>
+                    <MenuFlyoutItem Command="{x:Bind PreviewCommand}" IsEnabled="{x:Bind CanPreview}" Text="Preview" />
+                    <MenuFlyoutItem Command="{x:Bind SaveCommand}" Text="Save as…" />
+                    <MenuFlyoutItem Command="{x:Bind SaveAllCommand}" Text="Save all attachments…" />
+                  </MenuFlyout>
+                </Button.ContextFlyout>
                 <Grid ColumnSpacing="10">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -319,6 +389,7 @@
             </DataTemplate>
           </ItemsRepeater.ItemTemplate>
         </ItemsRepeater>
+        </StackPanel>
       </ScrollViewer>
 
       <!-- Body: a faint, rounded card so HTML and plain-text messages sit naturally inside the glass panel -->

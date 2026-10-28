@@ -29,6 +29,13 @@ public sealed partial class ReadingPane : UserControl
 
     public InfoBarSeverity SpamSeverity(bool severe) => severe ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
 
+    private void OnSaveAllClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.Attachments.FirstOrDefault() is { } first) first.SaveAllCommand.Execute(null);
+    }
+
+    public InfoBarSeverity FollowUpSeverity(bool overdue) => overdue ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(ReadingPaneViewModel.Message)) return;

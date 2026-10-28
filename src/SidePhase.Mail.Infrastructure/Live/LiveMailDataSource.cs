@@ -5,6 +5,7 @@ using MessageSummary = SidePhase.Mail.Core.Models.MessageSummary;
 using MimeKit;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Mail;
 using SidePhase.Mail.Infrastructure.Storage;
@@ -53,6 +54,21 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     public event EventHandler<MailDataChangedEventArgs>? DataChanged;
 
     public event EventHandler<MailErrorEventArgs>? ErrorOccurred;
+
+    private readonly ConcurrentDictionary<Guid, AccountStatus> _status = new();
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastAutoSync = new();
+
+    /// <summary>Raised (on a background thread) when an account's connection status changes.</summary>
+    public event EventHandler<Guid>? AccountStatusChanged;
+
+    /// <summary>The result of the account's most recent sync on this run of the app.</summary>
+    public AccountStatus GetAccountStatus(Guid accountId) => _status.GetValueOrDefault(accountId, AccountStatus.Unknown);
+
+    private void SetStatus(Guid accountId, Func<AccountStatus, AccountStatus> change)
+    {
+        _status.AddOrUpdate(accountId, _ => change(AccountStatus.Unknown), (_, old) => change(old));
+        AccountStatusChanged?.Invoke(this, accountId);
+    }
 
     /// <summary>
     /// Raised after a sync finds messages that newly arrived in an Inbox (read or unread), for notifications and
@@ -141,6 +157,40 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             return MessageBodyExtractor.GetAttachmentContent(mime, attachmentIndex);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new InvalidOperationException(MailErrorTranslator.Describe(ex, account.Settings.Imap.Host).Message, ex);
+        }
+    }
+
+    public async Task SaveAttachmentAsync(Guid messageId, int attachmentIndex, Stream destination, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var (reference, account) = await ResolveAsync(messageId, cancellationToken).ConfigureAwait(false);
+        if (reference is null || account is null) throw new InvalidOperationException("This message is no longer available.");
+
+        // The raw message goes to a private temporary file that is deleted as soon as it's closed, then the
+        // attachment is decoded from disk. Neither the message nor the attachment is held in memory.
+        var temp = Path.Combine(Path.GetTempPath(), "sidephase-" + Guid.NewGuid().ToString("N") + ".eml");
+        try
+        {
+            await using var raw = new FileStream(temp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            var download = progress is null ? null : new Progress<double>(p => progress.Report(p * 0.9));
+            await _imap.RunAsync(account, async c =>
+            {
+                raw.SetLength(0); // a retry after a dropped connection starts again
+                await ImapOperations.DownloadMessageAsync(c, reference.FolderPath, reference.Uid, raw, download, cancellationToken).ConfigureAwait(false);
+                return true;
+            }, cancellationToken).ConfigureAwait(false);
+
+            raw.Position = 0;
+            await Task.Run(() =>
+            {
+                var parser = new MimeKit.MimeParser(raw, persistent: true);
+                using var message = parser.ParseMessage(cancellationToken);
+                MessageBodyExtractor.WriteAttachmentTo(message, attachmentIndex, destination, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
+            progress?.Report(1.0);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not ArgumentOutOfRangeException)
         {
             throw new InvalidOperationException(MailErrorTranslator.Describe(ex, account.Settings.Imap.Host).Message, ex);
         }
@@ -235,6 +285,63 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
         Raise(MailDataChangeKind.FlagsChanged, changed);
     }
+
+    // ------------------------------------------------------------------ snooze & follow-up (local to this PC)
+
+    public Task SetSnoozeAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? until, CancellationToken cancellationToken = default) =>
+        SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetSnoozeAsync(r.AccountId, r.IdentityKey, until, _clock.Now, ct), cancellationToken);
+
+    public Task SetFollowUpAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? due, CancellationToken cancellationToken = default) =>
+        SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetFollowUpAsync(r.AccountId, r.IdentityKey, due, _clock.Now, ct), cancellationToken);
+
+    public Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset now, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<MessageSummary>>(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var released = await _cache.ReleaseExpiredSnoozesAsync(now, cancellationToken).ConfigureAwait(false);
+            if (released.Count == 0) return [];
+            var back = new List<MessageSummary>();
+            foreach (var (accountId, identityKey) in released)
+            {
+                foreach (var id in await _cache.FindAllByIdentityAsync(accountId, identityKey, cancellationToken).ConfigureAwait(false))
+                {
+                    if (await _cache.GetSummaryAsync(id, cancellationToken).ConfigureAwait(false) is { } summary) back.Add(summary);
+                }
+            }
+
+            Raise(MailDataChangeKind.FlagsChanged, back.Count > 0 ? back.Select(m => m.Id).ToList() : []);
+            return back;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset now, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<MessageSummary>>(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var ids = await _cache.TakeDueRemindersAsync(now, cancellationToken).ConfigureAwait(false);
+            var result = new List<MessageSummary>();
+            foreach (var id in ids)
+            {
+                if (await _cache.GetSummaryAsync(id, cancellationToken).ConfigureAwait(false) is { } s) result.Add(s);
+            }
+
+            return result;
+        }, cancellationToken);
+
+    private Task SetLocalMarkerAsync(IReadOnlyCollection<Guid> ids, Func<StoredMessageRef, CancellationToken, Task> apply, CancellationToken ct) =>
+        Task.Run(async () =>
+        {
+            await EnsureInitializedAsync(ct).ConfigureAwait(false);
+            var changed = new List<Guid>();
+            foreach (var id in ids)
+            {
+                var reference = await _cache.GetMessageRefAsync(id, ct).ConfigureAwait(false);
+                if (reference is null) continue;
+                await apply(reference, ct).ConfigureAwait(false);
+                changed.Add(id);
+            }
+
+            Raise(MailDataChangeKind.FlagsChanged, changed);
+        }, ct);
 
     // ------------------------------------------------------------------ moves & deletes (explicit user actions)
 
@@ -473,21 +580,26 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 return new SendResult(false, ex.Message);
             }
 
+            var tracker = new SmtpSendTracker();
             try
             {
                 var credential = await _credentials.GetAsync(account.Account.Id, account.Settings, ct: cancellationToken).ConfigureAwait(false);
                 using var smtp = await _connector.ConnectSmtpAsync(account.Settings.Smtp, credential, cancellationToken).ConfigureAwait(false);
-                await SmtpSender.SendAsync(smtp, mime, progress, cancellationToken).ConfigureAwait(false);
+                await SmtpSender.SendAsync(smtp, mime, progress, cancellationToken, tracker).ConfigureAwait(false);
                 try { await smtp.DisconnectAsync(true, CancellationToken.None).ConfigureAwait(false); } catch (Exception) { /* already sent */ }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !tracker.DataStarted)
             {
-                return new SendResult(false, "Sending was cancelled. The message was not sent.");
+                return new SendResult(false, "Sending was cancelled. The message was not sent.") { Outcome = SendOutcome.TemporaryFailure };
             }
             catch (Exception ex)
             {
+                var outcome = SmtpSender.Classify(ex, tracker.DataStarted);
                 var error = MailErrorTranslator.Describe(ex, account.Settings.Smtp.Host);
-                return new SendResult(false, "Not sent. " + error.Message);
+                var message = outcome == SendOutcome.Uncertain
+                    ? "The connection was lost just after the message was sent, so it may or may not have been delivered. Check your Sent folder before sending it again. (" + error.Message + ")"
+                    : "Not sent. " + error.Message;
+                return new SendResult(false, message) { Outcome = outcome };
             }
 
             // From here on the server has accepted the message. Filing the Sent copy and tidying the draft happen in
@@ -667,6 +779,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 if (summaries.Count > 0) handler(this, summaries);
             }
 
+            SetStatus(account.Account.Id, s => s with { LastSyncedAt = DateTimeOffset.UtcNow, RequiresSignIn = false });
             return (true, total);
         }
         catch (OperationCanceledException)
@@ -675,6 +788,8 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            var error = MailErrorTranslator.Describe(ex, account.Settings.Imap.Host);
+            SetStatus(account.Account.Id, s => s with { LastError = error.Message, RequiresSignIn = error.RequiresSignIn, LastErrorAt = DateTimeOffset.UtcNow });
             Report(account, ex, $"Couldn't synchronise {account.Account.DisplayName}");
             return (false, 0);
         }
@@ -697,20 +812,37 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     /// Runs <see cref="SyncAsync"/> now and then every <paramref name="interval"/> until the app closes, whenever
     /// <paramref name="isActive"/> says real accounts are in use.
     /// </summary>
-    public void StartBackgroundSync(Func<TimeSpan> interval, Func<bool> isActive)
+    public void StartBackgroundSync(Func<TimeSpan> interval, Func<bool> isActive) => StartBackgroundSync(_ => interval(), isActive);
+
+    /// <summary>
+    /// Checks each account on its own schedule (<paramref name="intervalFor"/>) while <paramref name="isActive"/> says
+    /// real accounts are in use. Everything is checked once straight away.
+    /// </summary>
+    public void StartBackgroundSync(Func<Guid, TimeSpan> intervalFor, Func<bool> isActive)
     {
         _ = Task.Run(async () =>
         {
             try
             {
+                var first = true;
                 while (!_shutdown.IsCancellationRequested)
                 {
-                    if (isActive() && (await GetStoredAccountsAsync(_shutdown.Token).ConfigureAwait(false)).Count > 0)
+                    var accounts = isActive() ? await GetStoredAccountsAsync(_shutdown.Token).ConfigureAwait(false) : [];
+                    var now = DateTimeOffset.UtcNow;
+                    var due = accounts.Where(a => first || !_lastAutoSync.TryGetValue(a.Account.Id, out var last) || now - last >= intervalFor(a.Account.Id)).ToList();
+                    foreach (var account in due) _lastAutoSync[account.Account.Id] = now;
+
+                    if (due.Count > 0 && due.Count == accounts.Count)
                     {
                         await SyncAsync().ConfigureAwait(false);
                     }
+                    else if (due.Count > 0)
+                    {
+                        await Task.WhenAll(due.Select(a => Task.Run(() => SyncAccountAsync(a, null, _shutdown.Token)))).ConfigureAwait(false);
+                    }
 
-                    await Task.Delay(interval(), _shutdown.Token).ConfigureAwait(false);
+                    first = false;
+                    await Task.Delay(TimeSpan.FromSeconds(30), _shutdown.Token).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)

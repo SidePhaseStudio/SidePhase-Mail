@@ -6,6 +6,7 @@ using SidePhase.Mail.App.ViewModels;
 using SidePhase.Mail.App.Views;
 using SidePhase.Mail.Core;
 using SidePhase.Mail.Core.Abstractions;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Core.Settings;
 using SidePhase.Mail.Infrastructure;
 using SidePhase.Mail.Infrastructure.Live;
@@ -16,6 +17,7 @@ namespace SidePhase.Mail.App;
 public partial class App : Application
 {
     private static IServiceProvider? _services;
+    private static readonly CancellationTokenSource Shutdown = new();
     private AppDataPaths? _paths;
 
     public App()
@@ -88,10 +90,45 @@ public partial class App : Application
             });
         }
 
+        // Messages held for Undo Send or scheduled for later are sent from here while the app runs. Anything left
+        // "sending" by a crash is marked uncertain (never resent automatically).
+        var outbox = GetService<OutboxService>();
+        var contacts = GetService<Core.Contacts.ContactService>();
+        outbox.AttemptFinished += (_, item) =>
+        {
+            // Remember who real messages went to, for autocomplete (demo messages aren't remembered).
+            if (item.State == OutboxState.Accepted && !item.IsDemo) _ = contacts.RecordSentAsync(item.Draft);
+        };
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await outbox.PruneAsync(TimeSpan.FromDays(30), Shutdown.Token);
+                await outbox.RunAsync(Shutdown.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                StartupDiagnostics.Log("outbox", ex);
+            }
+        });
+
+        // Snoozed messages come back and follow-up reminders fire on time.
+        var watcher = GetService<TimedEventsWatcher>();
+        watcher.Ticked += (_, _) => _ = GetService<MailListViewModel>().RefreshAsync();
+        watcher.Start();
+        Main.Closed += (_, _) =>
+        {
+            Shutdown.Cancel();
+            watcher.Dispose();
+        };
+
         // Real accounts sync in the background (only while real accounts, not the demo, are shown).
         var settings = GetService<ISettingsService>();
         GetService<LiveMailDataSource>().StartBackgroundSync(
-            () => TimeSpan.FromMinutes(Math.Max(1, settings.Current.SyncIntervalMinutes)),
+            accountId => settings.Current.SyncIntervalFor(accountId),
             () => settings.Current.DataMode == DataMode.Live);
     }
 
@@ -111,12 +148,15 @@ public partial class App : Application
         services.AddSingleton<MessageCommandService>();
         services.AddSingleton<DesktopNotificationService>();
         services.AddSingleton<NewMailCoordinator>();
+        services.AddSingleton<TimedEventsWatcher>();
 
         // View models
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<MailListViewModel>();
         services.AddSingleton<ReadingPaneViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<OutboxViewModel>();
+        services.AddSingleton<ContactsViewModel>();
         services.AddTransient<AddAccountViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });

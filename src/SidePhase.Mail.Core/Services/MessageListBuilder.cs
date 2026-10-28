@@ -35,7 +35,16 @@ public enum MessageSectionKind
 public sealed record MessageSection(MessageSectionKind Kind, string Title, IReadOnlyList<MessageSummary> Messages, bool IsCollapsed)
 {
     public bool IsCollapsible => Kind == MessageSectionKind.Pinned;
+
+    /// <summary>
+    /// With conversation view on: the conversation each listed message heads, keyed by the listed message's id.
+    /// Only conversations of more than one message are included.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, ConversationEntry> Conversations { get; init; } = new Dictionary<Guid, ConversationEntry>();
 }
+
+/// <summary>A conversation as listed: every message in it (oldest first) and the ones in the current view.</summary>
+public sealed record ConversationEntry(Conversation Conversation, IReadOnlyList<MessageSummary> InView);
 
 public sealed record MessageListOptions
 {
@@ -58,6 +67,15 @@ public sealed record MessageListOptions
 
     /// <summary>First day of the week for "Earlier this week" grouping.</summary>
     public DayOfWeek FirstDayOfWeek { get; init; } = DayOfWeek.Monday;
+
+    /// <summary>Show one row per conversation (its latest message in view) instead of one per message.</summary>
+    public bool GroupConversations { get; init; }
+
+    /// <summary>
+    /// Other messages that can complete a conversation without being listed themselves, such as your own replies in
+    /// Sent when viewing the Inbox.
+    /// </summary>
+    public IEnumerable<MessageSummary>? ConversationContext { get; init; }
 }
 
 /// <summary>
@@ -89,21 +107,77 @@ public static class MessageListBuilder
             }
         }
 
+        var conversations = new Dictionary<Guid, ConversationEntry>();
+        if (options.GroupConversations) rest = GroupIntoConversations(rest, options.ConversationContext, conversations);
+
         var sorted = Sort(rest, options.Sort);
         var isDateSort = options.Sort is MessageSort.NewestFirst or MessageSort.OldestFirst;
 
         if (!isDateSort || !options.GroupByDate)
         {
-            if (sorted.Count > 0) sections.Add(new MessageSection(MessageSectionKind.All, string.Empty, sorted, false));
+            if (sorted.Count > 0) sections.Add(new MessageSection(MessageSectionKind.All, string.Empty, sorted, false) { Conversations = conversations });
             return sections;
         }
 
         foreach (var group in sorted.GroupBy(m => Bucket(m.Date, options.Now, options.FirstDayOfWeek)))
         {
-            sections.Add(new MessageSection(group.Key, TitleFor(group.Key), group.ToList(), false));
+            sections.Add(new MessageSection(group.Key, TitleFor(group.Key), group.ToList(), false) { Conversations = conversations });
         }
 
         return sections;
+    }
+
+    /// <summary>Returns one message per conversation (the latest in view) and records each conversation.</summary>
+    private static List<MessageSummary> GroupIntoConversations(
+        List<MessageSummary> inView,
+        IEnumerable<MessageSummary>? context,
+        Dictionary<Guid, ConversationEntry> conversations)
+    {
+        var viewIds = inView.Select(m => m.Id).ToHashSet();
+        var pool = inView.Concat((context ?? []).Where(m => !viewIds.Contains(m.Id)));
+        var heads = new List<MessageSummary>();
+        foreach (var conversation in ConversationGrouper.Group(pool))
+        {
+            var listed = conversation.Messages.Where(m => viewIds.Contains(m.Id)).ToList();
+            if (listed.Count == 0) continue; // only context messages: not part of this view
+
+            var deduped = Deduplicate(conversation.Messages, viewIds);
+            var head = listed[^1];
+            heads.Add(head);
+            if (deduped.Count > 1) conversations[head.Id] = new ConversationEntry(conversation with { Messages = deduped }, listed);
+        }
+
+        return heads;
+    }
+
+    /// <summary>
+    /// The same message can be stored in two folders (e.g. Inbox and an "All Mail" archive); show it once, preferring
+    /// the copy in the current view.
+    /// </summary>
+    private static List<MessageSummary> Deduplicate(IReadOnlyList<MessageSummary> messages, HashSet<Guid> viewIds)
+    {
+        var result = new List<MessageSummary>();
+        var byHeader = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in messages)
+        {
+            var header = m.MessageIdHeader?.Trim();
+            if (string.IsNullOrEmpty(header))
+            {
+                result.Add(m);
+                continue;
+            }
+
+            if (byHeader.TryGetValue(header, out var index))
+            {
+                if (viewIds.Contains(m.Id) && !viewIds.Contains(result[index].Id)) result[index] = m;
+                continue;
+            }
+
+            byHeader[header] = result.Count;
+            result.Add(m);
+        }
+
+        return result;
     }
 
     public static bool PassesFilter(MessageSummary m, MessageFilter filter) => filter switch

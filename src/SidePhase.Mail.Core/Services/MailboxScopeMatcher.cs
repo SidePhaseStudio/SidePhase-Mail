@@ -9,8 +9,13 @@ public static class MailboxScopeMatcher
         var junk = isLocallyJunk(message);
         var effective = junk ? FolderKind.Junk : message.FolderKind;
 
+        // Snoozed messages are hidden everywhere except the Snoozed view until they come back.
+        if (scope.Kind == MailboxScopeKind.Snoozed) return message.IsSnoozed && effective != FolderKind.Trash;
+        if (message.IsSnoozed) return false;
+
         return scope.Kind switch
         {
+            MailboxScopeKind.FollowUps => message.FollowUpAt is not null && effective != FolderKind.Trash,
             MailboxScopeKind.UnifiedInbox => effective == FolderKind.Inbox,
             MailboxScopeKind.AllAccounts => effective is not (FolderKind.Junk or FolderKind.Trash or FolderKind.Drafts),
             MailboxScopeKind.Pinned => message.IsPinned && effective is not (FolderKind.Trash or FolderKind.Junk),

@@ -41,6 +41,9 @@ public sealed partial class NavItemViewModel : ObservableObject
     public string ColorHex { get; init; } = "#8B7CFF";
     public string Subtitle { get; init; } = string.Empty;
 
+    /// <summary>Opens a page instead of a mailbox (e.g. "outbox" for Scheduled).</summary>
+    public string? PageTag { get; init; }
+
     /// <summary>A shortcut in the "Favourite folders" section (the folder also appears under its account).</summary>
     public bool IsFavouriteFolder { get; init; }
 

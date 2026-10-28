@@ -33,6 +33,17 @@
         </Button>
       </Grid>
     </DataTemplate>
+
+    <DataTemplate x:Key="ShortcutTemplate" x:DataType="h:ShortcutEntry">
+      <Grid Padding="12,7" Background="{ThemeResource SpCardBrush}" ColumnSpacing="16" CornerRadius="6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="200" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <TextBlock FontFamily="{StaticResource SpSmallFont}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource SpAccentTextBrush}" Text="{x:Bind Keys}" />
+        <TextBlock Grid.Column="1" FontSize="13" Text="{x:Bind Action}" TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
   </Page.Resources>
 
   <Grid Style="{StaticResource SpPanelStyle}">
@@ -67,6 +78,11 @@
         <SelectorBarItem Tag="privacy" Text="Privacy">
           <SelectorBarItem.Icon>
             <FontIcon Glyph="&#xE72E;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+        <SelectorBarItem Tag="shortcuts" Text="Shortcuts">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE765;" />
           </SelectorBarItem.Icon>
         </SelectorBarItem>
         <SelectorBarItem Tag="about" Text="About">
@@ -176,23 +192,69 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                       </Grid.ColumnDefinitions>
-                      <Ellipse Width="12" Height="12" VerticalAlignment="Center" Fill="{x:Bind h:X.HexBrush(ColorHex)}" />
+                      <Ellipse Width="12" Height="12" VerticalAlignment="Center" Fill="{x:Bind h:X.HexBrush(ColorHex), Mode=OneWay}" />
                       <StackPanel Grid.Column="1" Spacing="1">
-                        <TextBlock FontSize="14" Text="{x:Bind Name}" />
+                        <TextBlock FontSize="14" Text="{x:Bind Name, Mode=OneWay}" />
                         <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind Address}" />
                         <TextBlock Style="{StaticResource SpCaptionTextStyle}" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind ProviderText}" />
+                        <TextBlock
+                            Style="{StaticResource SpCaptionTextStyle}"
+                            Foreground="{ThemeResource SpDangerBrush}"
+                            Text="{x:Bind StatusText, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind HasConnectionProblem, Mode=OneWay}" />
                       </StackPanel>
                     </Grid>
                   </Expander.Header>
                   <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind StatusText, Mode=OneWay}" TextWrapping="Wrap" />
+                    <Grid ColumnSpacing="8" Visibility="{x:Bind CanEditAppearance}">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="360" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBox Header="Name shown in SidePhase Mail" MaxLength="100" Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                      <Button Grid.Column="1" VerticalAlignment="Bottom" Command="{x:Bind SaveNameCommand}" Content="Rename" Style="{StaticResource SpSecondaryButtonStyle}" />
+                    </Grid>
+                    <StackPanel Spacing="6" Visibility="{x:Bind CanEditAppearance}">
+                      <TextBlock FontSize="13" Text="Colour" />
+                      <ItemsRepeater ItemsSource="{x:Bind ColorOptions}">
+                        <ItemsRepeater.Layout>
+                          <StackLayout Orientation="Horizontal" Spacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                          <DataTemplate x:DataType="vm:AccountColorOption">
+                            <Button
+                                Width="26"
+                                Height="26"
+                                MinWidth="0"
+                                Padding="0"
+                                AutomationProperties.Name="{x:Bind Hex}"
+                                Background="{x:Bind h:X.HexBrush(Hex)}"
+                                BorderBrush="{ThemeResource SpStrokeStrongBrush}"
+                                Command="{x:Bind SelectCommand}"
+                                CornerRadius="13"
+                                ToolTipService.ToolTip="{x:Bind Hex}" />
+                          </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                      </ItemsRepeater>
+                    </StackPanel>
+                    <ToggleSwitch Header="Send new messages from this account by default" IsOn="{x:Bind IsDefaultSender, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+                    <ComboBox MinWidth="220" Header="Check for new mail" SelectedIndex="{x:Bind SyncIntervalIndex, Mode=TwoWay}">
+                      <ComboBoxItem Content="Same as all accounts" />
+                      <ComboBoxItem Content="Every minute" />
+                      <ComboBoxItem Content="Every 5 minutes" />
+                      <ComboBoxItem Content="Every 15 minutes" />
+                      <ComboBoxItem Content="Every 30 minutes" />
+                      <ComboBoxItem Content="Every hour" />
+                    </ComboBox>
                     <ToggleSwitch Header="Desktop notifications for this account" IsOn="{x:Bind NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
-                    <TextBlock FontSize="13" Text="Signature" />
-                    <TextBox
-                        MinHeight="88"
-                        AcceptsReturn="True"
-                        PlaceholderText="Added to the end of new messages from this account"
-                        Text="{x:Bind Signature, Mode=TwoWay}"
-                        TextWrapping="Wrap" />
+                    <ComboBox
+                        MinWidth="220"
+                        Header="Default signature"
+                        ItemsSource="{x:Bind SignatureOptions, Mode=OneWay}"
+                        SelectedIndex="{x:Bind DefaultSignatureIndex, Mode=TwoWay}" />
+                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Edit signatures under Mail › Signatures. You can switch signature in any message." TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <Button Command="{x:Bind ReauthenticateCommand}" Content="Sign in again" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
                       <Button Command="{x:Bind RemoveCommand}" Content="Remove account" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
@@ -248,6 +310,13 @@
             <ToggleSwitch IsOn="{x:Bind ViewModel.NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
 
+          <controls:SettingsCard
+              Description="Group replies with the messages they answer, including your own replies from Sent, in one expandable row — like Gmail. Turn off to list every message separately."
+              Glyph="&#xE8BD;"
+              Header="Conversation view">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.ConversationView, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Pinned messages" />
           <controls:SettingsCard Description="Pinned messages stay above everything else, in every account." Glyph="&#xE718;" Header="Show the pinned section">
             <ToggleSwitch IsOn="{x:Bind ViewModel.ShowPinnedSection, Mode=TwoWay}" OffContent="Off" OnContent="On" />
@@ -256,6 +325,48 @@
             <ToggleSwitch IsOn="{x:Bind ViewModel.PinnedSectionCollapsed, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
 
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Signatures" />
+          <ItemsRepeater ItemsSource="{x:Bind ViewModel.Signatures}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="6" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+              <DataTemplate x:DataType="vm:SignatureItemViewModel">
+                <Border Style="{StaticResource SpCardStyle}">
+                  <Grid ColumnSpacing="10" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBox AutomationProperties.Name="Signature name" PlaceholderText="Name, e.g. Work" Text="{x:Bind Name, Mode=TwoWay}" />
+                    <Button
+                        Grid.Column="1"
+                        AutomationProperties.Name="Delete signature"
+                        Command="{x:Bind DeleteCommand}"
+                        Style="{StaticResource SpQuickActionButtonStyle}"
+                        ToolTipService.ToolTip="Delete signature">
+                      <FontIcon FontSize="12" Glyph="&#xE74D;" />
+                    </Button>
+                    <TextBox
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        MinHeight="72"
+                        AcceptsReturn="True"
+                        AutomationProperties.Name="Signature text"
+                        PlaceholderText="Added to the end of new messages"
+                        Text="{x:Bind Text, Mode=TwoWay}"
+                        TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+          </ItemsRepeater>
+          <Button Margin="0,2,0,0" Command="{x:Bind ViewModel.AddSignatureCommand}" Content="Add signature" Style="{StaticResource SpSecondaryButtonStyle}" />
+
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Writing" />
           <controls:SettingsCard Glyph="&#xE70F;" Header="Default message format">
             <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.ComposeFormatIndex, Mode=TwoWay}">
@@ -263,6 +374,25 @@
               <ComboBoxItem Content="Plain text" />
             </ComboBox>
           </controls:SettingsCard>
+          <controls:SettingsCard
+              Description="Holds each message for a few seconds after you press Send, so you can take it back. Undo works only until the message reaches your mail server — after that it can't be recalled."
+              Glyph="&#xE7A7;"
+              Header="Undo Send">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.UndoSendIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Off" />
+              <ComboBoxItem Content="5 seconds" />
+              <ComboBoxItem Content="10 seconds" />
+              <ComboBoxItem Content="20 seconds" />
+              <ComboBoxItem Content="30 seconds" />
+            </ComboBox>
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Ask before sending when you press Ctrl+Enter in a message." Glyph="&#xE724;" Header="Confirm Ctrl+Enter send">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.ConfirmCtrlEnterSend, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard
+              Description="Scheduled messages and snoozes are handled by SidePhase Mail on this PC. Keep the app open (it can be minimised) for scheduled messages to go out on time. Snoozes and follow-up reminders aren't shared with other mail apps."
+              Glyph="&#xE823;"
+              Header="Scheduling" />
 
         </StackPanel>
 
@@ -411,6 +541,23 @@
           <controls:SettingsCard Description="{x:Bind ViewModel.CredentialSummary}" Glyph="&#xE8D7;" Header="Stored sign-ins">
             <TextBlock VerticalAlignment="Center" Style="{StaticResource SpCaptionTextStyle}" Text="Passwords are never stored for Google or Microsoft." />
           </controls:SettingsCard>
+        </StackPanel>
+
+        <!-- ============================ Shortcuts ============================ -->
+        <StackPanel x:Name="ShortcutsSection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Message list and reading" />
+          <ItemsRepeater ItemTemplate="{StaticResource ShortcutTemplate}" ItemsSource="{x:Bind h:ShortcutReference.MessageList}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="2" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Writing a message" />
+          <ItemsRepeater ItemTemplate="{StaticResource ShortcutTemplate}" ItemsSource="{x:Bind h:ShortcutReference.Compose}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="2" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+          <TextBlock Margin="2,10,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Shortcuts only act where they make sense: list shortcuts work while the message list has focus, compose shortcuts in a message window." TextWrapping="Wrap" />
         </StackPanel>
 
         <!-- ============================ About ============================ -->

@@ -4,6 +4,7 @@ using SidePhase.Mail.App.Helpers;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Core.Services;
 
 namespace SidePhase.Mail.App.ViewModels;
@@ -15,13 +16,16 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly JunkPolicy _junk;
     private readonly ISettingsService _settings;
     private readonly IUiDispatcher _ui;
+    private readonly OutboxService _outbox;
     private bool _refreshQueued;
     private int _buildVersion;
     private Task _latestBuild = Task.CompletedTask;
 
-    public ShellViewModel(IMailDataSource mail, JunkPolicy junk, ISenderRulesService rules, ISettingsService settings, IUiDispatcher ui)
+    public ShellViewModel(IMailDataSource mail, JunkPolicy junk, ISenderRulesService rules, ISettingsService settings, IUiDispatcher ui, OutboxService outbox)
     {
         _mail = mail;
+        _outbox = outbox;
+        _outbox.Changed += (_, _) => QueueCountRefresh();
         _junk = junk;
         _settings = settings;
         _ui = ui;
@@ -90,7 +94,10 @@ public sealed partial class ShellViewModel : ObservableObject
         items.Add(new NavItemViewModel(NavItemKind.Item, "All Accounts", Glyphs.People, MailboxScope.AllAccounts, BadgeMode.None));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Pinned", Glyphs.Pin, MailboxScope.Pinned, BadgeMode.Total));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Favourites", Glyphs.Star, MailboxScope.Favourites, BadgeMode.None));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Snoozed", Glyphs.Snooze, MailboxScope.Snoozed, BadgeMode.Total));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Follow-ups", Glyphs.Flag, MailboxScope.FollowUps, BadgeMode.Total));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Drafts", Glyphs.Edit, MailboxScope.Unified(FolderKind.Drafts), BadgeMode.Total));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Scheduled", Glyphs.Scheduled, badgeMode: BadgeMode.Total) { PageTag = "outbox" });
         items.Add(new NavItemViewModel(NavItemKind.Item, "Sent", Glyphs.Send, MailboxScope.Unified(FolderKind.Sent), BadgeMode.None));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Junk", Glyphs.Junk, MailboxScope.Unified(FolderKind.Junk)));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Archive", Glyphs.Archive, MailboxScope.Unified(FolderKind.Archive), BadgeMode.Total));
@@ -199,9 +206,13 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             var messages = await _mail.GetMessagesAsync();
             var showBadges = _settings.Current.ShowUnreadBadges;
+            var outbox = await _outbox.GetItemsAsync(_mail.IsDemo);
+            var waiting = outbox.Count(i => i.State is OutboxState.Failed or OutboxState.Uncertain
+                || (i.Kind == OutboxKind.Scheduled && i.State is OutboxState.Queued or OutboxState.Sending));
             foreach (var item in NavItems.SelectMany(i => i.SelfAndDescendants()))
             {
                 item.ShowBadges = showBadges;
+                if (item.PageTag == "outbox") item.Count = waiting;
                 if (item.Scope is null || item.BadgeMode == BadgeMode.None) continue;
                 item.Count = item.BadgeMode == BadgeMode.Total
                     ? messages.Count(m => MailboxScopeMatcher.Matches(m, item.Scope, _junk.IsLocallyJunk))

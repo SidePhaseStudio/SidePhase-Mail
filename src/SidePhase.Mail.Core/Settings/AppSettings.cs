@@ -87,6 +87,15 @@ public sealed class AppSettings
     public ComposeFormat DefaultComposeFormat { get; set; } = ComposeFormat.RichText;
     public int SyncIntervalMinutes { get; set; } = 5;
 
+    /// <summary>Seconds a sent message is held so it can be undone (0 = off). Allowed: 0, 5, 10, 20, 30.</summary>
+    public int UndoSendSeconds { get; set; } = 10;
+
+    /// <summary>Ask before sending when Ctrl+Enter is pressed in the compose window.</summary>
+    public bool ConfirmCtrlEnterSend { get; set; }
+
+    /// <summary>Group replies into conversations in the message list.</summary>
+    public bool ConversationView { get; set; } = true;
+
     // Spam
     public double SpamThreshold { get; set; } = 5.0;
     public bool TreatHighScoresAsJunk { get; set; } = true;
@@ -107,8 +116,29 @@ public sealed class AppSettings
     // Privacy
     public bool BlockRemoteImages { get; set; } = true;
 
-    /// <summary>Signature per account id.</summary>
+    /// <summary>Signature per account id (before Milestone 4; migrated into <see cref="SignatureLibrary"/>).</summary>
     public Dictionary<Guid, string> Signatures { get; set; } = [];
+
+    /// <summary>The account new messages are sent from when no account is implied (e.g. from the Unified Inbox).</summary>
+    public Guid? DefaultSendingAccountId { get; set; }
+
+    /// <summary>Minutes between automatic checks, per account (missing = <see cref="SyncIntervalMinutes"/>).</summary>
+    public Dictionary<Guid, int> AccountSyncIntervals { get; set; } = [];
+
+    /// <summary>Named signatures that any account can use.</summary>
+    public List<SignatureDefinition> SignatureLibrary { get; set; } = [];
+
+    /// <summary>The signature each account starts new messages with (missing = none).</summary>
+    public Dictionary<Guid, Guid> DefaultSignatureIds { get; set; } = [];
+
+    /// <summary>The old per-account signatures have been copied into the library.</summary>
+    public bool SignaturesMigrated { get; set; }
+
+    public TimeSpan SyncIntervalFor(Guid accountId) =>
+        TimeSpan.FromMinutes(AccountSyncIntervals.TryGetValue(accountId, out var minutes) ? minutes : Math.Max(1, SyncIntervalMinutes));
+
+    public SignatureDefinition? DefaultSignatureFor(Guid accountId) =>
+        DefaultSignatureIds.TryGetValue(accountId, out var id) ? SignatureLibrary.FirstOrDefault(s => s.Id == id) : null;
 
     public AppSettings Clone()
     {
@@ -117,6 +147,9 @@ public sealed class AppSettings
         copy.FavouriteFolderIds = [.. FavouriteFolderIds];
         copy.MutedNotificationAccounts = [.. MutedNotificationAccounts];
         copy.Signatures = new Dictionary<Guid, string>(Signatures);
+        copy.SignatureLibrary = SignatureLibrary.Select(s => s.Clone()).ToList();
+        copy.DefaultSignatureIds = new Dictionary<Guid, Guid>(DefaultSignatureIds);
+        copy.AccountSyncIntervals = new Dictionary<Guid, int>(AccountSyncIntervals);
         return copy;
     }
 
@@ -135,12 +168,50 @@ public sealed class AppSettings
         if (!Formatting.ColorMath.TryParseHex(AccentColor, out _)) AccentColor = DefaultAccent;
         if (double.IsNaN(SpamThreshold) || SpamThreshold < 1 || SpamThreshold > 20) SpamThreshold = 5.0;
         if (SyncIntervalMinutes is < 1 or > 240) SyncIntervalMinutes = 5;
+        if (UndoSendSeconds is not (0 or 5 or 10 or 20 or 30)) UndoSendSeconds = 10;
         SenderRules ??= [];
         Signatures ??= [];
+        SignatureLibrary = (SignatureLibrary ?? []).Where(s => s is not null).DistinctBy(s => s.Id).ToList();
+        foreach (var signature in SignatureLibrary)
+        {
+            signature.Name = string.IsNullOrWhiteSpace(signature.Name) ? "Signature" : signature.Name.Trim();
+            signature.Text ??= string.Empty;
+        }
+
+        DefaultSignatureIds ??= [];
+        AccountSyncIntervals = (AccountSyncIntervals ?? []).Where(p => p.Value is >= 1 and <= 240).ToDictionary();
+        if (!SignaturesMigrated)
+        {
+            // Keep every signature written before the library existed, as each account's default.
+            var number = 1;
+            foreach (var (accountId, text) in Signatures.Where(p => !string.IsNullOrWhiteSpace(p.Value)))
+            {
+                var signature = new SignatureDefinition { Id = Guid.NewGuid(), Name = Signatures.Count > 1 ? $"Signature {number++}" : "Signature", Text = text };
+                SignatureLibrary.Add(signature);
+                DefaultSignatureIds.TryAdd(accountId, signature.Id);
+            }
+
+            SignaturesMigrated = true;
+        }
+
+        foreach (var stale in DefaultSignatureIds.Where(p => SignatureLibrary.All(s => s.Id != p.Value)).Select(p => p.Key).ToList())
+        {
+            DefaultSignatureIds.Remove(stale);
+        }
         SenderRules = SenderRules
             .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Value))
             .DistinctBy(r => (r.Kind, r.NormalizedValue))
             .ToList();
         Version = CurrentVersion;
     }
+}
+
+/// <summary>A named signature (plain text; formatting follows the message).</summary>
+public sealed class SignatureDefinition
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "Signature";
+    public string Text { get; set; } = string.Empty;
+
+    public SignatureDefinition Clone() => new() { Id = Id, Name = Name, Text = Text };
 }

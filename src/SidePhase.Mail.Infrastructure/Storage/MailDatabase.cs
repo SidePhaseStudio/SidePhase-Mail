@@ -106,6 +106,79 @@ public sealed class MailDatabase
             updated_at INTEGER NOT NULL
         );
         """,
+
+        // 2 — Milestone 4: snooze, follow-up reminders, outbox (Undo Send / Schedule send), contacts.
+        // Only adds tables: accounts, folders, messages and saved sign-ins are untouched.
+        """
+        CREATE TABLE snoozes (
+            account_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            identity_key TEXT NOT NULL,
+            until_utc    INTEGER NOT NULL,
+            created_at   INTEGER NOT NULL,
+            PRIMARY KEY (account_id, identity_key)
+        );
+        CREATE INDEX ix_snoozes_until ON snoozes (until_utc);
+
+        CREATE TABLE reminders (
+            account_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            identity_key TEXT NOT NULL,
+            due_utc      INTEGER NOT NULL,
+            created_at   INTEGER NOT NULL,
+            notified_at  INTEGER,
+            PRIMARY KEY (account_id, identity_key)
+        );
+        CREATE INDEX ix_reminders_due ON reminders (due_utc);
+
+        -- No foreign key to accounts: demonstration-mailbox items live here too (is_demo = 1).
+        CREATE TABLE outbox (
+            id                TEXT PRIMARY KEY,
+            account_id        TEXT NOT NULL,
+            is_demo           INTEGER NOT NULL,
+            kind              INTEGER NOT NULL,
+            state             INTEGER NOT NULL,
+            send_at_utc       INTEGER NOT NULL,
+            draft_json        TEXT NOT NULL,
+            attempts          INTEGER NOT NULL DEFAULT 0,
+            last_error        TEXT,
+            created_at        INTEGER NOT NULL,
+            updated_at        INTEGER NOT NULL,
+            accepted_at       INTEGER
+        );
+        CREATE INDEX ix_outbox_state ON outbox (state, send_at_utc);
+
+        CREATE TABLE outbox_attempts (
+            outbox_id TEXT NOT NULL REFERENCES outbox(id) ON DELETE CASCADE,
+            at_utc    INTEGER NOT NULL,
+            outcome   INTEGER NOT NULL,
+            detail    TEXT
+        );
+        CREATE INDEX ix_outbox_attempts ON outbox_attempts (outbox_id);
+
+        CREATE TABLE contacts (
+            id           TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            notes        TEXT,
+            source       TEXT NOT NULL DEFAULT 'local',
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        );
+
+        CREATE TABLE contact_emails (
+            contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+            email      TEXT NOT NULL COLLATE NOCASE,
+            label      TEXT,
+            position   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (contact_id, email)
+        );
+        CREATE INDEX ix_contact_emails_email ON contact_emails (email);
+
+        CREATE TABLE recent_recipients (
+            email        TEXT PRIMARY KEY COLLATE NOCASE,
+            display_name TEXT,
+            last_used    INTEGER NOT NULL,
+            use_count    INTEGER NOT NULL
+        );
+        """,
     ];
 
     private readonly string _connectionString;

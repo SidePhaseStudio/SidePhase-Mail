@@ -125,6 +125,22 @@ public sealed class AccountService(
         _ = live.SyncAsync(CancellationToken.None);
     }
 
+    public async Task UpdateAppearanceAsync(Guid accountId, string displayName, string? colorHex, CancellationToken cancellationToken = default)
+    {
+        var name = displayName.Trim();
+        if (name.Length == 0) throw new ArgumentException("Give the account a name.");
+        if (name.Length > 100) name = name[..100];
+        string? color = null;
+        if (!string.IsNullOrWhiteSpace(colorHex))
+        {
+            if (!Core.Formatting.ColorMath.TryParseHex(colorHex, out _)) throw new ArgumentException("Choose a colour like #8B7CFF.");
+            color = colorHex.Trim().ToUpperInvariant();
+        }
+
+        await cache.UpdateAccountAppearanceAsync(accountId, name, color, cancellationToken).ConfigureAwait(false);
+        await live.OnAccountsChangedAsync().ConfigureAwait(false);
+    }
+
     public async Task RemoveAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
         await credentials.DeleteAsync(accountId, cancellationToken).ConfigureAwait(false);
@@ -134,6 +150,10 @@ public sealed class AccountService(
         {
             s.FavouriteFolderIds.RemoveAll(folderIds.Contains);
             s.Signatures.Remove(accountId);
+            s.DefaultSignatureIds.Remove(accountId);
+            s.AccountSyncIntervals.Remove(accountId);
+            s.MutedNotificationAccounts.Remove(accountId);
+            if (s.DefaultSendingAccountId == accountId) s.DefaultSendingAccountId = null;
         });
         await live.OnAccountsChangedAsync(accountId).ConfigureAwait(false);
     }

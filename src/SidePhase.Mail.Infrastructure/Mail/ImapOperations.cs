@@ -90,6 +90,32 @@ public static class ImapOperations
         return await folder.GetMessageAsync(new UniqueId(folder.UidValidity, uid), ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Downloads a raw message into <paramref name="destination"/> in 1 MB pieces, so a message with large attachments
+    /// never has to fit in memory. Uses BODY.PEEK, so the message isn't marked as read.
+    /// </summary>
+    public static async Task DownloadMessageAsync(ImapClient client, string folderPath, uint uid, Stream destination, IProgress<double>? progress, CancellationToken ct)
+    {
+        const int Chunk = 1024 * 1024;
+        var folder = await OpenAsync(client, folderPath, FolderAccess.ReadOnly, ct).ConfigureAwait(false);
+        var id = new UniqueId(folder.UidValidity, uid);
+        var summary = (await folder.FetchAsync([id], new FetchRequest(MessageSummaryItems.UniqueId | MessageSummaryItems.Size), ct).ConfigureAwait(false)).FirstOrDefault()
+            ?? throw new InvalidOperationException("This message is no longer on the server.");
+        var size = (long)(summary.Size ?? 0);
+
+        long offset = 0;
+        while (true)
+        {
+            await using var piece = await folder.GetStreamAsync(id, (int)offset, Chunk, ct).ConfigureAwait(false);
+            var before = destination.Length;
+            await piece.CopyToAsync(destination, ct).ConfigureAwait(false);
+            var read = destination.Length - before;
+            offset += read;
+            if (size > 0) progress?.Report(Math.Min(1.0, (double)offset / size));
+            if (read < Chunk || (size > 0 && offset >= size)) break;
+        }
+    }
+
     /// <summary>Finds a message's UID in a folder by its Message-ID header (after a move whose new UID wasn't reported).</summary>
     public static async Task<(uint Uid, uint UidValidity)?> FindByMessageIdAsync(ImapClient client, string folderPath, string messageId, CancellationToken ct)
     {

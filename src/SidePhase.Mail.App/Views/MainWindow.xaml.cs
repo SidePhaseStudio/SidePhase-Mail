@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window
         App.GetService<ToastService>().ToastRequested += (_, request) => DispatcherQueue.TryEnqueue(() => ShowToast(request));
         App.GetService<IMailDataSource>().ErrorOccurred += (_, e) => DispatcherQueue.TryEnqueue(() => ShowMailError(e));
         App.GetService<DesktopNotificationService>().OpenMessageRequested += (_, id) => DispatcherQueue.TryEnqueue(() => _ = OpenMessageAsync(id));
+        App.GetService<Core.Scheduling.OutboxService>().AttemptFinished += (_, item) => DispatcherQueue.TryEnqueue(() => ShowSendResult(item));
 
         Shell.NavigationRebuilt += (_, _) =>
         {
@@ -75,6 +76,7 @@ public sealed partial class MainWindow : Window
         {
             ShowInbox();
             await OpenFirstMessageForScreenshotAsync();
+            await OfferRecoveredDraftsAsync();
         }
         else
         {
@@ -90,6 +92,51 @@ public sealed partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("SIDEPHASE_OPEN_FIRST_MESSAGE") != "1") return;
         await Task.Delay(1500);
         _mailList.SelectedItem = _mailList.Entries.OfType<MessageItemViewModel>().FirstOrDefault();
+    }
+
+    /// <summary>Messages that were open when SidePhase Mail last closed unexpectedly can be reopened.</summary>
+    private async Task OfferRecoveredDraftsAsync()
+    {
+        try
+        {
+            var store = App.GetService<Core.Composition.IDraftRecoveryStore>();
+            var recovered = await store.ListAsync();
+            if (recovered.Count == 0 || Environment.GetEnvironmentVariable("SIDEPHASE_OPEN_FIRST_MESSAGE") == "1") return;
+
+            var subjects = string.Join(Environment.NewLine, recovered.Take(5).Select(r =>
+                "• " + (string.IsNullOrWhiteSpace(r.Draft.Subject) ? "(No subject)" : r.Draft.Subject)));
+            var dialog = new ContentDialog
+            {
+                Title = recovered.Count == 1 ? "Recover an unsent message?" : $"Recover {recovered.Count} unsent messages?",
+                Content = new TextBlock
+                {
+                    Text = "SidePhase Mail closed while you were writing:" + Environment.NewLine + subjects,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 420,
+                },
+                PrimaryButtonText = "Reopen",
+                SecondaryButtonText = "Discard",
+                CloseButtonText = "Not now",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+
+            var choice = await _dialogs.ShowAsync(dialog);
+            if (choice == ContentDialogResult.None) return;
+            foreach (var item in recovered)
+            {
+                if (choice == ContentDialogResult.Primary)
+                {
+                    App.GetService<WindowService>().OpenCompose(item.Draft with { BodyIncludesSignature = true });
+                }
+
+                // The reopened window keeps its own recovery copy from now on.
+                await store.DeleteAsync(item.SessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Log("recovering unsent messages", ex);
+        }
     }
 
     public void ShowWelcome()
@@ -139,6 +186,32 @@ public sealed partial class MainWindow : Window
         {
             toasts.Show(e.Message, ToastKind.Warning);
         }
+    }
+
+    /// <summary>Reports how a message from the outbox (undo window or scheduled) got on.</summary>
+    private void ShowSendResult(Core.Scheduling.OutboxItem item)
+    {
+        var toasts = App.GetService<ToastService>();
+        var subject = string.IsNullOrWhiteSpace(item.Draft.Subject) ? "(No subject)" : item.Draft.Subject;
+        switch (item.State)
+        {
+            case Core.Scheduling.OutboxState.Accepted:
+                toasts.Show(item.Kind == Core.Scheduling.OutboxKind.Scheduled ? $"Scheduled message sent: \"{subject}\"" : "Message sent.", ToastKind.Success);
+                break;
+            case Core.Scheduling.OutboxState.Failed:
+                toasts.ShowWithAction($"\"{subject}\" wasn't sent: {item.LastError}", ToastKind.Error, "View", ShowOutboxAsync);
+                break;
+            case Core.Scheduling.OutboxState.Uncertain:
+                toasts.ShowWithAction($"\"{subject}\" may or may not have been delivered. It won't be sent again automatically.", ToastKind.Warning, "View", ShowOutboxAsync);
+                break;
+        }
+    }
+
+    private Task ShowOutboxAsync()
+    {
+        var item = Shell.NavItems.FirstOrDefault(i => i.PageTag == "outbox");
+        if (item is not null && _navContainers.TryGetValue(item, out var container)) NavView.SelectedItem = container;
+        return Task.CompletedTask;
     }
 
     /// <summary>Brings the window forward and opens a message (from a notification click).</summary>
@@ -194,8 +267,14 @@ public sealed partial class MainWindow : Window
             case "settings":
                 ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
                 break;
+            case "contacts":
+                ContentFrame.Navigate(typeof(ContactsPage), null, new EntranceNavigationTransitionInfo());
+                break;
             case "add-account":
                 ContentFrame.Navigate(typeof(WelcomePage), null, new EntranceNavigationTransitionInfo());
+                break;
+            case NavItemViewModel { PageTag: "outbox" }:
+                ContentFrame.Navigate(typeof(OutboxPage), null, new EntranceNavigationTransitionInfo());
                 break;
             case NavItemViewModel { Scope: not null } item:
                 _ = NavigateToMailboxAsync(item);
@@ -252,7 +331,7 @@ public sealed partial class MainWindow : Window
         {
             Tag = model,
             Icon = icon,
-            SelectsOnInvoked = model.Scope is not null,
+            SelectsOnInvoked = model.Scope is not null || model.PageTag is not null,
         };
 
         if (model.Kind == NavItemKind.Account)

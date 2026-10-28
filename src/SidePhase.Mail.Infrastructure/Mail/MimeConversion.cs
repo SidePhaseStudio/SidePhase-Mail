@@ -62,6 +62,22 @@ public static class MessageBodyExtractor
         return result;
     }
 
+    /// <summary>Decodes the attachment at <paramref name="index"/> (same order as <see cref="ListAttachments"/>) into a stream.</summary>
+    public static void WriteAttachmentTo(MimeMessage message, int index, Stream destination, CancellationToken ct = default)
+    {
+        var entity = message.Attachments.ElementAtOrDefault(index)
+            ?? throw new ArgumentOutOfRangeException(nameof(index), "That attachment no longer exists in the message.");
+        switch (entity)
+        {
+            case MessagePart rfc822:
+                rfc822.Message?.WriteTo(destination, ct);
+                break;
+            case MimePart part:
+                part.Content?.DecodeTo(destination, ct);
+                break;
+        }
+    }
+
     /// <summary>Decoded bytes of the attachment at <paramref name="index"/> (same order as <see cref="ListAttachments"/>).</summary>
     public static byte[] GetAttachmentContent(MimeMessage message, int index)
     {

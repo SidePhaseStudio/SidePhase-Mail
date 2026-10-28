@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="SidePhase.Mail.App.Views.OutboxPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:SidePhase.Mail.App.ViewModels"
+    Background="Transparent">
+
+  <Page.Resources>
+    <Style x:Key="SectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource SpSubtitleTextStyle}">
+      <Setter Property="Margin" Value="2,18,0,4" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <DataTemplate x:Key="OutboxItemTemplate" x:DataType="vm:OutboxItemViewModel">
+      <Grid Padding="14,12" Background="{ThemeResource SpCardBrush}" ColumnSpacing="14" CornerRadius="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <FontIcon Margin="0,2,0,0" VerticalAlignment="Top" FontSize="16" Foreground="{ThemeResource SpAccentTextBrush}" Glyph="{x:Bind StateGlyph}" />
+        <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock FontSize="14" FontWeight="SemiBold" MaxLines="1" Text="{x:Bind Subject}" TextTrimming="CharacterEllipsis" />
+          <TextBlock MaxLines="1" Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind Recipients}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind AccountText}" />
+          <StackPanel Margin="0,4,0,0" Orientation="Horizontal" Spacing="10">
+            <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SpAccentTextBrush}" Text="{x:Bind StatusText}" />
+            <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind AttachmentText}" Visibility="{x:Bind HasAttachments}" />
+          </StackPanel>
+          <TextBlock
+              Foreground="{ThemeResource SpDangerBrush}"
+              Style="{StaticResource SpCaptionTextStyle}"
+              Text="{x:Bind ErrorText}"
+              TextWrapping="Wrap"
+              Visibility="{x:Bind HasError}" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
+          <!-- Waiting to be sent -->
+          <Button Command="{x:Bind SendNowCommand}" Content="Send now" Style="{StaticResource SpSecondaryButtonStyle}" Visibility="{x:Bind IsQueued}" />
+          <Button Content="Reschedule" Style="{StaticResource SpSecondaryButtonStyle}" Visibility="{x:Bind IsQueued}">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuFlyoutItem Command="{x:Bind RescheduleCommand}" CommandParameter="LaterToday" Text="Later today" />
+                <MenuFlyoutItem Command="{x:Bind RescheduleCommand}" CommandParameter="TomorrowMorning" Text="Tomorrow morning" />
+                <MenuFlyoutItem Command="{x:Bind RescheduleCommand}" CommandParameter="NextWeek" Text="Monday morning" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Command="{x:Bind RescheduleCommand}" CommandParameter="Custom" Text="Choose date and time…" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+          <Button Command="{x:Bind EditCommand}" Content="Edit" Style="{StaticResource SpSecondaryButtonStyle}" Visibility="{x:Bind CanEdit}" />
+          <Button Command="{x:Bind CancelCommand}" Content="Cancel" Style="{StaticResource SpSubtleButtonStyle}" Visibility="{x:Bind IsQueued}" />
+
+          <!-- Failed -->
+          <Button Command="{x:Bind RetryCommand}" Content="Try again" Style="{StaticResource SpPrimaryButtonStyle}" Visibility="{x:Bind IsFailed}" />
+
+          <!-- Uncertain: the user decides; never retried automatically. -->
+          <Button Command="{x:Bind MarkSentCommand}" Content="It was sent" Style="{StaticResource SpSecondaryButtonStyle}" Visibility="{x:Bind IsUncertain}" />
+          <Button Command="{x:Bind SendAgainCommand}" Content="Send again…" Style="{StaticResource SpSecondaryButtonStyle}" Visibility="{x:Bind IsUncertain}" />
+
+          <Button
+              AutomationProperties.Name="Remove"
+              Command="{x:Bind DiscardCommand}"
+              Style="{StaticResource SpQuickActionButtonStyle}"
+              ToolTipService.ToolTip="Remove from this list"
+              Visibility="{x:Bind CanDiscard}">
+            <FontIcon FontSize="12" Glyph="&#xE711;" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+  </Page.Resources>
+
+  <Grid Style="{StaticResource SpPanelStyle}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Padding="36,26,36,6" Spacing="10">
+      <TextBlock FontSize="28" Style="{StaticResource SpTitleTextStyle}" Text="Scheduled" />
+      <InfoBar
+          Title="Sent by this app"
+          CornerRadius="8"
+          IsClosable="False"
+          IsOpen="True"
+          Message="Scheduled messages are sent by SidePhase Mail on this PC, not by your mail server, so the app needs to be open (it can be minimised) at the scheduled time. If it isn't, the message is sent as soon as you open the app again — or, if it's more than a day late, held here for you to decide."
+          Severity="Informational" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" Padding="36,0,36,24">
+      <StackPanel Spacing="8">
+        <StackPanel Visibility="{x:Bind ViewModel.HasAttention, Mode=OneWay}" Spacing="8">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Needs your attention" />
+          <ItemsRepeater ItemTemplate="{StaticResource OutboxItemTemplate}" ItemsSource="{x:Bind ViewModel.NeedsAttention}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="8" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+        </StackPanel>
+
+        <StackPanel Visibility="{x:Bind ViewModel.HasPending, Mode=OneWay}" Spacing="8">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Waiting to send" />
+          <ItemsRepeater ItemTemplate="{StaticResource OutboxItemTemplate}" ItemsSource="{x:Bind ViewModel.Pending}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="8" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+        </StackPanel>
+
+        <StackPanel Visibility="{x:Bind ViewModel.HasSent, Mode=OneWay}" Spacing="8">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Recently sent from here" />
+          <ItemsRepeater ItemTemplate="{StaticResource OutboxItemTemplate}" ItemsSource="{x:Bind ViewModel.Sent}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="8" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+        </StackPanel>
+
+        <StackPanel
+            Margin="0,60,0,0"
+            HorizontalAlignment="Center"
+            Spacing="8"
+            Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}">
+          <FontIcon FontSize="34" Foreground="{ThemeResource SpTextTertiaryBrush}" Glyph="&#xE823;" />
+          <TextBlock HorizontalAlignment="Center" Style="{StaticResource SpSubtitleTextStyle}" Text="Nothing scheduled" />
+          <TextBlock
+              MaxWidth="380"
+              HorizontalAlignment="Center"
+              Style="{StaticResource SpSecondaryTextStyle}"
+              Text="In a new message, open the menu beside Send and choose Schedule send."
+              TextAlignment="Center"
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Page>

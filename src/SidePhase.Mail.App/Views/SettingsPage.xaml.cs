@@ -35,6 +35,7 @@ public sealed partial class SettingsPage : Page
         MailSection.Visibility = tag == "mail" ? Visibility.Visible : Visibility.Collapsed;
         SpamSection.Visibility = tag == "spam" ? Visibility.Visible : Visibility.Collapsed;
         PrivacySection.Visibility = tag == "privacy" ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutsSection.Visibility = tag == "shortcuts" ? Visibility.Visible : Visibility.Collapsed;
         AboutSection.Visibility = tag == "about" ? Visibility.Visible : Visibility.Collapsed;
         ContentScroller.ChangeView(null, 0, null, disableAnimation: true);
     }

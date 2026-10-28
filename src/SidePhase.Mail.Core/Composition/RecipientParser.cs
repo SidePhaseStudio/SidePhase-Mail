@@ -56,6 +56,41 @@ public static partial class RecipientParser
             : a.Name!.IndexOfAny([',', ';', '"']) >= 0 ? $"\"{a.Name.Replace("\"", string.Empty)}\" <{a.Address}>"
             : $"{a.Name} <{a.Address}>"));
 
+    /// <summary>The recipient being typed: the text after the last comma or semicolon (outside quotes and angle brackets).</summary>
+    public static string LastToken(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        return text[(LastSeparator(text) + 1)..].Trim();
+    }
+
+    /// <summary>Replaces the recipient being typed with <paramref name="address"/> and starts the next one.</summary>
+    public static string ReplaceLastToken(string? text, EmailAddress address)
+    {
+        text ??= string.Empty;
+        var head = text[..(LastSeparator(text) + 1)].TrimEnd();
+        var formatted = Format([address]);
+        return (head.Length == 0 ? formatted : head + " " + formatted) + "; ";
+    }
+
+    private static int LastSeparator(string text)
+    {
+        var last = -1;
+        var quoted = false;
+        var angle = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            switch (text[i])
+            {
+                case '"': quoted = !quoted; break;
+                case '<' when !quoted: angle++; break;
+                case '>' when !quoted && angle > 0: angle--; break;
+                case ',' or ';' when !quoted && angle == 0: last = i; break;
+            }
+        }
+
+        return last;
+    }
+
     public static bool IsValidAddress(string address) =>
         address.Length <= 254 && AddressRegex().IsMatch(address);
 
