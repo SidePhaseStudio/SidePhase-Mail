@@ -236,6 +236,63 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         Raise(MailDataChangeKind.FlagsChanged, changed);
     }
 
+    // ------------------------------------------------------------------ snooze & follow-up (local to this PC)
+
+    public Task SetSnoozeAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? until, CancellationToken cancellationToken = default) =>
+        SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetSnoozeAsync(r.AccountId, r.IdentityKey, until, _clock.Now, ct), cancellationToken);
+
+    public Task SetFollowUpAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? due, CancellationToken cancellationToken = default) =>
+        SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetFollowUpAsync(r.AccountId, r.IdentityKey, due, _clock.Now, ct), cancellationToken);
+
+    public Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset now, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<MessageSummary>>(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var released = await _cache.ReleaseExpiredSnoozesAsync(now, cancellationToken).ConfigureAwait(false);
+            if (released.Count == 0) return [];
+            var back = new List<MessageSummary>();
+            foreach (var (accountId, identityKey) in released)
+            {
+                foreach (var id in await _cache.FindAllByIdentityAsync(accountId, identityKey, cancellationToken).ConfigureAwait(false))
+                {
+                    if (await _cache.GetSummaryAsync(id, cancellationToken).ConfigureAwait(false) is { } summary) back.Add(summary);
+                }
+            }
+
+            Raise(MailDataChangeKind.FlagsChanged, back.Count > 0 ? back.Select(m => m.Id).ToList() : []);
+            return back;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset now, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<MessageSummary>>(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var ids = await _cache.TakeDueRemindersAsync(now, cancellationToken).ConfigureAwait(false);
+            var result = new List<MessageSummary>();
+            foreach (var id in ids)
+            {
+                if (await _cache.GetSummaryAsync(id, cancellationToken).ConfigureAwait(false) is { } s) result.Add(s);
+            }
+
+            return result;
+        }, cancellationToken);
+
+    private Task SetLocalMarkerAsync(IReadOnlyCollection<Guid> ids, Func<StoredMessageRef, CancellationToken, Task> apply, CancellationToken ct) =>
+        Task.Run(async () =>
+        {
+            await EnsureInitializedAsync(ct).ConfigureAwait(false);
+            var changed = new List<Guid>();
+            foreach (var id in ids)
+            {
+                var reference = await _cache.GetMessageRefAsync(id, ct).ConfigureAwait(false);
+                if (reference is null) continue;
+                await apply(reference, ct).ConfigureAwait(false);
+                changed.Add(id);
+            }
+
+            Raise(MailDataChangeKind.FlagsChanged, changed);
+        }, ct);
+
     // ------------------------------------------------------------------ moves & deletes (explicit user actions)
 
     public async Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default)

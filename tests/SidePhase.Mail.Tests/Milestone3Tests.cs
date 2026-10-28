@@ -153,6 +153,10 @@ public class JunkRuleAndNotificationTests
         public Task SetReadAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetReadAsync(ids, v, c);
         public Task SetStarredAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetStarredAsync(ids, v, c);
         public Task SetPinnedAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetPinnedAsync(ids, v, c);
+        public Task SetSnoozeAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset? u, CancellationToken c = default) => _inner.SetSnoozeAsync(ids, u, c);
+        public Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset n, CancellationToken c = default) => _inner.ReleaseExpiredSnoozesAsync(n, c);
+        public Task SetFollowUpAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset? d, CancellationToken c = default) => _inner.SetFollowUpAsync(ids, d, c);
+        public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset n, CancellationToken c = default) => _inner.TakeDueFollowUpsAsync(n, c);
         public Task<IReadOnlyList<Core.Abstractions.MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> ids, FolderKind t, CancellationToken c = default) => _inner.MoveToAsync(ids, t, c);
         public Task RestoreAsync(IReadOnlyCollection<Core.Abstractions.MoveRecord> m, CancellationToken c = default) => _inner.RestoreAsync(m, c);
         public Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> ids, CancellationToken c = default) => _inner.DeletePermanentlyAsync(ids, c);

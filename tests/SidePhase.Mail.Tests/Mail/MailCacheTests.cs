@@ -211,6 +211,83 @@ public sealed class MailCacheTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Snoozes_follow_the_message_across_folders_and_expire()
+    {
+        var inbox = Folder("INBOX", FolderKind.Inbox);
+        var archive = Folder("Archive", FolderKind.Archive);
+        await _cache.UpsertFolderAsync(inbox);
+        await _cache.UpsertFolderAsync(archive);
+        var message = Message(inbox, 1, 1, "<snooze@x>");
+        await _cache.UpsertMessagesAsync([message]);
+        var now = DateTimeOffset.UtcNow;
+        await _cache.SetSnoozeAsync(_account, message.IdentityKey, now.AddHours(2), now);
+
+        var snoozed = Assert.Single(await _cache.GetSummariesAsync());
+        Assert.True(snoozed.IsSnoozed);
+        Assert.Equal(now.AddHours(2).ToUnixTimeMilliseconds(), snoozed.SnoozedUntil!.Value.ToUnixTimeMilliseconds());
+
+        // Moved elsewhere (new id): still snoozed.
+        await _cache.DeleteMessageAsync(message.Id);
+        var moved = Message(archive, 2, 9, "<snooze@x>");
+        await _cache.UpsertMessagesAsync([moved]);
+        Assert.True(Assert.Single(await _cache.GetSummariesAsync()).IsSnoozed);
+
+        Assert.Empty(await _cache.ReleaseExpiredSnoozesAsync(now.AddHours(1)));
+        var released = await _cache.ReleaseExpiredSnoozesAsync(now.AddHours(2));
+        Assert.Equal((_account, moved.IdentityKey), Assert.Single(released));
+        Assert.False(Assert.Single(await _cache.GetSummariesAsync()).IsSnoozed);
+        Assert.Equal([moved.Id], await _cache.FindAllByIdentityAsync(_account, moved.IdentityKey));
+    }
+
+    [Fact]
+    public async Task Reminders_persist_are_announced_once_and_re_arm_when_changed()
+    {
+        var inbox = Folder("INBOX", FolderKind.Inbox);
+        await _cache.UpsertFolderAsync(inbox);
+        var message = Message(inbox, 1, 1, "<remind@x>");
+        await _cache.UpsertMessagesAsync([message]);
+        var now = DateTimeOffset.UtcNow;
+        await _cache.SetFollowUpAsync(_account, message.IdentityKey, now.AddDays(1), now);
+        Assert.NotNull(Assert.Single(await _cache.GetSummariesAsync()).FollowUpAt);
+
+        Assert.Empty(await _cache.TakeDueRemindersAsync(now));
+        Assert.Equal([message.Id], await _cache.TakeDueRemindersAsync(now.AddDays(1)));
+        Assert.Empty(await _cache.TakeDueRemindersAsync(now.AddDays(2))); // already announced
+
+        // Editing the time re-arms the reminder.
+        await _cache.SetFollowUpAsync(_account, message.IdentityKey, now.AddDays(3), now);
+        Assert.Equal([message.Id], await _cache.TakeDueRemindersAsync(now.AddDays(3)));
+
+        // Done: removed, and still listed for overdue display until then.
+        await _cache.SetFollowUpAsync(_account, message.IdentityKey, null, now);
+        Assert.Null(Assert.Single(await _cache.GetSummariesAsync()).FollowUpAt);
+    }
+
+    [Fact]
+    public async Task Migration_from_schema_1_keeps_accounts_and_adds_new_tables()
+    {
+        // Simulate a Milestone 2/3 database: schema 1 with an account in it.
+        var file = Path.Combine(_dir, "old.db");
+        var db = new MailDatabase(file);
+        await using (var c = await db.OpenAsync())
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = MailDatabase.Migrations[0] + "\nPRAGMA user_version = 1;";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var old = new MailCache(db);
+        await old.AddAccountAsync(Account(Guid.NewGuid(), "kept@example.test"));
+        Assert.Equal(MailDatabase.LatestVersion, await old.InitializeAsync());
+        Assert.Equal("kept@example.test", Assert.Single(await old.GetAccountsAsync()).Account.EmailAddress);
+
+        await using var c2 = await db.OpenAsync();
+        await using var check = c2.CreateCommand();
+        check.CommandText = "SELECT count(*) FROM sqlite_master WHERE name IN ('snoozes','reminders','outbox','outbox_attempts','contacts','contact_emails','recent_recipients')";
+        Assert.Equal(7L, (long)(await check.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
     public async Task Folder_upsert_keeps_sync_state()
     {
         var inbox = Folder("INBOX", FolderKind.Inbox);

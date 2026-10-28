@@ -67,6 +67,14 @@ public sealed class MailDataSourceRouter : IMailDataSource
 
     public Task SetPinnedAsync(IReadOnlyCollection<Guid> messageIds, bool isPinned, CancellationToken cancellationToken = default) => Active.SetPinnedAsync(messageIds, isPinned, cancellationToken);
 
+    public Task SetSnoozeAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? until, CancellationToken cancellationToken = default) => Active.SetSnoozeAsync(messageIds, until, cancellationToken);
+
+    public Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset now, CancellationToken cancellationToken = default) => Active.ReleaseExpiredSnoozesAsync(now, cancellationToken);
+
+    public Task SetFollowUpAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? due, CancellationToken cancellationToken = default) => Active.SetFollowUpAsync(messageIds, due, cancellationToken);
+
+    public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset now, CancellationToken cancellationToken = default) => Active.TakeDueFollowUpsAsync(now, cancellationToken);
+
     public Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default) => Active.MoveToAsync(messageIds, target, cancellationToken);
 
     public Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default) => Active.RestoreAsync(moves, cancellationToken);

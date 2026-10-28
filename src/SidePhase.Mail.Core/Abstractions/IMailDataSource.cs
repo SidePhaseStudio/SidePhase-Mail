@@ -74,6 +74,18 @@ public interface IMailDataSource
 
     Task SetPinnedAsync(IReadOnlyCollection<Guid> messageIds, bool isPinned, CancellationToken cancellationToken = default);
 
+    /// <summary>Hides messages until <paramref name="until"/> (null = unsnooze now). Local to this PC; nothing moves on the server.</summary>
+    Task SetSnoozeAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? until, CancellationToken cancellationToken = default);
+
+    /// <summary>Ends snoozes that have expired. Returns the messages that are back.</summary>
+    Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset now, CancellationToken cancellationToken = default);
+
+    /// <summary>Sets a follow-up reminder (null = done/removed). Local to this PC; nothing is sent to anyone.</summary>
+    Task SetFollowUpAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? due, CancellationToken cancellationToken = default);
+
+    /// <summary>Reminders that are due and haven't been announced yet; each is returned only once.</summary>
+    Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset now, CancellationToken cancellationToken = default);
+
     /// <summary>Moves messages to the folder of the given kind in each message's own account.</summary>
     Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default);
 

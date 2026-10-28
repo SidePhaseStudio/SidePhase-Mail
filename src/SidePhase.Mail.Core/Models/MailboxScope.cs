@@ -19,6 +19,12 @@ public enum MailboxScopeKind
 
     /// <summary>One specific folder of one account.</summary>
     AccountFolder,
+
+    /// <summary>Messages hidden until a chosen time.</summary>
+    Snoozed,
+
+    /// <summary>Messages with a follow-up reminder.</summary>
+    FollowUps,
 }
 
 /// <summary>
@@ -34,6 +40,8 @@ public sealed record MailboxScope(
     public static MailboxScope AllAccounts { get; } = new(MailboxScopeKind.AllAccounts);
     public static MailboxScope Pinned { get; } = new(MailboxScopeKind.Pinned);
     public static MailboxScope Favourites { get; } = new(MailboxScopeKind.Favourites);
+    public static MailboxScope Snoozed { get; } = new(MailboxScopeKind.Snoozed);
+    public static MailboxScope FollowUps { get; } = new(MailboxScopeKind.FollowUps);
 
     public static MailboxScope Unified(FolderKind kind) => new(MailboxScopeKind.UnifiedFolder, kind);
 

@@ -89,6 +89,43 @@ public sealed class DemoMailDataSource : IMailDataSource
         return UpdateFlags(messageIds, m => m with { IsPinned = isPinned, PinnedAt = isPinned ? now : null });
     }
 
+    public Task SetSnoozeAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? until, CancellationToken cancellationToken = default) =>
+        UpdateFlags(messageIds, m => m with { SnoozedUntil = until });
+
+    public Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        List<MessageSummary> released;
+        lock (_gate)
+        {
+            released = _messages.Values.Where(m => m.SnoozedUntil is { } until && until <= now).Select(m => m with { SnoozedUntil = null }).ToList();
+            foreach (var m in released) _messages[m.Id] = m;
+        }
+
+        Raise(MailDataChangeKind.FlagsChanged, released.Select(m => m.Id).ToList());
+        return Task.FromResult<IReadOnlyList<MessageSummary>>(released);
+    }
+
+    public Task SetFollowUpAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? due, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            foreach (var id in messageIds) _announcedFollowUps.Remove(id);
+        }
+
+        return UpdateFlags(messageIds, m => m with { FollowUpAt = due });
+    }
+
+    public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var due = _messages.Values.Where(m => m.FollowUpAt is { } at && at <= now && _announcedFollowUps.Add(m.Id)).ToList();
+            return Task.FromResult<IReadOnlyList<MessageSummary>>(due);
+        }
+    }
+
+    private readonly HashSet<Guid> _announcedFollowUps = [];
+
     public Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default)
     {
         var moves = new List<MoveRecord>();
