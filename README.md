@@ -80,7 +80,11 @@ Design tokens and the visual language are documented in [docs/DESIGN_SYSTEM.md](
 | Ctrl+F | Forward |
 | Ctrl+E | Search |
 | F5 | Check for new mail |
-| Delete | Delete selected message |
+| Delete | Move selected message to Trash |
+| Backspace | Archive |
+| Ctrl+Q / Ctrl+U | Mark read / unread |
+| Ctrl+Shift+P | Pin / unpin |
+| Insert | Favourite / unfavourite |
 | Ctrl+Enter | Send (compose window) |
 
 ## Demonstration data

@@ -59,16 +59,24 @@ UI behaviour is verified manually on Windows; there are no automated UI tests ye
 | Friendly errors (auth, TLS, network, SMTP rejection, timeouts) | 🧪 | `MailErrorTranslator`; deduplicated toasts. |
 | Demo mode kept and never mixed with real accounts | 🧪 | `MailDataSourceRouter`; toggle in Settings → Accounts. |
 
-## Milestone 3 — Productivity
+## Milestone 3 — Productivity, spam protection and message management
+
+Verified by the user on Windows 11: adding a real IMAP account (not Gmail/Microsoft), sending to Gmail.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Pinned emails | ✅ | Persistent for real accounts (Milestone 2). Demo pins reset on restart. |
-| Favourites | ✅ | Starred messages (IMAP `\Flagged`) and favourite folders. Favourite contacts ⏳. |
-| SpamAssassin detection | 🧪 | Header parsing, classification, threshold, local junk filtering, trusted/blocked senders and domains. |
-| Send the Bugger Back! | 🧪 | Block sender (+ optional domain, never shared providers), move to Junk, undo, notification suppression policy. Rejection replies are an unimplemented, confirmation-only extension point (`IRejectionResponder`). |
-| Desktop notifications | ⏳ | Policy implemented and tested (`NotificationPolicy`); toast delivery pending. |
-| Search improvements (server-side, indexed) | ⏳ | |
+| Sent folder: no duplicate copies | 🔌 | The app's own Sent copy is skipped when the server already filed one (Message-ID check). Exactly one copy after send + sync is tested. |
+| Quick actions (archive, delete → Trash, read/unread, pin, favourite) with undo | 🔌 / ❔ | Server effects tested; hover toolbar now overlays the date and only fades, so hovering can't move the list (❔ needs checking on Windows). Shortcuts: Backspace, Delete, Ctrl+Q, Ctrl+U, Ctrl+Shift+P, Insert. |
+| Junk keywords for server spam filters | 🔌 | Moving to/from Junk sets `$Junk` / `$NotJunk` where the server allows keywords. |
+| Pinned emails | 🔌 | Persistent in SQLite by message identity; survive restart, sync, moves and UIDVALIDITY resets; separate from stars; collapsible section. |
+| Favourites | 🔌 | Stars sync as IMAP `\Flagged` (local fallback), combined Favourites view, favourite folders. |
+| SpamAssassin detection | 🧪 | X-Spam-Status/Flag/Score/Level/Report parsing, per-rule breakdown, configurable threshold, conflicting-header detection. Spam headers are trusted only when a server added them in transit (checked against Received headers); headers the sender wrote are ignored; missing headers are never treated as safe. Details shown in the reading pane (❔ UI). |
+| Send the Bugger Back! | 🧪 | Options: block sender, block domain (never shared providers), move to Junk, apply to future messages; undo (including restoring a removed trust). Silent: no replies, bounces or backscatter. |
+| Spam settings section | ❔ | Threshold, trusted/blocked senders and domains, high-score filtering, optional server-side Junk rule for blocked senders (off by default), filtered-mail notices. |
+| Automatic Junk rule | 🧪 | Only blocked senders/domains, only new Inbox mail, never trusted senders, never deletes, never acts on spam scores alone. |
+| Search | 🧪 / 🔌 | from:, to:, subject:, body:, is:, has:attachment, after:, before:, on:, newer_than:, older_than:. Words also match downloaded message text (SQLite, off the UI thread). *Search on server* (IMAP SEARCH) finds older mail and downloads its headers; results are labelled as "this PC" or "server". |
+| Windows desktop notifications | ❔ | Windows App SDK notifications with sender, subject and preview; click opens the message; per-account mute; never for Junk/blocked senders; each message at most once; respects Windows notification settings; falls back to in-app notices. Notification logic is unit-tested; the Windows toasts themselves need checking on a PC. |
+| Responsiveness | ✅ | Cache reads run off the UI thread; bursts of sync events coalesce into one refresh; sent-mail follow-up (Sent copy, draft clean-up) runs after the send returns. |
 
 ## Future
 
@@ -78,8 +86,8 @@ Calendar, contacts, snooze, scheduled send, follow-up reminders, Discord and oth
 ## Known limitations
 
 * **Google and Microsoft sign-in are unverified** until tested with real app registrations; Gmail works today with an app password.
-* The Windows UI for Milestone 2 (Add Account, Settings, link and attachment dialogs) compiles and passes the CI smoke test, but
-  hasn't yet been exercised by hand against a real account.
+* Parts of the Windows UI marked ❔ compile and pass the CI smoke test but haven't been checked by hand yet.
+* Server search downloads at most 200 matches per folder.
 * First sync downloads the newest 500 messages per folder; older mail isn't back-filled yet. Gmail's All Mail is used as the
   archive target but isn't downloaded (it repeats every message).
 * No IMAP IDLE (push); new mail arrives on the sync interval. No CONDSTORE/QRESYNC optimisation yet.

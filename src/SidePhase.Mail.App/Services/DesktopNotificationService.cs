@@ -88,12 +88,12 @@ public sealed class DesktopNotificationService : IDisposable
 
             foreach (var message in messages)
             {
-                var notification = new AppNotificationBuilder()
+                var builder = new AppNotificationBuilder()
                     .AddArgument(MessageIdArgument, message.Id.ToString())
                     .AddText(message.From.DisplayName)
-                    .AddText(message.DisplaySubject)
-                    .AddText(message.Preview)
-                    .BuildNotification();
+                    .AddText(message.DisplaySubject);
+                if (!string.IsNullOrWhiteSpace(message.Preview)) builder.AddText(message.Preview);
+                var notification = builder.BuildNotification();
 
                 // Tag = message id, so the same message can never be shown twice.
                 notification.Tag = message.Id.ToString("N")[..16];
