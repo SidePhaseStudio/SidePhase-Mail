@@ -27,6 +27,8 @@ public sealed record SendResult(bool Succeeded, string Message, Guid? SentMessag
 
 public sealed record SyncResult(bool Succeeded, int NewMessages, string Message);
 
+public sealed record ServerSearchResult(bool Supported, IReadOnlySet<Guid> MessageIds, string Message);
+
 /// <summary>A problem with one account or operation, phrased for the user. Never contains secrets.</summary>
 public sealed class MailErrorEventArgs(Guid? accountId, string message, bool requiresSignIn = false) : EventArgs
 {
@@ -88,6 +90,18 @@ public interface IMailDataSource
     Task<SendResult> SendAsync(DraftMessage draft, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
 
     Task<SyncResult> SyncAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// For each term, the ids of messages whose downloaded text contains it. Only messages already stored on this PC
+    /// are searched.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, IReadOnlySet<Guid>>> SearchDownloadedTextAsync(IReadOnlyCollection<string> terms, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the mail servers to search (including mail older than what's stored locally). Matches that weren't stored
+    /// yet are downloaded as headers so they can be shown.
+    /// </summary>
+    Task<ServerSearchResult> SearchServerAsync(string query, MailboxScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>Clears locally cached data. Never deletes anything on a mail server.</summary>
     Task ClearLocalDataAsync(CancellationToken cancellationToken = default);

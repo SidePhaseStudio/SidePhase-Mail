@@ -59,6 +59,11 @@
             <FontIcon Glyph="&#xE715;" />
           </SelectorBarItem.Icon>
         </SelectorBarItem>
+        <SelectorBarItem Tag="spam" Text="Spam">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xEA18;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
         <SelectorBarItem Tag="privacy" Text="Privacy">
           <SelectorBarItem.Icon>
             <FontIcon Glyph="&#xE72E;" />
@@ -180,6 +185,7 @@
                     </Grid>
                   </Expander.Header>
                   <StackPanel Spacing="12">
+                    <ToggleSwitch Header="Desktop notifications for this account" IsOn="{x:Bind NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
                     <TextBlock FontSize="13" Text="Signature" />
                     <TextBox
                         MinHeight="88"
@@ -238,7 +244,7 @@
           <controls:SettingsCard Glyph="&#xE8C3;" Header="Mark messages as read when opened">
             <ToggleSwitch IsOn="{x:Bind ViewModel.MarkAsReadOnOpen, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
-          <controls:SettingsCard Description="Desktop notifications arrive in Milestone 3. Blocked senders never notify you." Glyph="&#xEA8F;" Header="Notifications">
+          <controls:SettingsCard Description="Windows notifications for new mail. Junk and blocked senders never notify you; you can mute an account under Accounts. Windows' own notification settings also apply." Glyph="&#xEA8F;" Header="Notifications">
             <ToggleSwitch IsOn="{x:Bind ViewModel.NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
 
@@ -258,7 +264,12 @@
             </ComboBox>
           </controls:SettingsCard>
 
-          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Spam and junk" />
+        </StackPanel>
+
+        <!-- ============================ Spam ============================ -->
+        <StackPanel x:Name="SpamSection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="SpamAssassin" />
+          <TextBlock Margin="2,0,0,6" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="SidePhase Mail reads the SpamAssassin results your mail server adds to each message. Results the sender wrote into the message themselves are ignored, and a message without results isn't assumed to be safe. Nothing is ever deleted automatically." />
           <Border Style="{StaticResource SpCardStyle}">
             <Grid ColumnSpacing="16" RowSpacing="8">
               <Grid.ColumnDefinitions>
@@ -292,9 +303,18 @@
           <controls:SettingsCard Description="High-scoring Inbox messages appear in Junk inside SidePhase Mail. They aren't moved on the server." Glyph="&#xE7BA;" Header="Filter high scores into Junk">
             <ToggleSwitch IsOn="{x:Bind ViewModel.TreatHighScoresAsJunk, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Junk rules" />
+          <controls:SettingsCard Description="Normally blocked mail only appears under Junk in SidePhase Mail. Turn this on to also move new mail from blocked senders and domains into your Junk folder on the server, so other apps see it there too. Trusted senders are never moved." Glyph="&#xE8DE;" Header="Move blocked senders' new mail to the server's Junk folder">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.MoveBlockedMailToServerJunk, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Show a short notice when new messages are filtered into Junk." Glyph="&#xEA8F;" Header="Tell me when mail is filtered">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.NotifyWhenFiltered, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
           <controls:SettingsCard Description="Pre-tick &quot;block the whole domain&quot; (never offered for shared providers such as gmail.com)." Glyph="&#xE8F8;" Header="Send the Bugger Back! blocks the domain by default">
             <ToggleSwitch IsOn="{x:Bind ViewModel.BuggerBackBlocksDomain, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
+          <TextBlock Margin="2,4,0,0" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Right-click a message for Move to Junk, Not junk and Send the Bugger Back!. Moving mail in or out of Junk also tells your server's spam filter (where supported)." />
 
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Senders" />
           <TextBlock Margin="2,0,0,4" Foreground="{ThemeResource SpDangerBrush}" Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.RuleError, Mode=OneWay}" Visibility="{x:Bind h:X.VisibleIfText(ViewModel.RuleError), Mode=OneWay}" />

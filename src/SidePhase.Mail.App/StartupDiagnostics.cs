@@ -18,6 +18,21 @@ internal static class StartupDiagnostics
 
     public static string LogFile => Path.Combine(new AppDataPaths().LogsFolder, "startup-error.log");
 
+    /// <summary>Records a non-fatal problem in Logs\app.log (never message contents or credentials).</summary>
+    public static void Log(string what, Exception exception)
+    {
+        try
+        {
+            var file = Path.Combine(new AppDataPaths().LogsFolder, "app.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.AppendAllText(file, $"{DateTimeOffset.Now:O} {what}: {exception.GetType().FullName}: {exception.Message}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Logging must never fail the caller.
+        }
+    }
+
     public static void Report(string stage, Exception exception, bool showDialog = true)
     {
         var details = new StringBuilder()

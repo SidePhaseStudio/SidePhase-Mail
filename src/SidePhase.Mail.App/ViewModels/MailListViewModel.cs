@@ -30,6 +30,9 @@ public sealed partial class MailListViewModel : ObservableObject
     private int _lastSelectedIndex = -1;
     private bool _suppressAutoAdvance;
     private int _refreshVersion;
+    private int _searchVersion;
+    private IReadOnlyDictionary<string, IReadOnlySet<Guid>> _bodyMatches = new Dictionary<string, IReadOnlySet<Guid>>();
+    private IReadOnlySet<Guid> _serverMatches = new HashSet<Guid>();
 
     public MailListViewModel(
         IMailDataSource mail,
@@ -58,6 +61,7 @@ public sealed partial class MailListViewModel : ObservableObject
         EmptyMessage = string.Empty;
         SearchText = string.Empty;
         SyncStatus = string.Empty;
+        SearchStatus = string.Empty;
 
         _mail.DataChanged += (_, _) => QueueRefresh();
         _rules.RulesChanged += (_, _) => QueueRefresh();
@@ -101,6 +105,25 @@ public sealed partial class MailListViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SortLabel))]
     public partial MessageSort Sort { get; set; }
 
+    /// <summary>Says where the current search results come from (this PC, or also the server).</summary>
+    [ObservableProperty]
+    public partial string SearchStatus { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SearchServerCommand))]
+    public partial bool IsSearchActive { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SearchServerCommand))]
+    public partial bool IsSearchingServer { get; set; }
+
+    /// <summary>True once the server has been searched for the current query.</summary>
+    [ObservableProperty]
+    public partial bool HasServerResults { get; set; }
+
+    public bool CanSearchServer => IsSearchActive && !IsSearchingServer && !_mail.IsDemo
+        && Scope.Kind is not (MailboxScopeKind.Pinned or MailboxScopeKind.Favourites);
+
     [ObservableProperty]
     public partial bool IsSyncing { get; set; }
 
@@ -128,10 +151,30 @@ public sealed partial class MailListViewModel : ObservableObject
         _ => "Newest first",
     };
 
+    /// <summary>Selects a message if it's in the current list (refreshing first). Returns false if it isn't.</summary>
+    public async Task<bool> SelectMessageAsync(Guid messageId)
+    {
+        await RefreshAsync();
+        var item = Entries.OfType<MessageItemViewModel>().FirstOrDefault(m => m.Id == messageId);
+        if (item is null) return false;
+        SelectedItem = item;
+        return true;
+    }
+
     public async Task NavigateAsync(MailboxScope scope, string title)
     {
         Scope = scope;
         Title = title;
+        if (HasServerResults)
+        {
+            _searchVersion++;
+            _serverMatches = new HashSet<Guid>();
+            HasServerResults = false;
+            SearchStatus = IsSearchActive ? "Searching messages stored on this PC" : string.Empty;
+        }
+
+        OnPropertyChanged(nameof(CanSearchServer));
+        SearchServerCommand.NotifyCanExecuteChanged();
         _suppressAutoAdvance = true;
         SelectedItem = null;
         _lastSelectedIndex = -1;
@@ -156,14 +199,66 @@ public sealed partial class MailListViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value)
     {
+        // A new query invalidates any server results for the old one.
+        _searchVersion++;
+        _serverMatches = new HashSet<Guid>();
+        HasServerResults = false;
+        IsSearchActive = !string.IsNullOrWhiteSpace(value);
+        SearchStatus = IsSearchActive ? "Searching messages stored on this PC" : string.Empty;
+
         _searchDelay?.Cancel();
         _searchDelay = new CancellationTokenSource();
         var token = _searchDelay.Token;
         _ = Task.Delay(220, token).ContinueWith(
-            _ => _ui.Post(() => _ = RefreshAsync()),
+            _ => _ui.Post(() => _ = UpdateSearchAsync()),
             token,
             TaskContinuationOptions.OnlyOnRanToCompletion,
             TaskScheduler.Default);
+    }
+
+    /// <summary>Looks the query's words up in downloaded message text (off the UI thread), then refreshes.</summary>
+    private async Task UpdateSearchAsync()
+    {
+        var version = _searchVersion;
+        var terms = MessageSearch.TextTerms(SearchText);
+        IReadOnlyDictionary<string, IReadOnlySet<Guid>> matches = new Dictionary<string, IReadOnlySet<Guid>>();
+        try
+        {
+            if (terms.Count > 0) matches = await _mail.SearchDownloadedTextAsync(terms);
+        }
+        catch (Exception)
+        {
+            // Fall back to searching headers and previews only.
+        }
+
+        if (version != _searchVersion) return;
+        _bodyMatches = matches;
+        await RefreshAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSearchServer))]
+    private async Task SearchServerAsync()
+    {
+        var version = _searchVersion;
+        IsSearchingServer = true;
+        SearchStatus = "Searching your mail server…";
+        try
+        {
+            var result = await _mail.SearchServerAsync(SearchText, Scope);
+            if (version != _searchVersion) return;
+            _serverMatches = result.MessageIds;
+            HasServerResults = result.Supported;
+            SearchStatus = result.Supported ? "Results from this PC and the server · " + result.Message : result.Message;
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SearchStatus = "The server search failed: " + ex.Message;
+        }
+        finally
+        {
+            IsSearchingServer = false;
+        }
     }
 
     partial void OnFilterChanged(MessageFilter value) => _ = RefreshAsync();
@@ -270,6 +365,7 @@ public sealed partial class MailListViewModel : ObservableObject
         var sections = MessageListBuilder.Build(inScope, new MessageListOptions
         {
             SearchText = SearchText,
+            Search = new SearchContext { BodyMatches = _bodyMatches, ServerMatches = _serverMatches },
             Filter = Filter,
             Sort = Sort,
             ShowPinnedSection = settings.ShowPinnedSection && Scope.Kind != MailboxScopeKind.Pinned,
@@ -360,7 +456,9 @@ public sealed partial class MailListViewModel : ObservableObject
             EmptyTitle = "No matching messages";
             EmptyMessage = string.IsNullOrWhiteSpace(SearchText)
                 ? $"Nothing in {Title} matches the \"{FilterLabel}\" filter."
-                : $"Nothing matches \"{SearchText.Trim()}\". Try other words, or operators like from:, subject:, is:unread or has:attachment.";
+                : HasServerResults
+                    ? $"Nothing matches \"{SearchText.Trim()}\", on this PC or on the server."
+                    : $"Nothing stored on this PC matches \"{SearchText.Trim()}\". Try Search on server, other words, or operators like from:, subject:, after:2026-01-31 or has:attachment.";
             return;
         }
 

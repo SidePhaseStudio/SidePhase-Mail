@@ -82,4 +82,10 @@ public sealed class MailDataSourceRouter : IMailDataSource
     public Task<SyncResult> SyncAsync(CancellationToken cancellationToken = default) => Active.SyncAsync(cancellationToken);
 
     public Task ClearLocalDataAsync(CancellationToken cancellationToken = default) => Active.ClearLocalDataAsync(cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, IReadOnlySet<Guid>>> SearchDownloadedTextAsync(IReadOnlyCollection<string> terms, CancellationToken cancellationToken = default) =>
+        Active.SearchDownloadedTextAsync(terms, cancellationToken);
+
+    public Task<ServerSearchResult> SearchServerAsync(string query, MailboxScope scope, CancellationToken cancellationToken = default) =>
+        Active.SearchServerAsync(query, scope, cancellationToken);
 }

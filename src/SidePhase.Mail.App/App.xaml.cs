@@ -75,6 +75,19 @@ public partial class App : Application
         Main = new MainWindow();
         Main.Activate();
 
+        // Windows notifications for new mail (falls back to in-app notices if unavailable).
+        var notifications = GetService<DesktopNotificationService>();
+        notifications.Initialize();
+        GetService<NewMailCoordinator>().Start();
+        if (DesktopNotificationService.MessageFromLaunch() is { } launchMessage)
+        {
+            Main.DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(1500); // let the first list load
+                await Main.OpenMessageAsync(launchMessage);
+            });
+        }
+
         // Real accounts sync in the background (only while real accounts, not the demo, are shown).
         var settings = GetService<ISettingsService>();
         GetService<LiveMailDataSource>().StartBackgroundSync(
@@ -96,6 +109,8 @@ public partial class App : Application
         services.AddSingleton<ThemeService>();
         services.AddSingleton<WindowService>();
         services.AddSingleton<MessageCommandService>();
+        services.AddSingleton<DesktopNotificationService>();
+        services.AddSingleton<NewMailCoordinator>();
 
         // View models
         services.AddSingleton<ShellViewModel>();

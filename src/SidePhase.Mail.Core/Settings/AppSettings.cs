@@ -93,6 +93,18 @@ public sealed class AppSettings
     public bool BuggerBackBlocksDomainByDefault { get; set; }
     public List<SenderRule> SenderRules { get; set; } = [];
 
+    /// <summary>
+    /// Also move new Inbox mail from blocked senders/domains into the server's Junk folder (off by default: normally
+    /// blocked mail is only shown under Junk in SidePhase Mail, without changing anything on the server).
+    /// </summary>
+    public bool MoveBlockedMailToServerJunk { get; set; }
+
+    /// <summary>Show a notice when messages are filtered into Junk.</summary>
+    public bool NotifyWhenFiltered { get; set; }
+
+    /// <summary>Accounts whose new mail never raises desktop notifications.</summary>
+    public List<Guid> MutedNotificationAccounts { get; set; } = [];
+
     // Privacy
     public bool BlockRemoteImages { get; set; } = true;
 
@@ -104,6 +116,7 @@ public sealed class AppSettings
         var copy = (AppSettings)MemberwiseClone();
         copy.SenderRules = [.. SenderRules];
         copy.FavouriteFolderIds = [.. FavouriteFolderIds];
+        copy.MutedNotificationAccounts = [.. MutedNotificationAccounts];
         copy.Signatures = new Dictionary<Guid, string>(Signatures);
         return copy;
     }
@@ -117,6 +130,7 @@ public sealed class AppSettings
         if (!Enum.IsDefined(DefaultComposeFormat)) DefaultComposeFormat = ComposeFormat.RichText;
         if (!Enum.IsDefined(DataMode)) DataMode = DataMode.Demo;
         FavouriteFolderIds = (FavouriteFolderIds ?? []).Distinct().ToList();
+        MutedNotificationAccounts = (MutedNotificationAccounts ?? []).Distinct().ToList();
         GoogleClientId = string.IsNullOrWhiteSpace(GoogleClientId) ? null : GoogleClientId.Trim();
         MicrosoftClientId = string.IsNullOrWhiteSpace(MicrosoftClientId) ? null : MicrosoftClientId.Trim();
         if (!Formatting.ColorMath.TryParseHex(AccentColor, out _)) AccentColor = DefaultAccent;

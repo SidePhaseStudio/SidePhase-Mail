@@ -9,6 +9,7 @@ public sealed class NotificationPolicy(ISettingsService settings, ISenderRulesSe
     public bool ShouldNotify(MessageSummary message)
     {
         if (!settings.Current.NotificationsEnabled) return false;
+        if (settings.Current.MutedNotificationAccounts.Contains(message.AccountId)) return false;
         if (message.IsRead) return false;
         if (message.FolderKind != FolderKind.Inbox) return false;
         if (rules.IsBlocked(message.From)) return false;

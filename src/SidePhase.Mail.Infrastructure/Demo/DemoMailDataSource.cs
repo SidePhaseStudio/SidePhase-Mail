@@ -258,6 +258,24 @@ public sealed class DemoMailDataSource : IMailDataSource
         return new SyncResult(true, 0, "Demonstration data is up to date. Real synchronisation arrives with Milestone 2.");
     }
 
+    public Task<IReadOnlyDictionary<string, IReadOnlySet<Guid>>> SearchDownloadedTextAsync(IReadOnlyCollection<string> terms, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            IReadOnlyDictionary<string, IReadOnlySet<Guid>> result = terms.Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(
+                t => t,
+                t => (IReadOnlySet<Guid>)_bodies.Values
+                    .Where(b => b.TextBody?.Contains(t, StringComparison.CurrentCultureIgnoreCase) == true)
+                    .Select(b => b.MessageId)
+                    .ToHashSet(),
+                StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult(result);
+        }
+    }
+
+    public Task<ServerSearchResult> SearchServerAsync(string query, MailboxScope scope, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ServerSearchResult(false, new HashSet<Guid>(), "The demonstration mailbox has no server to search."));
+
     public Task ClearLocalDataAsync(CancellationToken cancellationToken = default)
     {
         Seed();

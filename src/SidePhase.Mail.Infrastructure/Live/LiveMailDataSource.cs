@@ -43,11 +43,21 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     public bool IsDemo => false;
 
+    /// <summary>How many of the newest messages per folder the first sync downloads (older ones via server search).</summary>
+    public int InitialMessageLimit
+    {
+        get => _synchronizer.InitialMessageLimit;
+        set => _synchronizer.InitialMessageLimit = value;
+    }
+
     public event EventHandler<MailDataChangedEventArgs>? DataChanged;
 
     public event EventHandler<MailErrorEventArgs>? ErrorOccurred;
 
-    /// <summary>Raised after a sync finds new messages in an Inbox (for notifications).</summary>
+    /// <summary>
+    /// Raised after a sync finds messages that newly arrived in an Inbox (read or unread), for notifications and
+    /// automatic Junk rules. Never raised for the first download of a folder.
+    /// </summary>
     public event EventHandler<IReadOnlyList<MessageSummary>>? NewMailArrived;
 
     // ------------------------------------------------------------------ reads (cache only)
@@ -638,7 +648,8 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 if (result.NewMessageIds.Count > 0)
                 {
                     total += result.NewMessageIds.Count;
-                    if (folder.Kind == FolderKind.Inbox && current.UidValidity != 0) inboxNew.AddRange(result.NewMessageIds);
+                    // First downloads and UIDVALIDITY resets aren't "new mail", just the cache filling up.
+                    if (folder.Kind == FolderKind.Inbox && current.UidValidity != 0 && !result.WasReset) inboxNew.AddRange(result.NewMessageIds);
                     Raise(MailDataChangeKind.Added, result.NewMessageIds);
                 }
 
@@ -650,7 +661,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 var summaries = new List<MessageSummary>();
                 foreach (var id in inboxNew)
                 {
-                    if (await _cache.GetSummaryAsync(id, ct).ConfigureAwait(false) is { IsRead: false } s) summaries.Add(s);
+                    if (await _cache.GetSummaryAsync(id, ct).ConfigureAwait(false) is { } s) summaries.Add(s);
                 }
 
                 if (summaries.Count > 0) handler(this, summaries);
@@ -719,6 +730,92 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         Raise(MailDataChangeKind.Reset, []);
         _ = SyncAsync(CancellationToken.None);
     }
+
+    // ------------------------------------------------------------------ search
+
+    public Task<IReadOnlyDictionary<string, IReadOnlySet<Guid>>> SearchDownloadedTextAsync(IReadOnlyCollection<string> terms, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyDictionary<string, IReadOnlySet<Guid>>>(async () =>
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var result = new Dictionary<string, IReadOnlySet<Guid>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var term in terms.Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                result[term] = await _cache.SearchBodyTextAsync(term, cancellationToken).ConfigureAwait(false);
+            }
+
+            return result;
+        }, cancellationToken);
+
+    /// <summary>Most matches downloaded per folder by one server search (newest first).</summary>
+    public const int ServerSearchLimitPerFolder = 200;
+
+    public Task<ServerSearchResult> SearchServerAsync(string query, MailboxScope scope, CancellationToken cancellationToken = default) =>
+        Task.Run(async () =>
+        {
+            var folderFilter = ServerSearch.FolderFilter(scope);
+            if (folderFilter is null) return new ServerSearchResult(false, new HashSet<Guid>(), "Pinned and Favourites only exist on this PC, so there's nothing to search on the server.");
+            var imapQuery = ServerSearch.BuildQuery(Core.Services.MessageSearch.Parse(query), _clock.Now);
+            if (imapQuery is null) return new ServerSearchResult(false, new HashSet<Guid>(), "Type some words, or use from:, to:, subject: or a date, to search the server.");
+
+            var ids = new HashSet<Guid>();
+            var added = new List<Guid>();
+            var failed = 0;
+            var accounts = (await GetStoredAccountsAsync(cancellationToken).ConfigureAwait(false))
+                .Where(a => scope.AccountId is null || a.Account.Id == scope.AccountId).ToList();
+            foreach (var account in accounts)
+            {
+                try
+                {
+                    var folders = (await _cache.GetFoldersAsync(account.Account.Id, cancellationToken).ConfigureAwait(false))
+                        .Where(f => f.Synchronize && folderFilter(f)).ToList();
+                    foreach (var folder in folders)
+                    {
+                        await _imap.RunAsync(account, async client =>
+                        {
+                            var remote = await client.GetFolderAsync(folder.Path, cancellationToken).ConfigureAwait(false);
+                            await remote.OpenAsync(MailKit.FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
+                            try
+                            {
+                                if (remote.UidValidity != folder.UidValidity) return; // not synced yet; the next sync handles it
+                                var uids = (await remote.SearchAsync(imapQuery, cancellationToken).ConfigureAwait(false))
+                                    .OrderByDescending(u => u.Id).Take(ServerSearchLimitPerFolder).ToList();
+                                var known = (await _cache.GetUidsAsync(folder.Id, folder.UidValidity, cancellationToken).ConfigureAwait(false)).ToHashSet();
+                                var missing = uids.Where(u => !known.Contains(u.Id)).ToList();
+                                if (missing.Count > 0)
+                                {
+                                    var summaries = await remote.FetchAsync(missing, ImapSynchronizer.SummaryRequest(), cancellationToken).ConfigureAwait(false);
+                                    var stored = summaries.Select(m => ImapSynchronizer.ToStored(m, folder, folder.UidValidity)).ToList();
+                                    await _cache.UpsertMessagesAsync(stored, cancellationToken).ConfigureAwait(false);
+                                    added.AddRange(stored.Select(m => m.Id));
+                                }
+
+                                foreach (var uid in uids) ids.Add(MessageIdentity.ForImapMessage(account.Account.Id, folder.Path, folder.UidValidity, uid.Id));
+                            }
+                            finally
+                            {
+                                if (remote.IsOpen) await remote.CloseAsync(false, cancellationToken).ConfigureAwait(false);
+                            }
+                        }, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed++;
+                    Report(account, ex, $"Couldn't search {account.Account.DisplayName} on the server");
+                }
+            }
+
+            if (added.Count > 0) Raise(MailDataChangeKind.Added, added);
+            var message = ids.Count switch
+            {
+                0 when failed > 0 => "The server search failed.",
+                0 => "No matches on the server.",
+                1 => "1 match on the server.",
+                _ => $"{ids.Count} matches on the server.",
+            };
+            if (added.Count > 0) message += $" {added.Count} older message{(added.Count == 1 ? " was" : "s were")} downloaded to show here.";
+            return new ServerSearchResult(true, ids, message);
+        }, cancellationToken);
 
     // ------------------------------------------------------------------ accounts
 

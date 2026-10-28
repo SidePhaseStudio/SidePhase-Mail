@@ -40,6 +40,10 @@ public sealed record MessageSection(MessageSectionKind Kind, string Title, IRead
 public sealed record MessageListOptions
 {
     public string? SearchText { get; init; }
+
+    /// <summary>Downloaded-text and server matches for <see cref="SearchText"/>.</summary>
+    public SearchContext? Search { get; init; }
+
     public MessageFilter Filter { get; init; } = MessageFilter.All;
     public MessageSort Sort { get; init; } = MessageSort.NewestFirst;
 
@@ -66,7 +70,7 @@ public static class MessageListBuilder
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(options);
 
-        var search = MessageSearch.Compile(options.SearchText);
+        var search = MessageSearch.Compile(options.SearchText, (options.Search ?? new SearchContext()) with { Now = options.Now });
         var filtered = messages.Where(m => PassesFilter(m, options.Filter) && search(m)).ToList();
 
         var sections = new List<MessageSection>();

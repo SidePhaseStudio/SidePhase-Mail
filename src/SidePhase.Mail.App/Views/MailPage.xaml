@@ -157,7 +157,7 @@
             PlaceholderText="Search mail"
             QueryIcon="Find"
             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-            ToolTipService.ToolTip="Search (Ctrl+E). Try from:, subject:, is:unread, is:pinned or has:attachment" />
+            ToolTipService.ToolTip="Search (Ctrl+E). Try from:, to:, subject:, body:, is:unread, is:pinned, has:attachment, after:2026-01-31, before:, newer_than:7d" />
 
         <Button
             Grid.Column="1"
@@ -209,6 +209,25 @@
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <StackPanel Spacing="2">
+        <StackPanel Margin="20,0,16,4" Orientation="Horizontal" Spacing="6" Visibility="{x:Bind ViewModel.IsSearchActive, Mode=OneWay}">
+          <FontIcon FontSize="11" Foreground="{ThemeResource SpTextTertiaryBrush}" Glyph="&#xE721;" />
+          <TextBlock
+              MaxWidth="250"
+              VerticalAlignment="Center"
+              Style="{StaticResource SpCaptionTextStyle}"
+              Text="{x:Bind ViewModel.SearchStatus, Mode=OneWay}"
+              TextTrimming="CharacterEllipsis"
+              ToolTipService.ToolTip="{x:Bind ViewModel.SearchStatus, Mode=OneWay}" />
+          <ProgressRing Width="12" Height="12" IsActive="{x:Bind ViewModel.IsSearchingServer, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsSearchingServer, Mode=OneWay}" />
+          <HyperlinkButton
+              Padding="4,0"
+              Command="{x:Bind ViewModel.SearchServerCommand}"
+              Content="Search on server"
+              FontSize="12"
+              ToolTipService.ToolTip="Also search mail on the server, including older messages that aren't stored on this PC"
+              Visibility="{x:Bind h:X.Collapsed(ViewModel.HasServerResults), Mode=OneWay}" />
+        </StackPanel>
         <StackPanel Margin="20,0,0,4" Orientation="Horizontal" Spacing="6" Visibility="{x:Bind ViewModel.HasActiveFilter, Mode=OneWay}">
           <Button Padding="10,3,8,4" Command="{x:Bind ViewModel.ClearFilterCommand}" CornerRadius="12" Background="{ThemeResource SpBadgeBrush}" BorderThickness="0" ToolTipService.ToolTip="Clear filter">
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -216,6 +235,7 @@
               <FontIcon FontSize="9" Foreground="{ThemeResource SpBadgeTextBrush}" Glyph="&#xE711;" />
             </StackPanel>
           </Button>
+        </StackPanel>
         </StackPanel>
 
         <ListView

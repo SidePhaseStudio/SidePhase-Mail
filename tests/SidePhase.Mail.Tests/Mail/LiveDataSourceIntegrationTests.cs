@@ -102,6 +102,52 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
     }
 
     [MailServerFact]
+    public async Task Search_finds_downloaded_text_and_older_mail_on_the_server()
+    {
+        var word = "zebra" + Guid.NewGuid().ToString("N")[..8];
+        using (var imap = await TestMailServer.Connector().ConnectImapAsync(TestMailServer.Imap, new MailCredential(TestMailServer.User1.User, TestMailServer.User1.Password, null)))
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                var m = new MimeKit.MimeMessage();
+                m.From.Add(new MimeKit.MailboxAddress("Archivist", "archive@example.test"));
+                m.Subject = $"Search test {i}";
+                m.Body = new MimeKit.TextPart("plain") { Text = $"The secret word is {word}." };
+                await Infrastructure.Mail.ImapOperations.AppendAsync(imap, "INBOX", m, MailKit.MessageFlags.None, CancellationToken.None);
+            }
+
+            await imap.DisconnectAsync(true);
+        }
+
+        // Only the newest message is downloaded by the first sync.
+        _app.Live.InitialMessageLimit = 1;
+        await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        await _app.Mail.SyncAsync();
+        var cached = (await _app.Mail.GetMessagesAsync()).Where(m => m.Subject.StartsWith("Search test")).ToList();
+        Assert.Single(cached);
+
+        // The word is only in the body: not found until the body has been downloaded.
+        Assert.Empty((await _app.Mail.SearchDownloadedTextAsync([word]))[word]);
+        await _app.Mail.GetMessageBodyAsync(cached[0].Id);
+        Assert.Equal([cached[0].Id], (await _app.Mail.SearchDownloadedTextAsync([word]))[word]);
+
+        // The server finds all three and the two older ones are downloaded so they can be shown.
+        var result = await _app.Mail.SearchServerAsync(word, MailboxScope.UnifiedInbox);
+        Assert.True(result.Supported, result.Message);
+        Assert.Equal(3, result.MessageIds.Count);
+        var all = (await _app.Mail.GetMessagesAsync()).Where(m => result.MessageIds.Contains(m.Id)).ToList();
+        Assert.Equal(3, all.Count);
+
+        // Server search isn't offered for local-only views.
+        Assert.False((await _app.Mail.SearchServerAsync(word, MailboxScope.Pinned)).Supported);
+
+        // A later sync keeps them and doesn't duplicate anything.
+        await _app.Mail.SyncAsync();
+        Assert.Equal(3, (await _app.Mail.GetMessagesAsync()).Count(m => result.MessageIds.Contains(m.Id)));
+        lock (_errors) Assert.Empty(_errors.Select(e => e.Message));
+    }
+
+    [MailServerFact]
     public async Task Real_accounts_end_to_end()
     {
         // Demo mode first: the router serves only sample data.
