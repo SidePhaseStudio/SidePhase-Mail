@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml.Input;
 using SidePhase.Mail.App.Helpers;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.App.ViewModels;
+using SidePhase.Mail.Core.Composition;
+using SidePhase.Mail.Core.Contacts;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -76,6 +78,37 @@ public sealed partial class ComposeWindow : Window
 
         RichEditor.Document.GetText(TextGetOptions.None, out var text);
         return new ComposeBody(text.Replace('\r', '\n').TrimEnd(), RichTextHtmlExporter.Export(RichEditor.Document));
+    }
+
+    /// <summary>Suggests contacts and recent recipients for the address being typed.</summary>
+    private async void OnRecipientTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInputChanged) return;
+        var text = sender.Text;
+        var token = RecipientParser.LastToken(text);
+        if (token.Length == 0)
+        {
+            sender.ItemsSource = null;
+            return;
+        }
+
+        try
+        {
+            var already = RecipientParser.Parse(text).Addresses.Select(a => a.Address);
+            var suggestions = await App.GetService<ContactService>().SuggestAsync(token, 8, already);
+            if (sender.Text == text) sender.ItemsSource = suggestions.Select(s => new RecipientSuggestionItem(s)).ToList();
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Log("recipient suggestions", ex);
+        }
+    }
+
+    private void OnRecipientQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is not RecipientSuggestionItem chosen) return;
+        sender.Text = RecipientParser.ReplaceLastToken(sender.Text, chosen.Suggestion.Address);
+        sender.ItemsSource = null;
     }
 
     /// <summary>Ctrl+Enter sends, after asking first if the user turned that on in Settings.</summary>
@@ -238,4 +271,10 @@ public sealed partial class ComposeWindow : Window
 
         if (_closeConfirmed) Close();
     }
+}
+
+/// <summary>A suggestion as shown in the recipient dropdown (ToString is what the list displays).</summary>
+internal sealed record RecipientSuggestionItem(RecipientSuggestion Suggestion)
+{
+    public override string ToString() => Suggestion.IsContact ? Suggestion.Text : Suggestion.Text + "  · recent";
 }

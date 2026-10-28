@@ -98,15 +98,17 @@
       <Rectangle Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" />
 
       <TextBlock Grid.Row="1" VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="To" />
-      <TextBox
+      <AutoSuggestBox
           x:Name="ToBox"
           Grid.Row="1"
           Grid.Column="1"
           Padding="10,9,6,9"
           AutomationProperties.Name="To"
-          IsSpellCheckEnabled="False"
           PlaceholderText="name@example.com; another@example.com"
-          Text="{x:Bind ViewModel.To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+          QuerySubmitted="OnRecipientQuerySubmitted"
+          Text="{x:Bind ViewModel.To, Mode=TwoWay}"
+          TextChanged="OnRecipientTextChanged"
+          UpdateTextOnSelect="False" />
       <Button
           Grid.Row="1"
           Grid.Column="2"
@@ -117,26 +119,30 @@
       <Rectangle Grid.Row="1" Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" />
 
       <TextBlock Grid.Row="2" VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="Cc" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
-      <TextBox
+      <AutoSuggestBox
           Grid.Row="2"
           Grid.Column="1"
           Grid.ColumnSpan="2"
           Padding="10,9,6,9"
           AutomationProperties.Name="Cc"
-          IsSpellCheckEnabled="False"
-          Text="{x:Bind ViewModel.Cc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+          QuerySubmitted="OnRecipientQuerySubmitted"
+          Text="{x:Bind ViewModel.Cc, Mode=TwoWay}"
+          TextChanged="OnRecipientTextChanged"
+          UpdateTextOnSelect="False"
           Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
       <Rectangle Grid.Row="2" Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
 
       <TextBlock Grid.Row="3" VerticalAlignment="Center" Style="{StaticResource SpSecondaryTextStyle}" Text="Bcc" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
-      <TextBox
+      <AutoSuggestBox
           Grid.Row="3"
           Grid.Column="1"
           Grid.ColumnSpan="2"
           Padding="10,9,6,9"
           AutomationProperties.Name="Bcc"
-          IsSpellCheckEnabled="False"
-          Text="{x:Bind ViewModel.Bcc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+          QuerySubmitted="OnRecipientQuerySubmitted"
+          Text="{x:Bind ViewModel.Bcc, Mode=TwoWay}"
+          TextChanged="OnRecipientTextChanged"
+          UpdateTextOnSelect="False"
           Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
       <Rectangle Grid.Row="3" Grid.ColumnSpan="3" VerticalAlignment="Bottom" Style="{StaticResource SpDividerStyle}" Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}" />
 

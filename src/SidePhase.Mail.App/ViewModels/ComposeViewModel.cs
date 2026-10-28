@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Composition;
+using SidePhase.Mail.Core.Contacts;
 using SidePhase.Mail.Core.Formatting;
 using SidePhase.Mail.Core.Models;
 using SidePhase.Mail.Core.Scheduling;
@@ -35,6 +36,7 @@ public sealed partial class ComposeViewModel : ObservableObject
     private readonly OutboxService _outbox;
     private readonly WindowService _windows;
     private readonly IClock _clock;
+    private readonly ContactService _contacts;
     private readonly DraftMessage _initial;
     private Guid? _draftId;
 
@@ -45,8 +47,10 @@ public sealed partial class ComposeViewModel : ObservableObject
         OutboxService outbox,
         WindowService windows,
         IClock clock,
+        ContactService contacts,
         DraftMessage draft)
     {
+        _contacts = contacts;
         _mail = mail;
         _settings = settings;
         _toasts = toasts;
@@ -292,6 +296,7 @@ public sealed partial class ComposeViewModel : ObservableObject
             }
 
             IsDirty = false;
+            if (!_mail.IsDemo) _ = _contacts.RecordSentAsync(draft);
             _toasts.Show(result.Message, ToastKind.Success);
             CloseRequested?.Invoke(this, EventArgs.Empty);
         }

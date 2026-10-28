@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SidePhase.Mail.Core.Abstractions;
+using SidePhase.Mail.Core.Contacts;
 using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Demo;
@@ -53,6 +54,10 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IOutgoingTransport>(),
             sp.GetRequiredService<IClock>(),
             sp.GetRequiredService<IOutboxAttachmentStore>()));
+
+        // Address book and recent recipients (this PC only).
+        services.AddSingleton<IContactStore, SqliteContactStore>();
+        services.AddSingleton<ContactService>();
         return services;
     }
 }

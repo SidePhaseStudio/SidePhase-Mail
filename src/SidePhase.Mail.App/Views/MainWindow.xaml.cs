@@ -221,6 +221,9 @@ public sealed partial class MainWindow : Window
             case "settings":
                 ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
                 break;
+            case "contacts":
+                ContentFrame.Navigate(typeof(ContactsPage), null, new EntranceNavigationTransitionInfo());
+                break;
             case "add-account":
                 ContentFrame.Navigate(typeof(WelcomePage), null, new EntranceNavigationTransitionInfo());
                 break;

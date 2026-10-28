@@ -93,6 +93,12 @@ public partial class App : Application
         // Messages held for Undo Send or scheduled for later are sent from here while the app runs. Anything left
         // "sending" by a crash is marked uncertain (never resent automatically).
         var outbox = GetService<OutboxService>();
+        var contacts = GetService<Core.Contacts.ContactService>();
+        outbox.AttemptFinished += (_, item) =>
+        {
+            // Remember who real messages went to, for autocomplete (demo messages aren't remembered).
+            if (item.State == OutboxState.Accepted && !item.IsDemo) _ = contacts.RecordSentAsync(item.Draft);
+        };
         _ = Task.Run(async () =>
         {
             try
@@ -150,6 +156,7 @@ public partial class App : Application
         services.AddSingleton<ReadingPaneViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<OutboxViewModel>();
+        services.AddSingleton<ContactsViewModel>();
         services.AddTransient<AddAccountViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
