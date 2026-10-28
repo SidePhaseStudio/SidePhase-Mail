@@ -223,3 +223,104 @@ public sealed class PackagingTests
         Assert.Equal(["internetClient", "runFullTrust"], capabilities);
     }
 }
+
+public sealed class SecurityHardeningTests
+{
+    [Theory]
+    [InlineData("<lin<link>k rel=preconnect href=https://t.example/x>")]
+    [InlineData("<scr<script>ipt>alert(1)</script>")]
+    [InlineData("<me<meta>ta http-equiv=refresh content='0;url=https://t.example'>")]
+    [InlineData("<svg><svg>x</svg></svg>")]
+    public void Nested_tags_cannot_reassemble_after_sanitising(string html)
+    {
+        var clean = Core.Rendering.HtmlEmailDocumentBuilder.Sanitize(html);
+        Assert.DoesNotMatch(@"<\s*(link|script|meta|svg)\b", clean.ToLowerInvariant());
+    }
+
+    [Fact]
+    public void Event_handlers_after_a_slash_are_removed()
+    {
+        var clean = Core.Rendering.HtmlEmailDocumentBuilder.Sanitize("<img/onerror=alert(1) src=x>");
+        Assert.DoesNotContain("onerror", clean, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("invoice.exe\u3000")]
+    [InlineData("invoice.exe . .")]
+    [InlineData("report\u202Efdp.exe")]
+    [InlineData("readme.html")]
+    [InlineData("quarter.one")]
+    [InlineData("remote.rdp")]
+    public void Disguised_and_risky_names_are_flagged(string name)
+    {
+        Assert.True(Core.Formatting.AttachmentSafety.IsDangerous(name), name);
+    }
+
+    [Theory]
+    [InlineData(0x2028)]
+    [InlineData(0x0085)]
+    [InlineData(0x00A0)]
+    public void Trailing_unicode_whitespace_cannot_hide_an_extension(int whitespace)
+    {
+        Assert.True(Core.Formatting.AttachmentSafety.IsDangerous("invoice.exe" + (char)whitespace));
+    }
+
+    [Fact]
+    public void Direction_tricks_count_as_misleading()
+    {
+        Assert.True(Core.Formatting.AttachmentSafety.HasMisleadingName("report\u202Efdp.exe"));
+        Assert.DoesNotContain('\u202E', Core.Formatting.AttachmentSafety.SafeFileName("report\u202Efdp.exe"));
+    }
+
+    [Theory]
+    [InlineData("nul.tar.gz")]
+    [InlineData("aux.foo.txt")]
+    [InlineData("CON .txt")]
+    [InlineData("com0.log")]
+    [InlineData("CONOUT$.txt")]
+    public void Reserved_device_names_are_renamed_whatever_follows(string name)
+    {
+        Assert.StartsWith("_", Core.Formatting.AttachmentSafety.SafeFileName(name));
+    }
+
+    [Theory]
+    [InlineData("ceo@corp.example", "ceo@corp.example", null, true)]
+    [InlineData("ceo@corp.example", "CEO@Corp.Example", null, true)]
+    [InlineData("ceo@corp.example", "ceo@corp.example.evil.example", null, false)]
+    [InlineData("ceo@corp.example", "x@evil.example", "ceo@corp.example", false)]
+    [InlineData("@corp.example", "anyone@mail.corp.example", null, true)]
+    [InlineData("@corp.example", "anyone@corp.example.evil.example", null, false)]
+    [InlineData("newsletter", "newsletter@shop.example", null, true)]
+    public void Sender_rules_need_the_real_address(string value, string address, string? displayName, bool expected)
+    {
+        var message = Samples.Message(from: displayName is null ? address : $"\"{displayName}\" <{address}>");
+        var condition = new Core.Organisation.RuleCondition(Core.Organisation.RuleField.Sender, value);
+        Assert.Equal(expected, Core.Organisation.MailRuleConditions.Matches(condition, message));
+    }
+}
+
+public sealed class RemoteContentPolicyTests
+{
+    [Theory]
+    [InlineData("https://images.example.com/logo.png", true)]
+    [InlineData("http://cdn.example.org/a.gif", true)]
+    [InlineData("https://8.8.8.8/x.png", true)]
+    [InlineData("http://localhost/x.png", false)]
+    [InlineData("http://127.0.0.1:8080/x.png", false)]
+    [InlineData("http://[::1]/x.png", false)]
+    [InlineData("http://192.168.1.1/cgi-bin/reboot", false)]
+    [InlineData("http://10.0.0.5/x.png", false)]
+    [InlineData("http://172.20.1.1/x.png", false)]
+    [InlineData("http://169.254.169.254/latest/meta-data/", false)]
+    [InlineData("http://[fe80::1]/x.png", false)]
+    [InlineData("http://[fd00::1]/x.png", false)]
+    [InlineData("http://[::ffff:192.168.0.1]/x.png", false)]
+    [InlineData("http://printer.local/x.png", false)]
+    [InlineData("http://router/x.png", false)]
+    [InlineData("http://nas.home.arpa/x.png", false)]
+    [InlineData("https://user:pw@example.com/x.png", false)]
+    [InlineData("file:///C:/Windows/win.ini", false)]
+    [InlineData("ftp://example.com/x.png", false)]
+    public void Only_public_web_images_are_allowed(string url, bool allowed) =>
+        Assert.Equal(allowed, Core.Rendering.RemoteContentPolicy.IsAllowedImageUrl(url));
+}

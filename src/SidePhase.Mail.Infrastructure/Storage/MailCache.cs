@@ -89,13 +89,28 @@ public sealed class MailCache(MailDatabase database)
     }
 
     /// <summary>Deletes the account and, through cascades, its folders, messages, bodies, pins and drafts.</summary>
+    /// <summary>
+    /// Removes the account and everything cached for it (folders, messages, bodies, pins, snoozes, categories and other
+    /// cascaded rows), plus the rule history and local spam-training records that aren't linked by a foreign key.
+    /// Outbox items are kept, so a message queued for this account isn't lost: it shows as failed and can be copied.
+    /// </summary>
     public async Task DeleteAccountAsync(Guid accountId, CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
-        await using var cmd = c.CreateCommand();
-        cmd.CommandText = "DELETE FROM accounts WHERE id = $id";
-        cmd.Parameters.AddWithValue("$id", accountId.ToString());
-        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                DELETE FROM rule_applications WHERE account_id = $id;
+                DELETE FROM spam_training WHERE account_id = $id;
+                DELETE FROM accounts WHERE id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", accountId.ToString());
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------ folders

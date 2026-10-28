@@ -180,6 +180,7 @@ public sealed partial class EmailBodyView : UserControl
                 "OK",
                 "Content-Type: text/html; charset=utf-8\r\n" +
                 $"Content-Security-Policy: {csp}\r\n" +
+                "X-DNS-Prefetch-Control: off\r\n" +
                 "Referrer-Policy: no-referrer\r\n" +
                 "X-Content-Type-Options: nosniff\r\n" +
                 "Cache-Control: no-store");
@@ -191,14 +192,19 @@ public sealed partial class EmailBodyView : UserControl
             return;
         }
 
+        // Remote images only when the user allowed them for this message, and only from public web addresses.
         var isRemoteImage = _allowRemote
             && e.ResourceContext == CoreWebView2WebResourceContext.Image
-            && (uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
+            && Core.Rendering.RemoteContentPolicy.IsAllowedImageUrl(uri);
 
         if (!isRemoteImage)
         {
             e.Response = sender.Environment.CreateWebResourceResponse(null, 403, "Blocked by SidePhase Mail", string.Empty);
+            return;
         }
+
+        // No cookies: image hosts can't recognise the reader across messages.
+        e.Request.Headers.RemoveHeader("Cookie");
     }
 
     private void OnNavigationStarting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs e)

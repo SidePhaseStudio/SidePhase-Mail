@@ -80,7 +80,7 @@ public static class MailRuleConditions
         var value = condition.Value.Trim();
         return condition.Field switch
         {
-            RuleField.Sender => value.Length > 0 && (Contains(m.From.Address, value) || Contains(m.From.Name, value)),
+            RuleField.Sender => SenderMatches(m.From, value),
             RuleField.SenderDomain => DomainMatches(m.From.Domain, value.TrimStart('@').ToLowerInvariant()),
             RuleField.Recipient => value.Length > 0 && m.To.Concat(m.Cc).Any(a => Contains(a.Address, value) || Contains(a.Name, value)),
             RuleField.Subject => value.Length > 0 && Contains(m.Subject, value),
@@ -91,6 +91,20 @@ public static class MailRuleConditions
             RuleField.HasAttachment => value.Equals("no", StringComparison.OrdinalIgnoreCase) ? !m.HasAttachments : m.HasAttachments,
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// A full address ("ceo@corp.example") must be the sender's exact address: never part of a longer address
+    /// ("ceo@corp.example.evil.example") or the display name, which anyone can set to anything. "@corp.example" means
+    /// that domain. Other text matches part of the address or the name (convenient, but easy for a sender to imitate,
+    /// so the rule editor suggests full addresses).
+    /// </summary>
+    private static bool SenderMatches(EmailAddress from, string value)
+    {
+        if (value.Length == 0) return false;
+        if (value.StartsWith('@')) return DomainMatches(from.Domain, value.TrimStart('@').ToLowerInvariant());
+        if (value.Contains('@')) return string.Equals(from.Address.Trim(), value, StringComparison.OrdinalIgnoreCase);
+        return Contains(from.Address, value) || Contains(from.Name, value);
     }
 
     private static bool DomainMatches(string domain, string wanted) =>
@@ -183,7 +197,7 @@ public sealed class MailRuleService(IMailRuleStore store, IMailDataSource mail, 
 
         foreach (var rule in rules)
         {
-            var candidates = messages.Where(m => !stopped.Contains(m.Id) && m.FolderKind is not (FolderKind.Sent or FolderKind.Drafts or FolderKind.Trash) && rule.Matches(m)).ToList();
+            var candidates = messages.Where(m => !stopped.Contains(m.Id) && m.FolderKind is not (FolderKind.Sent or FolderKind.Drafts or FolderKind.Trash or FolderKind.Junk) && rule.Matches(m)).ToList();
             if (candidates.Count == 0) continue;
 
             var fresh = await store.ClaimAsync(rule.Id, candidates.Select(m => (m, IdentityKeyOf(m))).ToList(), clock.Now, ct).ConfigureAwait(false);

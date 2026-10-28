@@ -18,15 +18,36 @@ public static class AttachmentSafety
         "lnk", "url", "inf", "reg", "chm", "settingcontent-ms", "library-ms", "website",
         // Disk images that can hide the above
         "iso", "img", "vhd", "vhdx",
-        // Office documents with macros
+        // Office documents with macros, and Office formats that can run code or fetch remote content
         "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam", "ppsm", "sldm",
+        "doc", "dot", "xls", "xlt", "xla", "ppt", "pot", "pps", "xll", "one", "onepkg", "iqy", "slk", "mdb", "accde", "accdb",
+        // Other launchers and remote-execution formats
+        "rdp", "appref-ms", "diagcab", "search-ms", "searchconnector-ms", "jnlp", "ws", "msh", "mshxml", "cab", "xbap",
+        // Local web pages and documents that open in a browser outside the safe reading pane (phishing forms)
+        "htm", "html", "xht", "xhtml", "mht", "mhtml", "svg", "shtml",
     };
 
-    /// <summary>True if opening the file could run a program, script or macro.</summary>
+    // Characters that change how text is displayed (right-to-left overrides, isolates) and can disguise an extension.
+    private static readonly HashSet<char> DirectionalControls =
+    [
+        '\u200E', '\u200F', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069',
+    ];
+
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³",
+    };
+
+    /// <summary>
+    /// True if opening the file could run a program, script or macro. Judged on the name the file would actually be
+    /// saved under, so tricks the saved name drops (trailing dots, spaces or other whitespace, direction controls)
+    /// can't hide the real extension.
+    /// </summary>
     public static bool IsDangerous(string? fileName)
     {
-        // Windows ignores trailing dots and spaces, so "setup.exe. " is still a program.
-        var ext = Path.GetExtension((fileName ?? string.Empty).TrimEnd('.', ' ')).TrimStart('.');
+        var ext = Path.GetExtension(SafeFileName(fileName)).TrimStart('.');
         return ext.Length > 0 && Dangerous.Contains(ext);
     }
 
@@ -37,8 +58,9 @@ public static class AttachmentSafety
     public static bool HasMisleadingName(string? fileName)
     {
         if (!IsDangerous(fileName)) return false;
-        var name = Path.GetFileNameWithoutExtension(fileName!.TrimEnd('.', ' '));
-        return Path.GetExtension(name).Length > 1 || name.Contains("   ", StringComparison.Ordinal);
+        var name = Path.GetFileNameWithoutExtension(SafeFileName(fileName));
+        return Path.GetExtension(name).Length > 1 || name.Contains("   ", StringComparison.Ordinal)
+            || (fileName ?? string.Empty).Any(DirectionalControls.Contains);
     }
 
     /// <summary>A name that is safe to save under: no folders, no characters Windows forbids, no reserved device names.</summary>
@@ -47,16 +69,22 @@ public static class AttachmentSafety
         var invalid = Path.GetInvalidFileNameChars().Concat(['<', '>', ':', '"', '/', '\\', '|', '?', '*']).ToHashSet();
         var leaf = (name ?? string.Empty).Replace('\\', '/');
         leaf = leaf[(leaf.LastIndexOf('/') + 1)..];
-        var cleaned = new string(leaf.Select(c => c < 32 || invalid.Contains(c) || c is '‮' or '‭' or '‎' or '‏' ? '_' : c).ToArray())
-            .Trim().TrimEnd('.', ' ');
+        var cleaned = new string(leaf.Select(c => c < 32 || c == 127 || invalid.Contains(c) || DirectionalControls.Contains(c) ? '_' : c).ToArray());
+
+        // Windows drops trailing dots and spaces; strip them and any other whitespace until nothing changes, so the
+        // saved name's extension is the one that's checked.
+        string before;
+        do
+        {
+            before = cleaned;
+            cleaned = cleaned.Trim().TrimEnd('.');
+        }
+        while (cleaned != before);
         if (cleaned.Length == 0 || cleaned.All(c => c == '.')) cleaned = "attachment";
 
-        var stem = Path.GetFileNameWithoutExtension(cleaned);
-        if (stem.ToUpperInvariant() is "CON" or "PRN" or "AUX" or "NUL" or "COM1" or "COM2" or "COM3" or "COM4" or "COM5"
-            or "COM6" or "COM7" or "COM8" or "COM9" or "LPT1" or "LPT2" or "LPT3" or "LPT4" or "LPT5" or "LPT6" or "LPT7" or "LPT8" or "LPT9")
-        {
-            cleaned = "_" + cleaned;
-        }
+        // Device names are reserved whatever follows the first dot ("nul.tar.gz", "CON .txt").
+        var firstPart = cleaned.Split('.')[0].TrimEnd();
+        if (ReservedNames.Contains(firstPart)) cleaned = "_" + cleaned;
 
         if (cleaned.Length > 180)
         {

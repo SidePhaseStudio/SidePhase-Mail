@@ -496,7 +496,8 @@ public sealed class MessageCommandService(
         if (risky.Count == 0) return true;
 
         var disguised = risky.Any(a => AttachmentSafety.HasMisleadingName(a.FileName));
-        var names = string.Join(", ", risky.Take(4).Select(a => $"\"{a.FileName}\""));
+        // Show the name the file will be saved under: direction-control tricks in the original can make it read differently.
+        var names = string.Join(", ", risky.Take(4).Select(a => $"\"{AttachmentSafety.SafeFileName(a.FileName)}\""));
         var message = $"{names} can run programs, scripts or macros on your PC."
             + (disguised ? " The name is made to look like a harmless document, which is a common trick in harmful email." : string.Empty)
             + " Only open it if you were expecting it from someone you trust. SidePhase Mail won't open it for you.";
@@ -514,20 +515,42 @@ public sealed class MessageCommandService(
             toasts.Show($"Downloading \"{attachment.FileName}\"… {p:P0}");
         });
 
-        var created = false;
+        // Download next to the destination first, so a failed or cancelled download never destroys a file that was
+        // already there, and a half-written file never appears under the real name.
+        var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + ".partial";
         try
         {
             if (attachment.SizeBytes >= 2 * 1024 * 1024) toasts.Show($"Downloading \"{attachment.FileName}\"…");
-            await using var file = new FileStream(path, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-            created = true;
-            await mail.SaveAttachmentAsync(message.Id, index, file, progress);
+            await using (var file = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            {
+                await mail.SaveAttachmentAsync(message.Id, index, file, progress);
+            }
+
+            File.Move(partial, path, overwrite);
+            MarkAsDownloaded(path);
             return true;
         }
         catch (Exception ex)
         {
-            if (created) TryDelete(path);
+            TryDelete(partial);
             toasts.Show($"Couldn't save \"{attachment.FileName}\": {ex.Message}", ToastKind.Error);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Marks a saved attachment as coming from the internet (Mark of the Web, zone 3), as browsers and Outlook do, so
+    /// Windows SmartScreen, Office Protected View and macro blocking treat it with suspicion when it's opened later.
+    /// Ignored on drives that don't support it (FAT, network shares).
+    /// </summary>
+    private static void MarkAsDownloaded(string path)
+    {
+        try
+        {
+            File.WriteAllText(path + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
         }
     }
 
