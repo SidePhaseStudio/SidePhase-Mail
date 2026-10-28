@@ -3,6 +3,7 @@
     x:Class="SidePhase.Mail.App.Controls.ReadingPane"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ads="using:SidePhase.Mail.App.Advertising"
     xmlns:controls="using:SidePhase.Mail.App.Controls"
     xmlns:h="using:SidePhase.Mail.App.Helpers"
     xmlns:vm="using:SidePhase.Mail.App.ViewModels">
@@ -35,6 +36,8 @@
           Style="{StaticResource SpSecondaryTextStyle}"
           Text="Tip: right-click any message to pin it to the top, star it, or move it to Junk."
           TextAlignment="Center" />
+      <!-- Optional sponsored card, only while no message is open (never next to or inside an email). -->
+      <ads:SponsoredCard Margin="0,28,0,0" Placement="EmptyReadingPane" />
     </StackPanel>
 
     <Grid x:Name="MessageView" Visibility="{x:Bind ViewModel.HasMessage, Mode=OneWay}">

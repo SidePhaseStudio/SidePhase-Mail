@@ -14,12 +14,36 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
 
-    <!-- Unpackaged + self-contained: the build output runs by double-clicking SidePhaseMail.exe,
-         with no MSIX install, Windows App SDK runtime installer or .NET runtime install needed. -->
-    <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <EnableMsixTooling>true</EnableMsixTooling>
+
+    <!-- Program.cs provides Main (single instance + activation redirection). -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Two ways to build (see docs/PACKAGING.md):
+       * Portable (default): unpackaged + self-contained. The output folder runs by double-clicking SidePhaseMail.exe,
+         with no install, Windows App SDK runtime installer or .NET runtime needed. Data: %LOCALAPPDATA%\SidePhase Mail.
+       * MSIX (-p:SidePhasePackage=msix): the installed / Microsoft Store app with package identity. Depends on the
+         Windows App Runtime framework package (installed by the Store, or from the Dependencies folder when
+         sideloading); .NET is still bundled. Data: the package's LocalState folder. -->
+  <PropertyGroup Condition="'$(SidePhasePackage)' != 'msix'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(SidePhasePackage)' == 'msix'">
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxBundle>Never</AppxBundle>
+    <UapAppxPackageBuildMode Condition="'$(UapAppxPackageBuildMode)' == ''">SideloadOnly</UapAppxPackageBuildMode>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <GenerateTestArtifacts>true</GenerateTestArtifacts>
+    <AppxPackageDir Condition="'$(AppxPackageDir)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\msix\</AppxPackageDir>
+    <!-- Unsigned unless a certificate is supplied (never committed; see docs/PACKAGING.md#signing). -->
+    <AppxPackageSigningEnabled Condition="'$(PackageCertificateThumbprint)' == '' and '$(PackageCertificateKeyFile)' == ''">false</AppxPackageSigningEnabled>
+    <AppxPackageSigningEnabled Condition="'$(PackageCertificateThumbprint)' != '' or '$(PackageCertificateKeyFile)' != ''">true</AppxPackageSigningEnabled>
   </PropertyGroup>
 
   <!-- Pick the runtime identifier from the platform so Visual Studio (x64/ARM64) and the CLI both work. -->
@@ -38,6 +62,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Manifest Include="$(ApplicationManifest)" />
+    <!-- Open-source notices, opened from Settings > About (regenerate with scripts/release/update_third_party_notices.py). -->
+    <Content Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -49,6 +77,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SidePhase.Mail.Core\SidePhase.Mail.Core.csproj" />
     <ProjectReference Include="..\SidePhase.Mail.Infrastructure\SidePhase.Mail.Infrastructure.csproj" />
+    <ProjectReference Include="..\SidePhase.Mail.Advertising\SidePhase.Mail.Advertising.csproj" />
   </ItemGroup>
 
 </Project>

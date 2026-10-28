@@ -47,5 +47,11 @@ public sealed record DraftMessage
     /// </summary>
     public bool BodyIncludesSignature { get; init; }
 
+    /// <summary>
+    /// When set (outbox items use their id), the sent message's Message-ID is derived from it, so every attempt to
+    /// send the same item carries the same Message-ID.
+    /// </summary>
+    public Guid? StableMessageKey { get; init; }
+
     public bool HasAnyRecipient => To.Count + Cc.Count + Bcc.Count > 0;
 }

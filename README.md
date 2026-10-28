@@ -6,11 +6,11 @@ SidePhase Mail is a genuine WinUI 3 desktop application — not a web wrapper �
 *Dark Glass* design built on Microsoft's Fluent Design: Mica backdrops, translucent layers, thin
 hairline borders, Segoe UI Variable typography and a calm, refined accent colour.
 
-> **Status: Milestone 2 preview.** Real IMAP/SMTP accounts work: add an account, read, reply, send,
-> organise folders, pin and star — all cached locally in SQLite. Google and Microsoft sign-in (OAuth) are
-> implemented but **not yet verified with real accounts**; they need app registrations
-> ([docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)). The demonstration mailbox is still available and never
-> mixes with real mail. See [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md) for exactly what is implemented and tested.
+> **Status: 0.6 beta (Milestone 6), not production-ready.** Real IMAP/SMTP accounts work and are tested end to end;
+> Google and Microsoft sign-in (OAuth) are implemented but **not yet verified with real accounts**; they need app
+> registrations and provider verification ([docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)).
+> [RELEASE_READINESS.md](RELEASE_READINESS.md) says exactly what is verified, what isn't, and the known issues;
+> [docs/BETA_TESTING.md](docs/BETA_TESTING.md) is the tester checklist.
 
 ## Adding an account
 
@@ -21,14 +21,16 @@ to your own provider.
 
 ## Download and run
 
-1. Open the repository's **Actions** tab → latest successful **Build** run.
-2. Download the **SidePhaseMail-win-x64** artifact and extract it.
-3. Double-click **SidePhaseMail.exe**.
+Each **Build** run (Actions tab) produces two downloads:
 
-No installer is required: .NET 10 and the Windows App SDK are bundled (self-contained, unpackaged).
-You need Windows 10 1809 or later (Windows 11 recommended for Mica) and the Microsoft Edge WebView2
-Runtime, which is pre-installed on Windows 11. The preview is unsigned, so SmartScreen may ask you
-to confirm (*More info → Run anyway*).
+* **`SidePhaseMail-<version>-win-x64-msix`**: the installed app (Start menu, uninstall, default email app). Beta
+  packages are unsigned: run the included `Install-DevPackage.ps1` from an administrator PowerShell (it signs the
+  package with a test certificate created on your PC only). See [docs/PACKAGING.md](docs/PACKAGING.md).
+* **`SidePhaseMail-<version>-win-x64-portable`**: extract and double-click `SidePhaseMail.exe`. No installer;
+  .NET 10 and the Windows App SDK are bundled. SmartScreen may ask you to confirm (*More info → Run anyway*).
+
+Windows 11 x64 is the target (Windows 10 2004+ works). The Microsoft Edge WebView2 Runtime is part of Windows 11.
+The installed app copies your accounts and settings from the portable build the first time it starts.
 
 To build it yourself see **[BUILD.md](BUILD.md)**.
 
@@ -51,7 +53,8 @@ To build it yourself see **[BUILD.md](BUILD.md)**.
 SidePhase.Mail.sln
 ├─ src/SidePhase.Mail.Core            UI-independent domain: models, rules, services (net10.0)
 ├─ src/SidePhase.Mail.Infrastructure  MailKit IMAP/SMTP engine, SQLite cache, secret store, OAuth, account setup, demo data (net10.0)
-├─ src/SidePhase.Mail.App             WinUI 3 app: views, view models (MVVM), theme, windows (net10.0-windows)
+├─ src/SidePhase.Mail.Advertising     Optional sponsored cards, separate from the mail engine (net10.0; off by default)
+├─ src/SidePhase.Mail.App             WinUI 3 app: views, view models (MVVM), theme, windows (net10.0-windows); MSIX manifest
 └─ tests/SidePhase.Mail.Tests         xUnit tests for Core and Infrastructure (run on any OS)
 ```
 

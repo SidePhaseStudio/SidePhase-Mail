@@ -1,0 +1,160 @@
+name: Beta release (draft)
+
+# Started by hand only. Builds and tests everything (the full Build workflow, including the IMAP/SMTP integration
+# tests and the MSIX install test), then creates a DRAFT pre-release on GitHub with the portable zip, the MSIX
+# package and release notes. Nothing is published: a maintainer reviews the draft and publishes it by hand.
+# If any build or test fails, no release is created.
+
+on:
+  workflow_dispatch:
+    inputs:
+      highlights:
+        description: "Highlights for the release notes (optional, one line; more can be added in the draft)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test
+    uses: ./.github/workflows/build.yml
+
+  draft-release:
+    name: Draft the beta release
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      # Optional: a real code-signing certificate for the MSIX (never committed). If absent, the package stays unsigned.
+      SIGNING_CERTIFICATE_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
+      SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Refuse to reuse a version
+        shell: pwsh
+        run: |
+          if (-not $env:VERSION) { Write-Error "The build didn't report a version."; exit 1 }
+          gh release view "v$env:VERSION" --repo "$env:GITHUB_REPOSITORY" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "A release v$env:VERSION already exists. Raise VersionPrefix/VersionSuffix in Directory.Build.props first."
+            exit 1
+          }
+          exit 0
+
+      - name: Download the tested builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SidePhaseMail-${{ needs.build.outputs.version }}-win-x64-*
+          path: artifacts
+
+      - name: Package the release files
+        id: files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          $portable = "artifacts/SidePhaseMail-$env:VERSION-win-x64-portable"
+          $msixDir = "artifacts/SidePhaseMail-$env:VERSION-win-x64-msix"
+          if (-not (Test-Path "$portable/SidePhaseMail.exe")) { Write-Error "Portable build missing"; exit 1 }
+          $msix = Get-ChildItem $msixDir -Filter *.msix | Select-Object -First 1
+          if (-not $msix) { Write-Error "MSIX package missing"; exit 1 }
+
+          Compress-Archive -Path "$portable/*" -DestinationPath "release/SidePhaseMail-$env:VERSION-win-x64-portable.zip"
+          Copy-Item $msix.FullName "release/SidePhaseMail-$env:VERSION-win-x64.msix"
+          Compress-Archive -Path "$msixDir/*" -DestinationPath "release/SidePhaseMail-$env:VERSION-win-x64-msix-sideload.zip"
+          "msix=release/SidePhaseMail-$env:VERSION-win-x64.msix" >> $env:GITHUB_OUTPUT
+
+      - name: Sign the MSIX (only if a signing certificate is configured)
+        id: sign
+        shell: pwsh
+        run: |
+          if (-not $env:SIGNING_CERTIFICATE_BASE64) {
+            Write-Host "No signing certificate configured: the MSIX stays unsigned (testers use Install-DevPackage.ps1)."
+            "signed=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERTIFICATE_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+            & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:SIGNING_CERTIFICATE_PASSWORD "${{ steps.files.outputs.msix }}"
+            if ($LASTEXITCODE -ne 0) { Write-Error "Signing failed."; exit 1 }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+          "signed=true" >> $env:GITHUB_OUTPUT
+
+      - name: App Installer file (signed packages only)
+        if: steps.sign.outputs.signed == 'true'
+        shell: pwsh
+        run: |
+          [xml] $manifest = Get-Content src/SidePhase.Mail.App/Package.appxmanifest
+          $identity = $manifest.Package.Identity
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download"
+          @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <!-- Beta update channel. Publish this file at the stable URL below (the 'beta-channel' release) so installed
+               betas find updates. App Installer verifies the package signature before updating. -->
+          <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2021" Version="$($identity.Version)"
+                        Uri="$base/beta-channel/SidePhaseMail-beta.appinstaller">
+            <MainPackage Name="$($identity.Name)" Publisher="$($identity.Publisher)" Version="$($identity.Version)"
+                         ProcessorArchitecture="x64" Uri="$base/v$env:VERSION/SidePhaseMail-$env:VERSION-win-x64.msix" />
+            <UpdateSettings>
+              <OnLaunch HoursBetweenUpdateChecks="24" ShowPrompt="true" UpdateBlocksActivation="false" />
+              <AutomaticBackgroundTask />
+            </UpdateSettings>
+          </AppInstaller>
+          "@ | Set-Content -Encoding utf8 release/SidePhaseMail-beta.appinstaller
+
+      - name: Release notes
+        shell: pwsh
+        env:
+          HIGHLIGHTS: ${{ github.event.inputs.highlights }}
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          $signed = "${{ steps.sign.outputs.signed }}" -eq 'true'
+          $sums = Get-ChildItem release -File | ForEach-Object { "| ``$($_.Name)`` | ``$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())`` |" }
+          $install = if ($signed) {
+            "Double-click ``SidePhaseMail-$env:VERSION-win-x64.msix`` (App Installer), or open ``SidePhaseMail-beta.appinstaller`` to get automatic beta updates."
+          } else {
+            "The MSIX is **unsigned**. Download ``SidePhaseMail-$env:VERSION-win-x64-msix-sideload.zip``, extract it and run ``Install-DevPackage.ps1`` from an administrator PowerShell (see README-FIRST.txt), or use the portable zip."
+          }
+          @"
+          **SidePhase Mail $env:VERSION** (beta, built from $short) · Windows 11 x64
+
+          $(if ($env:HIGHLIGHTS) { "$env:HIGHLIGHTS`n" })
+          > This is a beta for testers. It is not production-ready: see [RELEASE_READINESS.md](https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/RELEASE_READINESS.md) for what is tested and known issues, and [BETA_TESTING.md](https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/docs/BETA_TESTING.md) for the test checklist and how to report bugs.
+
+          ### Install
+          * **Installed app (MSIX):** $install
+          * **Portable:** extract ``SidePhaseMail-$env:VERSION-win-x64-portable.zip`` and run ``SidePhaseMail.exe``.
+
+          The installed app copies accounts and settings from the portable build the first time it starts.
+          Google and Microsoft sign-in need OAuth client IDs (see docs/ACCOUNT_PROVIDERS.md); they are not configured in beta builds.
+
+          ### Files (SHA-256)
+          | File | SHA-256 |
+          | --- | --- |
+          $($sums -join "`n")
+
+          Built by GitHub Actions run [$env:GITHUB_RUN_ID](https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID) from commit $env:GITHUB_SHA. All unit, integration and packaging tests passed.
+          "@ | Set-Content -Encoding utf8 release-notes.md
+          Get-Content release-notes.md
+
+      - name: Create the draft pre-release (not published)
+        shell: pwsh
+        run: |
+          gh release create "v$env:VERSION" (Get-ChildItem release -File | ForEach-Object FullName) `
+            --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" `
+            --title "SidePhase Mail $env:VERSION (beta)" --notes-file release-notes.md `
+            --draft --prerelease
+          if ($LASTEXITCODE -ne 0) { Write-Error "Creating the draft release failed."; exit 1 }
+          Write-Host "Draft created. Review it under Releases and publish it by hand when ready."

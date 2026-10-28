@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Beta testing checklist
+    url: https://github.com/SidePhaseStudio/SidePhase-Mail/blob/main/docs/BETA_TESTING.md
+    about: What to test, and how to collect logs for a report.

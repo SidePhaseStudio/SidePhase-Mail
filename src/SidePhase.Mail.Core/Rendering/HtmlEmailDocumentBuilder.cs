@@ -96,12 +96,22 @@ public static partial class HtmlEmailDocumentBuilder
     /// <summary>Removes active and dangerous content. Not a substitute for the WebView2 restrictions.</summary>
     public static string Sanitize(string html)
     {
-        var s = DangerousBlockRegex().Replace(html, string.Empty);
-        s = DangerousTagRegex().Replace(s, string.Empty);
-        s = EventHandlerRegex().Replace(s, string.Empty);
-        s = ScriptUrlRegex().Replace(s, "${attr}=\"#\"");
-        s = MetaRefreshRegex().Replace(s, string.Empty);
-        return s;
+        // Repeat until nothing changes: removing one tag must not leave the pieces of another that join up into a
+        // working tag ("<lin<link>k rel=preconnect ...>").
+        var s = html;
+        for (var pass = 0; pass < 20; pass++)
+        {
+            var before = s;
+            s = DangerousBlockRegex().Replace(s, string.Empty);
+            s = DangerousTagRegex().Replace(s, string.Empty);
+            s = EventHandlerRegex().Replace(s, string.Empty);
+            s = ScriptUrlRegex().Replace(s, "${attr}=\"#\"");
+            s = MetaRefreshRegex().Replace(s, string.Empty);
+            if (s == before) return s;
+        }
+
+        // Still changing after many passes: a deliberately nested construction. Show it as text rather than risk it.
+        return System.Net.WebUtility.HtmlEncode(html);
     }
 
     [GeneratedRegex(@"<body\b[^>]*>(?<content>.*?)(</body\s*>|$)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
@@ -116,7 +126,7 @@ public static partial class HtmlEmailDocumentBuilder
     [GeneratedRegex(@"</?(script|iframe|frame|frameset|object|embed|applet|form|input|button|textarea|select|base|link|meta|noscript|template|svg|math)\b[^>]*>", RegexOptions.IgnoreCase)]
     private static partial Regex DangerousTagRegex();
 
-    [GeneratedRegex(@"\s+on[a-z]+\s*=\s*(""[^""]*""|'[^']*'|[^\s>]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"[\s/]+on[a-z]+\s*=\s*(""[^""]*""|'[^']*'|[^\s>]+)", RegexOptions.IgnoreCase)]
     private static partial Regex EventHandlerRegex();
 
     [GeneratedRegex(@"(?<attr>href|src|action|formaction|xlink:href|background)\s*=\s*(""\s*(javascript|vbscript|data:text/html)[^""]*""|'\s*(javascript|vbscript|data:text/html)[^']*'|(javascript|vbscript):[^\s>]*)", RegexOptions.IgnoreCase)]

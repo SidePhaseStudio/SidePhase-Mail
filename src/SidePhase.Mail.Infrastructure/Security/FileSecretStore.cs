@@ -36,7 +36,7 @@ public sealed class DpapiSecretProtector : ISecretProtector
 
 /// <summary>
 /// Stores each secret as an encrypted file under %LOCALAPPDATA%\SidePhase Mail\Secrets. File names are hashes of the
-/// key, so not even the account ids are visible on disk.
+/// key (the key itself is stored, unencrypted, on the first line of the file; it holds only an account id and a kind).
 /// </summary>
 public sealed class FileSecretStore(AppDataPaths paths, ISecretProtector protector) : ISecretStore
 {
@@ -55,7 +55,12 @@ public sealed class FileSecretStore(AppDataPaths paths, ISecretProtector protect
             Directory.CreateDirectory(paths.SecretsFolder);
             var file = FileFor(key);
             var temp = file + ".tmp";
-            await File.WriteAllBytesAsync(temp, payload, cancellationToken).ConfigureAwait(false);
+            await using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            {
+                await stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+                stream.Flush(flushToDisk: true); // a power cut must not leave an empty secret behind
+            }
+
             File.Move(temp, file, overwrite: true);
         }
         finally
@@ -69,7 +74,16 @@ public sealed class FileSecretStore(AppDataPaths paths, ISecretProtector protect
         var file = FileFor(key);
         if (!File.Exists(file)) return null;
 
-        var text = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(file, cancellationToken).ConfigureAwait(false));
+        string text;
+        try
+        {
+            text = Encoding.UTF8.GetString(await ReadSharedAsync(file, cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new SecretStoreUnavailableException("Saved sign-in details couldn't be read: " + ex.Message, ex);
+        }
+
         var newline = text.IndexOf('\n');
         if (newline < 0 || text[..newline] != key) return null;
 
@@ -106,7 +120,7 @@ public sealed class FileSecretStore(AppDataPaths paths, ISecretProtector protect
             string key;
             try
             {
-                var text = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(file, cancellationToken).ConfigureAwait(false));
+                var text = Encoding.UTF8.GetString(await ReadSharedAsync(file, cancellationToken).ConfigureAwait(false));
                 var newline = text.IndexOf('\n');
                 key = newline < 0 ? string.Empty : text[..newline];
             }
@@ -124,6 +138,15 @@ public sealed class FileSecretStore(AppDataPaths paths, ISecretProtector protect
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..32].ToLowerInvariant();
         return Path.Combine(paths.SecretsFolder, hash + ".secret");
     }
+
+    /// <summary>Reads without blocking a concurrent replace or delete of the same file.</summary>
+    private static async Task<byte[]> ReadSharedAsync(string file, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+        var buffer = new byte[stream.Length];
+        await stream.ReadExactlyAsync(buffer, cancellationToken).ConfigureAwait(false);
+        return buffer;
+    }
 }
 
 /// <summary>Well-known secret keys.</summary>
@@ -133,4 +156,8 @@ public static class SecretKeys
     public static string Password(Guid accountId) => AccountPrefix(accountId) + "password";
     public static string OAuthTokens(Guid accountId) => AccountPrefix(accountId) + "oauth";
     public const string GoogleClientSecret = "oauth-client/google/secret";
+
 }
+
+/// <summary>The secret store exists but can't be read right now (locked or no access). Not the same as "signed out".</summary>
+public sealed class SecretStoreUnavailableException(string message, Exception inner) : IOException(message, inner);

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Sponsored content for SidePhase Mail, kept separate from the mail engine: this project references nothing from
+    SidePhase.Mail.Core or SidePhase.Mail.Infrastructure and is given no mail data, so it can be maintained, replaced
+    or removed on its own. See docs/ADVERTISING.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SidePhase.Mail.Advertising</RootNamespace>
+    <Description>Optional, privacy-preserving sponsored cards for SidePhase Mail (separate from the mail engine).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SidePhase.Mail.Tests" />
+  </ItemGroup>
+
+</Project>

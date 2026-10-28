@@ -131,7 +131,14 @@ public sealed partial class AddAccountViewModel : ObservableObject
             }
             else
             {
-                result = await _accounts.DiscoverAsync(email, ct);
+                // Choosing Google or Microsoft means signing in with them, even for an address on a company domain.
+                var choice = _preset switch
+                {
+                    AddAccountPreset.Google => ProviderChoice.Google,
+                    AddAccountPreset.Microsoft => ProviderChoice.Microsoft,
+                    _ => ProviderChoice.Other,
+                };
+                result = AccountDiscovery.ForChoice(choice, await _accounts.DiscoverAsync(email, ct));
             }
 
             ApplyDiscovery(result);
@@ -181,6 +188,39 @@ public sealed partial class AddAccountViewModel : ObservableObject
               + (CanUseAppPassword ? " You can also use a Google app password instead." : string.Empty);
     }
 
+    /// <summary>Fills the form with server settings imported from Thunderbird (no password: the user signs in here).</summary>
+    public void UseImportedSettings(ThunderbirdAccount imported)
+    {
+        Email = imported.EmailAddress; // resets any earlier discovery
+        if (!string.IsNullOrWhiteSpace(imported.DisplayName)) DisplayName = imported.DisplayName;
+        var host = imported.Imap.Host.ToLowerInvariant();
+        _provider = host.EndsWith("gmail.com", StringComparison.Ordinal) ? MailProviderKind.Gmail
+            : host.EndsWith("office365.com", StringComparison.Ordinal) || host.EndsWith("outlook.com", StringComparison.Ordinal) ? MailProviderKind.Microsoft
+            : MailProviderKind.Imap;
+        _authMethod = imported.UsesOAuth
+            ? _provider switch { MailProviderKind.Gmail => AuthMethod.OAuthGoogle, MailProviderKind.Microsoft => AuthMethod.OAuthMicrosoft, _ => AuthMethod.Password }
+            : AuthMethod.Password;
+        ImapHost = imported.Imap.Host;
+        ImapPort = imported.Imap.Port;
+        ImapSecurityIndex = imported.Imap.Security == ConnectionSecurity.StartTls ? 1 : 0;
+        if (imported.Smtp is { } smtp)
+        {
+            SmtpHost = smtp.Host;
+            SmtpPort = smtp.Port;
+            SmtpSecurityIndex = smtp.Security == ConnectionSecurity.StartTls ? 1 : 0;
+        }
+
+        Username = imported.Username;
+        ProviderText = "Settings from Thunderbird · tested before anything is saved";
+        PasswordHint = "Thunderbird's saved password isn't copied. Enter the password (or app password) for this account.";
+        ShowServerSettings = true;
+        HasDiscovered = true;
+        UpdateAuthPresentation();
+        SetStatus(imported.Smtp is null ? "Thunderbird had no outgoing server for this account: fill it in under Server settings." : string.Empty, error: false);
+    }
+
+    public void ShowImportProblem(string message) => SetStatus(message, error: true);
+
     /// <summary>Gmail accounts with 2-Step Verification can use an app password over IMAP instead of OAuth.</summary>
     [RelayCommand]
     private void UseAppPassword()
@@ -200,6 +240,7 @@ public sealed partial class AddAccountViewModel : ObservableObject
             {
                 SetStatus($"You signed in as {tokens.Email}, which is different from {Email.Trim()}. The account will be added as {tokens.Email}.", error: false);
                 Email = tokens.Email;
+                Username = tokens.Email; // XOAUTH2 signs in as the account the tokens belong to
                 HasDiscovered = true;
             }
 

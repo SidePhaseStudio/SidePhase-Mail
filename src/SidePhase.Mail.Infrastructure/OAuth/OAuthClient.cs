@@ -126,17 +126,50 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
 
     private async Task<OAuthTokens> PostTokenRequestAsync(OAuthProviderConfig config, Dictionary<string, string> form, string? existingRefreshToken, CancellationToken ct)
     {
-        using var response = await http.PostAsync(config.TokenEndpoint, new FormUrlEncodedContent(form), ct).ConfigureAwait(false);
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>(ct).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode || !json.TryGetProperty("access_token", out var accessToken))
+        HttpResponseMessage response;
+        try
         {
-            var error = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var e) ? e.GetString() : null;
-            throw error == "invalid_grant"
-                ? new OAuthException($"Your {config.Name} sign-in has expired or was revoked. Sign in again to keep receiving mail.")
-                : new OAuthException($"{config.Name} rejected the sign-in ({error ?? ((int)response.StatusCode).ToString(System.Globalization.CultureInfo.InvariantCulture)}).");
+            response = await http.PostAsync(config.TokenEndpoint, new FormUrlEncodedContent(form), ct).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new OAuthException($"Couldn't reach {config.Name} to refresh the sign-in. SidePhase Mail will try again.", ex, isTransient: true);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            throw new OAuthException($"{config.Name} took too long to respond. SidePhase Mail will try again.", ex, isTransient: true);
         }
 
+        using (response)
+        {
+            JsonElement json;
+            try
+            {
+                json = await response.Content.ReadFromJsonAsync<JsonElement>(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException or HttpRequestException)
+            {
+                // Not a token response at all (an outage page, a captive portal or a proxy's error page).
+                throw new OAuthException($"{config.Name} sent an unexpected response ({(int)response.StatusCode}). SidePhase Mail will try again.", ex, isTransient: true);
+            }
+
+            if (!response.IsSuccessStatusCode || json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("access_token", out var accessToken))
+            {
+                var error = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var e) ? e.GetString() : null;
+                var status = (int)response.StatusCode;
+                if (error == "invalid_grant")
+                    throw new OAuthException($"Your {config.Name} sign-in has expired or was revoked. Sign in again to keep receiving mail.");
+                if (status >= 500 || status == 429 || error is "temporarily_unavailable" or "server_error")
+                    throw new OAuthException($"{config.Name} is having problems right now ({error ?? status.ToString(System.Globalization.CultureInfo.InvariantCulture)}). SidePhase Mail will try again.", isTransient: true);
+                throw new OAuthException($"{config.Name} rejected the sign-in ({error ?? status.ToString(System.Globalization.CultureInfo.InvariantCulture)}).");
+            }
+
+            return ReadTokens(json, accessToken, existingRefreshToken);
+        }
+    }
+
+    private static OAuthTokens ReadTokens(JsonElement json, JsonElement accessToken, string? existingRefreshToken)
+    {
         var expiresIn = json.TryGetProperty("expires_in", out var exp) && exp.TryGetInt32(out var seconds) ? seconds : 3600;
         var refresh = json.TryGetProperty("refresh_token", out var r) ? r.GetString() : existingRefreshToken;
         var email = json.TryGetProperty("id_token", out var idToken) ? ReadEmailClaim(idToken.GetString()) : null;

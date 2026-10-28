@@ -7,8 +7,12 @@
     <Company>SidePhase Studio</Company>
     <Product>SidePhase Mail</Product>
     <Copyright>Copyright © 2026 SidePhase Studio</Copyright>
-    <Version>0.1.0</Version>
-    <InformationalVersion>0.1.0-milestone1</InformationalVersion>
+    <!-- One version for the app, its assemblies and the MSIX package (Package.appxmanifest Identity Version must be
+         VersionPrefix + ".0"; a test checks it). Beta builds use VersionSuffix "beta.N"; CI adds the source revision
+         to the informational version (e.g. 0.6.0-beta.1+3f2a9c...). -->
+    <VersionPrefix>0.6.0</VersionPrefix>
+    <VersionSuffix>beta.1</VersionSuffix>
+    <Authors>SidePhase Studio</Authors>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 </Project>

@@ -54,6 +54,21 @@ No OAuth client IDs or secrets are in the repository. To try Google or Microsoft
 2. Select the **x64** (or **ARM64**) solution platform and **SidePhase.Mail.App** as the start-up project.
 3. Press **F5**. The launch profile is *SidePhase Mail (Unpackaged)*; no MSIX deployment or developer mode is required.
 
+## Create an MSIX package
+
+```powershell
+dotnet build src/SidePhase.Mail.App -c Release -r win-x64 -p:Platform=x64 -p:SidePhasePackage=msix
+```
+
+The unsigned package and its sideload layout (with `Dependencies\` and install scripts) land in `artifacts\msix\`.
+Signing, identity, data location and updates are described in [docs/PACKAGING.md](docs/PACKAGING.md).
+
+## Versions
+
+`VersionPrefix` / `VersionSuffix` in `Directory.Build.props` set the version of the app, its assemblies and the MSIX
+package (the manifest's `Identity Version` must be `VersionPrefix.0`; a unit test checks it). Raise `VersionPrefix`
+for every beta release.
+
 ## Create a portable build (what CI produces)
 
 ```powershell
@@ -63,6 +78,14 @@ dotnet publish src/SidePhase.Mail.App -c Release -r win-x64 -p:Platform=x64 -o a
 The output folder is self-contained: it bundles .NET and the Windows App SDK runtime, so it can be zipped
 and copied to another PC and started with `SidePhaseMail.exe`. Release builds are ReadyToRun-compiled for
 faster start-up. Only the WebView2 Runtime must be present on the target PC.
+
+## Beta releases
+
+*Actions → Beta release (draft) → Run workflow* runs the whole Build workflow (all tests, both packages, the MSIX
+install test) and, only if everything passes, creates a **draft** pre-release `v<version>` with the portable zip, the
+MSIX, a sideload zip, SHA-256 checksums and release notes. Nothing is published: review the draft and publish it by
+hand. The MSIX is signed (and an App Installer file added) only if `SIGNING_CERTIFICATE_BASE64` and
+`SIGNING_CERTIFICATE_PASSWORD` secrets are configured; otherwise it stays unsigned.
 
 ## Continuous integration
 
@@ -75,8 +98,11 @@ both SSL/TLS and STARTTLS. The **Windows x64** job on `windows-latest`:
 3. Publishes the app for win-x64 (self-contained, unpackaged, ReadyToRun).
 4. **Verifies** that `SidePhaseMail.exe`, the app/engine assemblies, the WinUI and WebView2 assemblies,
    `SidePhaseMail.pri` (compiled XAML resources) and the icon exist — the job fails if anything is missing.
-5. Uploads the runnable folder as the `SidePhaseMail-win-x64` artifact (kept 30 days). On failure the
-   MSBuild binary log is uploaded as `build-logs` (open it with the [MSBuild Structured Log Viewer](https://msbuildlog.com/)).
+5. Uploads the runnable folder as `SidePhaseMail-<version>-win-x64-portable` (kept 30 days).
+6. Builds the MSIX, checks its manifest and contents, then installs it (signed with a throwaway certificate created
+   on the runner), starts it, checks that it copied the portable data into its own folder, and uninstalls it.
+7. Uploads the unsigned package as `SidePhaseMail-<version>-win-x64-msix`. On failure the MSBuild binary logs are
+   uploaded as `build-logs` (open them with the [MSBuild Structured Log Viewer](https://msbuildlog.com/)).
 
 ## Troubleshooting
 
@@ -86,4 +112,4 @@ both SSL/TLS and STARTTLS. The **Windows x64** job on `windows-latest`:
 | “XamlCompiler.exe … could not be run” on macOS/Linux | Expected: the WinUI XAML compiler is Windows-only. Core, Infrastructure and Tests build anywhere. |
 | App starts but message bodies show as plain text | The WebView2 Runtime is missing; install it from the link above. |
 | Glass looks solid | Windows *Settings → Personalisation → Colours → Transparency effects* is off, a contrast theme is on, or a Solid theme is selected. This is intentional. |
-| Where is data stored? | `%LOCALAPPDATA%\SidePhase Mail\` — `settings.json`, `mail-cache.db` (SQLite cache) and `Secrets\` (DPAPI-encrypted credentials). Errors are logged to `%LOCALAPPDATA%\SidePhase Mail\Logs\errors.log` (never message contents or credentials). |
+| Where is data stored? | Portable: `%LOCALAPPDATA%\SidePhase Mail\`; installed: `%LOCALAPPDATA%\Packages\<package>\LocalState\` (Settings → About → Data folder). `settings.json`, `mail-cache.db` (SQLite cache), `Secrets\` (DPAPI-encrypted credentials), `Logs\` (never message contents or credentials). |

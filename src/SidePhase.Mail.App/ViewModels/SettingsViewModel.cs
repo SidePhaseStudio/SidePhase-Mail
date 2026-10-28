@@ -318,6 +318,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Core.Spam.LocalSpamFilter _localFilter;
     private readonly Core.Organisation.MailRuleService _mailRules;
     private readonly Services.RuleEditor _ruleEditor;
+    private readonly global::SidePhase.Mail.Advertising.AdService _ads;
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -333,8 +334,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         LiveMailDataSource live,
         Core.Spam.LocalSpamFilter localFilter,
         Core.Organisation.MailRuleService mailRules,
-        Services.RuleEditor ruleEditor)
+        Services.RuleEditor ruleEditor,
+        global::SidePhase.Mail.Advertising.AdService ads)
     {
+        _ads = ads;
+        _ads.Changed += (_, _) => ui.Post(() =>
+        {
+            OnPropertyChanged(nameof(PreviewSponsoredCards));
+            OnPropertyChanged(nameof(SimulateAdFree));
+        });
         _mailRules = mailRules;
         _ruleEditor = ruleEditor;
         _mailRules.Changed += (_, _) => ui.Post(() => _ = LoadRulesAsync());
@@ -807,12 +815,57 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // ---------------------------------------------------------------- About
 
-    public string VersionText
+    public string VersionText =>
+        $"Version {AppIdentity.Version}" + (AppIdentity.SourceRevision is { } revision ? $" · build {revision}" : string.Empty) + " · beta";
+
+    public string DistributionText =>
+        AppIdentity.ChannelDescription + (AppIdentity.PackageVersion is { } package ? $" · package {package}" : string.Empty);
+
+    /// <summary>Where this install keeps its data (shown so beta testers can find logs; nothing is uploaded).</summary>
+    public string DataFolderText => _paths.Root;
+
+    /// <summary>Opens the open-source licence notices shipped with the app (a plain text file).</summary>
+    [RelayCommand]
+    private async Task OpenLicencesAsync()
     {
-        get
+        var file = Path.Combine(AppContext.BaseDirectory, "THIRD-PARTY-NOTICES.txt");
+        try
         {
-            var version = typeof(SettingsViewModel).Assembly.GetName().Version;
-            return $"Version {version?.ToString(3) ?? "0.1.0"} · Milestone 2 preview";
+            if (!File.Exists(file))
+            {
+                _toasts.Show("The licence notices file is missing from this build.", ToastKind.Warning);
+                return;
+            }
+
+            await Windows.System.Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(file));
+        }
+        catch (Exception ex)
+        {
+            _toasts.Show("Couldn't open the licence notices: " + ex.Message, ToastKind.Error);
+        }
+    }
+
+    // ---------------------------------------------------------------- Sponsored content
+
+    /// <summary>Shows the built-in test cards in the sponsored placements (nothing is downloaded or reported).</summary>
+    public bool PreviewSponsoredCards
+    {
+        get => _ads.Settings.Mode == global::SidePhase.Mail.Advertising.AdvertisingMode.Demo;
+        set
+        {
+            if (value == PreviewSponsoredCards) return;
+            _ads.Update(a => a.Mode = value ? global::SidePhase.Mail.Advertising.AdvertisingMode.Demo : global::SidePhase.Mail.Advertising.AdvertisingMode.Off);
+        }
+    }
+
+    /// <summary>Acts as if the planned ad-free upgrade were owned (for testing; no purchase exists yet).</summary>
+    public bool SimulateAdFree
+    {
+        get => _ads.Settings.SimulateAdFree;
+        set
+        {
+            if (value == SimulateAdFree) return;
+            _ads.Update(a => a.SimulateAdFree = value);
         }
     }
 

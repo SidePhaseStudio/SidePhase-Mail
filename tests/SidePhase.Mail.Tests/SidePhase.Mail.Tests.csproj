@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SidePhase.Mail.Core\SidePhase.Mail.Core.csproj" />
     <ProjectReference Include="..\..\src\SidePhase.Mail.Infrastructure\SidePhase.Mail.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SidePhase.Mail.Advertising\SidePhase.Mail.Advertising.csproj" />
   </ItemGroup>
 
 </Project>

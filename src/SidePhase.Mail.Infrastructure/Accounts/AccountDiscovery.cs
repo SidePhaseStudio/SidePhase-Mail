@@ -57,6 +57,42 @@ public sealed class AccountDiscovery(HttpClient http)
             AuthMethod.Password, "Enable IMAP access in GMX settings first."),
     ];
 
+    /// <summary>Settings for Google Workspace (Gmail on your own domain), used when the user picked Google.</summary>
+    public static AccountConnectionSettings GoogleWorkspace(string email) => new()
+    {
+        Imap = new("imap.gmail.com", 993, ConnectionSecurity.SslOnConnect),
+        Smtp = new("smtp.gmail.com", 465, ConnectionSecurity.SslOnConnect),
+        Username = email,
+        AuthMethod = AuthMethod.OAuthGoogle,
+    };
+
+    /// <summary>
+    /// Applies the provider the user chose on the welcome screen ("Google", "Microsoft") to what discovery found. An
+    /// address on its own domain (Google Workspace, Microsoft 365) isn't recognisable from the address alone, so
+    /// choosing Google or Microsoft means "sign in with that provider" whatever the domain. Choosing "Other" keeps
+    /// discovery's result.
+    /// </summary>
+    public static AccountDiscoveryResult ForChoice(ProviderChoice choice, AccountDiscoveryResult discovered) => choice switch
+    {
+        ProviderChoice.Google when discovered.Provider != MailProviderKind.Gmail => discovered with
+        {
+            ProviderName = "Google Workspace",
+            Provider = MailProviderKind.Gmail,
+            Source = DiscoverySource.KnownProvider,
+            Settings = GoogleWorkspace(discovered.EmailAddress),
+            PasswordHint = "Sign in with Google is recommended. If your administrator allows it, an app password also works.",
+        },
+        ProviderChoice.Microsoft when discovered.Provider != MailProviderKind.Microsoft => discovered with
+        {
+            ProviderName = "Microsoft 365",
+            Provider = MailProviderKind.Microsoft,
+            Source = DiscoverySource.KnownProvider,
+            Settings = Microsoft365(discovered.EmailAddress),
+            PasswordHint = null,
+        },
+        _ => discovered,
+    };
+
     /// <summary>Settings for Microsoft 365 work or school accounts (any domain), used when the user picks that option.</summary>
     public static AccountConnectionSettings Microsoft365(string email) => new()
     {
@@ -237,4 +273,12 @@ public sealed class AccountDiscovery(HttpClient http)
             return (new ServerEndpoint(host, port, security), (string?)e.Element("username"), auth, rank);
         }
     }
+}
+
+/// <summary>The provider the user picked when adding an account.</summary>
+public enum ProviderChoice
+{
+    Other,
+    Google,
+    Microsoft,
 }

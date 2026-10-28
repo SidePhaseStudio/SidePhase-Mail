@@ -316,7 +316,30 @@ public sealed partial class ComposeViewModel : ObservableObject
         OnPropertyChanged(nameof(HasAttachments));
     }
 
-    private bool CanSend() => !IsSending;
+    private bool CanSend() => !IsSending && !_sendUncertain;
+
+    private bool CanSaveDraft() => !IsSending;
+
+    // Set when the server connection dropped mid-send: the message may have been delivered, so sending it again from
+    // this window is blocked (the user can still copy the text or save it as a draft from a new message).
+    private bool _sendUncertain;
+
+    /// <summary>
+    /// The message has been handed over (queued in the outbox or accepted by the server): the crash-recovery copy must
+    /// go now, not when the window closes, or a crash in between would offer to "recover" a message that was sent.
+    /// </summary>
+    private async Task ForgetRecoveryCopyAsync()
+    {
+        _autosaveStop.Cancel();
+        try
+        {
+            await _recovery.DeleteAsync(SessionId);
+        }
+        catch (Exception)
+        {
+            // Deleted again when the window closes.
+        }
+    }
 
     /// <summary>
     /// Sends the message. With Undo Send on, it is held in the outbox for a few seconds first: the window closes and a
@@ -372,6 +395,7 @@ public sealed partial class ComposeViewModel : ObservableObject
         try
         {
             var item = await _outbox.QueueAsync(draft with { BodyIncludesSignature = true }, sendAt, kind, _mail.IsDemo);
+            await ForgetRecoveryCopyAsync();
             IsDirty = false;
             CloseRequested?.Invoke(this, EventArgs.Empty);
 
@@ -419,10 +443,18 @@ public sealed partial class ComposeViewModel : ObservableObject
             var result = await _mail.SendAsync(draft, progress);
             if (!result.Succeeded)
             {
+                if (result.Outcome == SendOutcome.Uncertain)
+                {
+                    _sendUncertain = true;
+                    await ForgetRecoveryCopyAsync();
+                    SendCommand.NotifyCanExecuteChanged();
+                }
+
                 SetStatus(result.Message, error: true);
                 return;
             }
 
+            await ForgetRecoveryCopyAsync();
             IsDirty = false;
             if (!_mail.IsDemo) _ = _contacts.RecordSentAsync(draft);
             _toasts.Show(result.Message, ToastKind.Success);
@@ -438,7 +470,7 @@ public sealed partial class ComposeViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanSend))]
+    [RelayCommand(CanExecute = nameof(CanSaveDraft))]
     private async Task SaveDraftAsync()
     {
         var draft = BuildDraft(out _, requireRecipients: false);

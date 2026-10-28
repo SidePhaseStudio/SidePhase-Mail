@@ -67,6 +67,17 @@ public sealed partial class MainWindow : Window
 
     public ShellViewModel Shell { get; }
 
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(nint hwnd);
+
+    /// <summary>Restores the window if minimised and brings it to the front (another launch was handed to this one).</summary>
+    public void BringToFront()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter) presenter.Restore();
+        Activate();
+        SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
     private async void OnRootLoaded(object sender, RoutedEventArgs e)
     {
         _dialogs.DefaultXamlRoot = RootGrid.XamlRoot;

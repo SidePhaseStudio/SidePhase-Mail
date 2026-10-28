@@ -107,6 +107,16 @@ public sealed class AccountService(
     {
         var stored = (await cache.GetAccountsAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(a => a.Account.Id == accountId)
             ?? throw new InvalidOperationException("That account no longer exists.");
+
+        // Signing in again as a different Google/Microsoft account would quietly swap this mailbox for another one.
+        if (tokens?.Email is { Length: > 0 } signedInAs
+            && !signedInAs.Equals(stored.Settings.Username, StringComparison.OrdinalIgnoreCase)
+            && !signedInAs.Equals(stored.Account.EmailAddress, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"You signed in as {signedInAs}, but this account is {stored.Account.EmailAddress}. Sign in again as {stored.Account.EmailAddress}, or add {signedInAs} as a new account.");
+        }
+
         var request = new AccountSetupRequest
         {
             EmailAddress = stored.Account.EmailAddress,

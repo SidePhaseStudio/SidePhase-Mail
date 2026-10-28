@@ -99,18 +99,60 @@ Work/school tenants may require admin consent, and the mailbox must have IMAP an
 
 ## Where data is stored
 
-Everything is under `%LOCALAPPDATA%\SidePhase Mail\`:
+The portable build uses `%LOCALAPPDATA%\SidePhase Mail\`; the installed (MSIX) app uses its package folder
+`%LOCALAPPDATA%\Packages\<package family>\LocalState\` (and copies the portable data once on first start; see
+[PACKAGING.md](PACKAGING.md)). Both contain:
 
 | Path | Contents |
 | --- | --- |
-| `mail-cache.db` | SQLite cache: accounts (name, address, server names/ports, **no secrets**), folders, sync state (UIDVALIDITY, highest UID), message headers, previews, downloaded bodies, pins, local favourites, drafts. |
+| `mail-cache.db` | SQLite cache: accounts (name, address, server names/ports, **no secrets**), folders, sync state (UIDVALIDITY, highest UID), message headers, previews, downloaded bodies, the search index, pins, local favourites, drafts, snoozes, reminders, the outbox, contacts, rules, smart folders, categories, local spam-learning word counts. |
 | `Secrets\*.secret` | Passwords and OAuth tokens, each encrypted with **Windows DPAPI** (current user) plus app-specific entropy. File names are hashes. |
-| `settings.json` | Preferences, favourite folders, signatures, OAuth client IDs (public identifiers). |
-| `Logs\` | Start-up and error logs. Never message contents, passwords or tokens. |
+| `settings.json` (+ `.bak`) | Preferences, favourite folders, signatures, OAuth client IDs (public identifiers). `.bak` is the previous good copy. |
+| `advertising.json` | Sponsored-content preferences (off by default). |
+| `Recovery\` | Crash-recovery copies of messages being written. |
+| `Outbox\` | Attachments of queued/scheduled messages, and Sent copies waiting to be filed (`SentCopies\`). |
+| `Backups\` | Copies of the mail cache taken before schema upgrades (three kept), and a damaged cache if you chose to set it aside. |
+| `Logs\` | Start-up, error and send-trail logs. Never message contents, subjects, passwords or tokens; email addresses are reduced to the domain. |
 | `WebView2\` | The message renderer's browser profile (no credentials). |
 
 *Settings → Privacy → Clear local data* removes cached messages (they download again). *Remove account*
 deletes that account's cache, pins and saved credentials. **Neither ever deletes mail on the server.**
+
+## Before public release: provider configuration and verification
+
+**Google and Microsoft sign-in are not ready for the public**, and no build may claim they are, until all of the
+following is done and real sign-in has been tested:
+
+### Google (Gmail and Google Workspace)
+
+1. A Google Cloud project owned by SidePhase Studio with an OAuth client of type *Desktop app*.
+2. OAuth consent screen: app name **SidePhase Mail**, support email, logo, a homepage and a **privacy policy on a
+   domain SidePhase Studio owns** (the draft is `PRIVACY.md`), authorised domains verified in Google Search Console.
+3. **Brand verification** of the consent screen.
+4. **Restricted scope verification** for `https://mail.google.com/` (needed for IMAP/SMTP): a justification and a
+   demo video of the sign-in and how mail data is used.
+5. **Annual security assessment (CASA)** by an authorised third-party assessor, required for restricted Gmail scopes.
+   Plan for the time and cost; it repeats every year.
+6. Until verified, the app is limited to up to 100 test users added by hand, and their refresh tokens expire after 7
+   days. Gmail users can use an **app password** meanwhile.
+
+### Microsoft (Outlook.com, Hotmail, Live, Microsoft 365)
+
+1. An app registration in SidePhase Studio's Microsoft Entra tenant (multi-tenant + personal accounts), public client,
+   redirect `http://localhost`, delegated `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`.
+2. **Publisher verification**: link the registration to SidePhase Studio's verified Microsoft Partner Network
+   (Microsoft AI Cloud Partner Program) ID and a verified publisher domain. Without it, users see an *unverified*
+   warning, and many organisations block user consent to unverified multi-tenant apps.
+3. Work/school tenants: admins may need to grant consent, and must have IMAP and **SMTP AUTH** enabled for the
+   mailbox (Microsoft turns SMTP AUTH off by default in many tenants).
+4. Outlook.com/Hotmail no longer accept passwords for IMAP/SMTP, so these accounts need step 1 and 2 done first.
+
+### Client IDs in builds
+
+Client IDs are public identifiers, but this repository still contains **none**, and CI uses none. A release build
+would supply them at build time from a private configuration (not committed). Google's "client secret" for desktop
+apps is not confidential by Google's own definition, but it is still never committed; the app stores it DPAPI-encrypted
+if entered. Until then, testers enter their own IDs in *Settings → Accounts*.
 
 ## Security decisions
 

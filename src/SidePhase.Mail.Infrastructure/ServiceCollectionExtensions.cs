@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MailCache>();
         services.AddSingleton<MailConnector>();
         services.AddSingleton<DemoMailDataSource>();
+        services.AddSingleton<PendingSentCopies>();
         services.AddSingleton<LiveMailDataSource>();
         services.AddSingleton<MailDataSourceRouter>();
         services.AddSingleton<IMailDataSource>(sp => sp.GetRequiredService<MailDataSourceRouter>());

@@ -33,6 +33,12 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
     /// <summary>Raised when an item reaches Accepted, Failed or Uncertain after a send attempt.</summary>
     public event EventHandler<OutboxItem>? AttemptFinished;
 
+    /// <summary>
+    /// Raised when the outbox itself (not a send) has a problem, e.g. the database can't be written. The text is safe to
+    /// show; the outbox keeps trying.
+    /// </summary>
+    public event EventHandler<string>? ProblemOccurred;
+
     public async Task<OutboxItem> QueueAsync(DraftMessage draft, DateTimeOffset sendAt, OutboxKind kind, bool isDemo, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -206,7 +212,16 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
                 }
 
                 var finished = clock.Now;
-                await store.AddAttemptAsync(new OutboxAttempt(item.Id, finished, result.Outcome, result.Message), CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    await store.AddAttemptAsync(new OutboxAttempt(item.Id, finished, result.Outcome, result.Message), CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // The attempt history is informational; recording the outcome below is what matters.
+                    ProblemOccurred?.Invoke(this, "The outbox couldn't record a send attempt: " + ex.Message);
+                }
+
                 var next = result.Outcome switch
                 {
                     SendOutcome.Accepted => sending with { State = OutboxState.Accepted, AcceptedAt = finished, UpdatedAt = finished, LastError = null },
@@ -221,7 +236,23 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
                     _ => sending with { State = OutboxState.Failed, UpdatedAt = finished, LastError = result.Message },
                 };
 
-                await store.TryTransitionAsync(item.Id, OutboxState.Sending, next, CancellationToken.None).ConfigureAwait(false);
+                // Recording the outcome is what prevents a resend, so keep trying for a while (a busy or briefly locked
+                // database). If it still fails, the item stays "Sending" and becomes "Uncertain" at the next start:
+                // it is never sent again automatically.
+                for (var attempt = 1; ; attempt++)
+                {
+                    try
+                    {
+                        await store.TryTransitionAsync(item.Id, OutboxState.Sending, next, CancellationToken.None).ConfigureAwait(false);
+                        break;
+                    }
+                    catch (Exception ex) when (attempt < 4)
+                    {
+                        if (attempt == 1) ProblemOccurred?.Invoke(this, "The outbox couldn't save a send result yet: " + ex.Message);
+                        await Task.Delay(TimeSpan.FromSeconds(2 * attempt), CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+
                 OnChanged();
                 if (next.State is OutboxState.Accepted or OutboxState.Failed or OutboxState.Uncertain) AttemptFinished?.Invoke(this, next);
             }
@@ -247,12 +278,21 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
     /// </summary>
     public async Task RunAsync(CancellationToken ct)
     {
-        await RecoverAsync(ct).ConfigureAwait(false);
+        var recovered = false;
+        var reported = false;
         while (!ct.IsCancellationRequested)
         {
             try
             {
+                // Nothing is sent until interrupted sends have been marked uncertain.
+                if (!recovered)
+                {
+                    await RecoverAsync(ct).ConfigureAwait(false);
+                    recovered = true;
+                }
+
                 await ProcessDueAsync(ct).ConfigureAwait(false);
+                reported = false;
                 var next = await NextDueAsync(ct).ConfigureAwait(false);
                 var wait = next is { } when ? when - clock.Now : TimeSpan.FromSeconds(30);
                 wait = TimeSpan.FromMilliseconds(Math.Clamp(wait.TotalMilliseconds, 200, 30_000));
@@ -262,9 +302,11 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
             {
                 return;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // A storage problem shouldn't stop future sends; try again shortly.
+                // A storage problem shouldn't stop future sends; try again shortly. Report it once per problem.
+                if (!reported) ProblemOccurred?.Invoke(this, "Scheduled and queued messages can't be sent right now: " + ex.Message);
+                reported = true;
                 await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
             }
         }

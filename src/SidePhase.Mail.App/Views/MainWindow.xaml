@@ -3,6 +3,7 @@
     x:Class="SidePhase.Mail.App.Views.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ads="using:SidePhase.Mail.App.Advertising"
     Title="SidePhase Mail">
 
   <Grid x:Name="RootGrid">
@@ -74,6 +75,12 @@
           </NavigationViewItem.Icon>
         </NavigationViewItem>
       </NavigationView.FooterMenuItems>
+
+      <!-- Optional sponsored card at the very bottom of the sidebar (only while it's open; nothing when advertising is
+           off, which is the default). Never inside messages or the message list. -->
+      <NavigationView.PaneFooter>
+        <ads:SponsoredCard Margin="12,4,12,10" Placement="SidebarFooter" Visibility="{x:Bind Shell.IsPaneOpen, Mode=OneWay}" />
+      </NavigationView.PaneFooter>
 
       <!-- Pages float on the glass as rounded translucent panels (see SpPanelStyle); no hard frame border. -->
       <Frame x:Name="ContentFrame" Margin="0,0,8,8" />

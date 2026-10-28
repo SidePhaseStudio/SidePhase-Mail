@@ -156,7 +156,10 @@
           <Button Grid.Column="2" Command="{x:Bind ViewModel.CancelCommand}" Content="Cancel" Style="{StaticResource SpSecondaryButtonStyle}" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
         </Grid>
 
-        <HyperlinkButton Click="OnWorkAccountClick" Content="Using Microsoft 365 for work or school?" />
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <HyperlinkButton Click="OnWorkAccountClick" Content="Using Microsoft 365 for work or school?" />
+          <HyperlinkButton Click="OnThunderbirdClick" Content="Use settings from Thunderbird (beta)" ToolTipService.ToolTip="Fill in server settings from a Thunderbird profile. Passwords are never read." />
+        </StackPanel>
       </StackPanel>
     </ScrollViewer>
   </Grid>

@@ -628,17 +628,39 @@
               <controls:BrandMark Width="64" Height="64" VerticalAlignment="Top" />
               <StackPanel Grid.Column="1" Spacing="6">
                 <TextBlock Style="{StaticResource SpTitleTextStyle}" Text="SidePhase Mail" />
-                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.VersionText}" />
-                <TextBlock Style="{StaticResource SpSecondaryTextStyle}" Text="A premium email client for Windows 11 by SidePhase Studio." />
-                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Connects to Google, Microsoft and IMAP/SMTP accounts directly. The demonstration mailbox uses fictional people and companies on reserved .example domains." />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.VersionText}" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.DistributionText}" />
+                <TextBlock Style="{StaticResource SpSecondaryTextStyle}" Text="A simple, private email client for Windows 11 by SidePhase Studio." TextWrapping="Wrap" />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Connects to Google, Microsoft and IMAP/SMTP accounts directly. The demonstration mailbox uses fictional people and companies on reserved .example domains." TextWrapping="Wrap" />
                 <StackPanel Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                   <HyperlinkButton Content="Project on GitHub" NavigateUri="https://github.com/SidePhaseStudio/SidePhase-Mail" />
+                  <HyperlinkButton Content="Report a problem" NavigateUri="https://github.com/SidePhaseStudio/SidePhase-Mail/issues/new/choose" />
+                  <HyperlinkButton Command="{x:Bind ViewModel.OpenLicencesCommand}" Content="Open-source licences" />
                   <HyperlinkButton Command="{x:Bind ViewModel.ShowWelcomeCommand}" Content="Show welcome screen" />
                 </StackPanel>
               </StackPanel>
             </Grid>
           </Border>
-          <TextBlock Margin="2,12,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Built with WinUI 3, the Windows App SDK, .NET, MailKit/MimeKit and SQLite." />
+
+          <controls:SettingsCard Description="{x:Bind ViewModel.DataFolderText}" Glyph="&#xE8B7;" Header="Data folder (settings, mail cache, logs)">
+            <Button Command="{x:Bind ViewModel.OpenDataFolderCommand}" Content="Open" Style="{StaticResource SpSecondaryButtonStyle}" />
+          </controls:SettingsCard>
+
+          <TextBlock Margin="2,18,0,4" Style="{StaticResource SpSectionHeaderTextStyle}" Text="Sponsored content" />
+          <controls:SettingsCard
+              Description="SidePhase Mail is planned to stay free with small, clearly labelled sponsored cards at the bottom of the sidebar and in the empty reading pane - never inside your email, and never using your messages, contacts or address. No real advertising is shown yet. Turn this on to preview the placements with built-in test cards (nothing is downloaded)."
+              Glyph="&#xE789;"
+              Header="Preview sponsored cards (test content)">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.PreviewSponsoredCards, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard
+              Description="For testing the planned ad-free upgrade: hides every sponsored card as if it were owned. There's nothing to buy yet."
+              Glyph="&#xE734;"
+              Header="Simulate the ad-free upgrade">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.SimulateAdFree, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+
+          <TextBlock Margin="2,12,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Built with WinUI 3, the Windows App SDK, .NET, MailKit/MimeKit and SQLite. See Open-source licences for their notices." TextWrapping="Wrap" />
         </StackPanel>
       </Grid>
     </ScrollViewer>

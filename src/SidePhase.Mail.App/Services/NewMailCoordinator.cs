@@ -40,7 +40,8 @@ public sealed class NewMailCoordinator(
                 toasts.Show(filtered == 1 ? "1 new message was filtered into Junk." : $"{filtered} new messages were filtered into Junk.");
             }
 
-            var rules = await mailRules.RunOnNewMailAsync(fresh.Where(m => !movedToJunk.Contains(m.Id)).ToList()).ConfigureAwait(false);
+            // Rules never act on junk (they could otherwise be used to lift spoofed mail out of Junk).
+            var rules = await mailRules.RunOnNewMailAsync(fresh.Where(m => !movedToJunk.Contains(m.Id) && !junk.IsLocallyJunk(m)).ToList()).ConfigureAwait(false);
             if (rules.Problems.Count > 0) toasts.Show(rules.Problems[0], ToastKind.Warning);
 
             var notify = fresh.Where(m => !movedToJunk.Contains(m.Id) && !rules.SuppressNotifications.Contains(m.Id) && policy.ShouldNotify(m)).ToList();

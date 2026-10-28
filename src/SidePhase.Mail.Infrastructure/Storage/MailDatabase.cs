@@ -313,6 +313,7 @@ public sealed class MailDatabase
     public MailDatabase(AppDataPaths paths)
         : this(paths.DatabaseFile)
     {
+        BackupsFolder = paths.BackupsFolder;
     }
 
     public string DatabaseFile { get; }
@@ -326,36 +327,140 @@ public sealed class MailDatabase
         return connection;
     }
 
-    /// <summary>Creates the database if needed and applies pending migrations. Returns the resulting version.</summary>
-    public async Task<int> MigrateAsync(CancellationToken cancellationToken = default)
+    private readonly Lock _migrationGate = new();
+    private Task<int>? _migration;
+
+    /// <summary>Where copies of the database are kept before schema upgrades (null: no copies, e.g. in tests).</summary>
+    public string? BackupsFolder { get; init; }
+
+    /// <summary>How many pre-upgrade copies are kept.</summary>
+    public const int BackupsKept = 3;
+
+    /// <summary>
+    /// Creates the database if needed and applies pending migrations. Returns the resulting version. Safe to call from
+    /// many places at once: the work runs once per process (and is retried if it failed), and each migration runs in
+    /// an exclusive transaction that re-checks the version, so two processes can't apply the same step twice.
+    /// </summary>
+    /// <exception cref="MailCacheException">The file is damaged or was created by a newer version of the app.</exception>
+    public Task<int> MigrateAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_migrationGate)
+        {
+            if (_migration is null || _migration.IsFaulted || _migration.IsCanceled)
+                _migration = Task.Run(() => MigrateCoreAsync(CancellationToken.None), CancellationToken.None);
+            return _migration.WaitAsync(cancellationToken);
+        }
+    }
+
+    private async Task<int> MigrateCoreAsync(CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(DatabaseFile);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken).ConfigureAwait(false);
-
-        var version = Convert.ToInt32(await ScalarAsync(connection, "PRAGMA user_version;", cancellationToken).ConfigureAwait(false));
-        if (version > Migrations.Length)
+        try
         {
-            throw new InvalidOperationException(
-                $"The mail cache was created by a newer version of SidePhase Mail (schema {version}). Update the app or clear local data.");
-        }
+            await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await ExecuteAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken).ConfigureAwait(false);
 
-        for (var next = version; next < Migrations.Length; next++)
-        {
-            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            await using (var command = connection.CreateCommand())
+            var version = Convert.ToInt32(await ScalarAsync(connection, "PRAGMA user_version;", cancellationToken).ConfigureAwait(false));
+            if (version > Migrations.Length)
             {
-                command.Transaction = transaction;
-                command.CommandText = Migrations[next] + $"\nPRAGMA user_version = {next + 1};";
-                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                throw new MailCacheException(MailCacheProblem.NewerVersion,
+                    $"The mail cache was created by a newer version of SidePhase Mail (schema {version}; this version understands {Migrations.Length}). Install the newer version to keep using it. Nothing was changed.");
             }
 
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        }
+            if (version > 0 && version < Migrations.Length) BackUp(connection, version);
 
-        return Migrations.Length;
+            for (var next = version; next < Migrations.Length; next++)
+            {
+                // BEGIN IMMEDIATE takes the write lock first, then the version is re-read: if another process has
+                // already applied this step, skip it.
+                await using var transaction = connection.BeginTransaction(deferred: false);
+                var current = Convert.ToInt32(await ScalarAsync(connection, "PRAGMA user_version;", cancellationToken, transaction).ConfigureAwait(false));
+                if (current > next)
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    next = current - 1;
+                    continue;
+                }
+
+                await using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = Migrations[next] + $"\nPRAGMA user_version = {next + 1};";
+                    await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return Migrations.Length;
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode is SQLITE_CORRUPT or SQLITE_NOTADB)
+        {
+            throw new MailCacheException(MailCacheProblem.Damaged,
+                "The local mail cache file is damaged and can't be opened. Nothing was changed.", ex);
+        }
+    }
+
+    private const int SQLITE_CORRUPT = 11;
+    private const int SQLITE_NOTADB = 26;
+
+    /// <summary>Copies the database (consistently, with SQLite's backup API) before it's upgraded.</summary>
+    private void BackUp(SqliteConnection connection, int version)
+    {
+        if (BackupsFolder is null) return;
+        try
+        {
+            Directory.CreateDirectory(BackupsFolder);
+            var file = Path.Combine(BackupsFolder, $"mail-cache-schema{version}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.db");
+            using (var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = file, Pooling = false }.ToString()))
+            {
+                destination.Open();
+                connection.BackupDatabase(destination);
+            }
+
+            foreach (var old in Directory.GetFiles(BackupsFolder, "mail-cache-schema*.db")
+                         .OrderByDescending(f => File.GetCreationTimeUtc(f)).ThenByDescending(f => f, StringComparer.Ordinal).Skip(BackupsKept))
+                File.Delete(old);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SqliteException)
+        {
+            // The upgrade itself is transactional, so a missing copy doesn't put data at risk; carry on.
+            LastBackupError = ex.Message;
+        }
+    }
+
+    /// <summary>Why the last pre-upgrade copy couldn't be made, if it failed.</summary>
+    public string? LastBackupError { get; private set; }
+
+    /// <summary>Runs SQLite's quick integrity check. Returns null if the database is fine, or the problems found.</summary>
+    public async Task<string?> CheckIntegrityAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA quick_check(20);";
+        var problems = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) problems.Add(reader.GetString(0));
+        return problems is ["ok"] ? null : string.Join("; ", problems);
+    }
+
+    /// <summary>
+    /// Moves a damaged database (and its WAL files) into the Backups folder so a new one can be created. Only called
+    /// after the user agrees. Returns where it was moved.
+    /// </summary>
+    public string SetAside()
+    {
+        SqliteConnection.ClearAllPools();
+        var folder = BackupsFolder ?? Path.GetDirectoryName(DatabaseFile)!;
+        Directory.CreateDirectory(folder);
+        var target = Path.Combine(folder, $"mail-cache-damaged-{DateTime.UtcNow:yyyyMMdd-HHmmss}.db");
+        File.Move(DatabaseFile, target);
+        foreach (var suffix in new[] { "-wal", "-shm" })
+            if (File.Exists(DatabaseFile + suffix)) File.Move(DatabaseFile + suffix, target + suffix);
+        lock (_migrationGate) _migration = null;
+        return target;
     }
 
     internal static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
@@ -365,10 +470,23 @@ public sealed class MailDatabase
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    internal static async Task<object?> ScalarAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
+    internal static async Task<object?> ScalarAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken, SqliteTransaction? transaction = null)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = sql;
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
     }
+}
+
+public enum MailCacheProblem
+{
+    Damaged,
+    NewerVersion,
+}
+
+/// <summary>The mail cache can't be used as it is. The message is safe to show; the file has not been changed.</summary>
+public sealed class MailCacheException(MailCacheProblem problem, string message, Exception? inner = null) : Exception(message, inner)
+{
+    public MailCacheProblem Problem { get; } = problem;
 }

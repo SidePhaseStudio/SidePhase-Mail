@@ -155,7 +155,11 @@ public static class MimeMessageBuilder
         message.Subject = draft.Subject;
         message.Date = DateTimeOffset.Now;
         var domain = from.EmailAddress.Contains('@') ? from.EmailAddress[(from.EmailAddress.LastIndexOf('@') + 1)..] : "sidephase.local";
-        message.MessageId = MimeUtils.GenerateMessageId(domain);
+        // A message from the outbox keeps the same Message-ID on every attempt, so a retry after an uncertain result
+        // can be recognised as the same message (by recipients' servers and by the Sent-copy check).
+        message.MessageId = draft.StableMessageKey is { } key
+            ? $"{key:N}.sidephase@{domain}"
+            : MimeUtils.GenerateMessageId(domain);
 
         if (!string.IsNullOrWhiteSpace(inReplyTo))
         {

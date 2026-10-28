@@ -22,3 +22,9 @@ BundleArtifacts/
 *.local.json
 secrets.json
 appsettings.Development.json
+
+# Packaging output and local signing material (never commit certificates)
+artifacts/
+AppPackages/
+*.pfx
+*.cer
