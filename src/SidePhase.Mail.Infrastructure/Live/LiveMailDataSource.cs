@@ -66,6 +66,31 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     public event EventHandler<Guid>? AccountStatusChanged;
 
     /// <summary>The result of the account's most recent sync on this run of the app.</summary>
+    /// <summary>
+    /// The mailbox's storage use and limit from the server (IMAP QUOTA, RFC 2087), if the server reports it; null when
+    /// it doesn't (many servers don't) or can't be reached.
+    /// </summary>
+    public async Task<AccountStorage?> GetStorageAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var account = (await GetStoredAccountsAsync(ct).ConfigureAwait(false)).FirstOrDefault(a => a.Account.Id == accountId);
+        if (account is null) return null;
+        try
+        {
+            return await _imap.RunAsync(account, async c =>
+            {
+                if (!c.Capabilities.HasFlag(MailKit.Net.Imap.ImapCapabilities.Quota)) return null;
+                var quota = await c.Inbox.GetQuotaAsync(ct).ConfigureAwait(false);
+                return quota.CurrentStorageSize is { } usedKb && quota.StorageLimit is { } limitKb && limitKb > 0
+                    ? new AccountStorage((long)usedKb * 1024, (long)limitKb * 1024)
+                    : null;
+            }, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null; // storage is informational; the account's status shows real connection problems
+        }
+    }
+
     public AccountStatus GetAccountStatus(Guid accountId) => _status.GetValueOrDefault(accountId, AccountStatus.Unknown);
 
     private void SetStatus(Guid accountId, Func<AccountStatus, AccountStatus> change)

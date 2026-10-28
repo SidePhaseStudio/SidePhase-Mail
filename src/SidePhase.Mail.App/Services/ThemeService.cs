@@ -66,6 +66,9 @@ public sealed class ThemeService
     public event EventHandler? ThemeApplied;
 
     /// <summary>True when glass effects are wanted but Windows has transparency turned off (shown in Settings).</summary>
+    /// <summary>False when "Animation effects" is off in Windows settings: decorative motion is skipped.</summary>
+    public bool AnimationsEnabled => _uiSettings.AnimationsEnabled;
+
     public bool TransparencyDisabledBySystem => !_uiSettings.AdvancedEffectsEnabled;
 
     public bool IsHighContrast => _accessibility.HighContrast;
@@ -161,13 +164,27 @@ public sealed class ThemeService
 
         // Solid themes (and every fallback) paint an opaque background under the translucent layers.
         entry.SolidLayer.Visibility = backdrop is null ? Visibility.Visible : Visibility.Collapsed;
-        UpdateTitleBarColors(entry);
+        UpdateTitleBarColors(entry, highContrast);
     }
 
-    private static void UpdateTitleBarColors(WindowEntry entry)
+    private static void UpdateTitleBarColors(WindowEntry entry, bool highContrast)
     {
         var titleBar = entry.Window.AppWindow?.TitleBar;
         if (titleBar is null) return;
+
+        if (highContrast)
+        {
+            // Let Windows draw the caption buttons in the user's contrast theme colours.
+            titleBar.ButtonBackgroundColor = null;
+            titleBar.ButtonInactiveBackgroundColor = null;
+            titleBar.ButtonForegroundColor = null;
+            titleBar.ButtonInactiveForegroundColor = null;
+            titleBar.ButtonHoverBackgroundColor = null;
+            titleBar.ButtonHoverForegroundColor = null;
+            titleBar.ButtonPressedBackgroundColor = null;
+            titleBar.ButtonPressedForegroundColor = null;
+            return;
+        }
 
         var dark = entry.Root.ActualTheme == ElementTheme.Dark;
         var foreground = dark ? Colors.White : Color.FromArgb(255, 20, 22, 28);

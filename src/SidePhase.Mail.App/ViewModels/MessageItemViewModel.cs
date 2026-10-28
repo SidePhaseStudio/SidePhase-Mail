@@ -145,6 +145,9 @@ public sealed partial class MessageItemViewModel : ObservableObject
 
     public string AutomationName { get; private set; } = string.Empty;
 
+    /// <summary>The list's container (what Narrator focuses) falls back to ToString for its name.</summary>
+    public override string ToString() => AutomationName;
+
     public void Update(MessageSummary summary, MessageDisplayContext context)
     {
         Summary = summary;

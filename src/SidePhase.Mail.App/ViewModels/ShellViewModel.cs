@@ -30,8 +30,12 @@ public sealed partial class ShellViewModel : ObservableObject
         ISettingsService settings,
         IUiDispatcher ui,
         OutboxService outbox,
-        Core.Organisation.SmartFolderService smartFolders)
+        Core.Organisation.SmartFolderService smartFolders,
+        Infrastructure.Live.LiveMailDataSource live)
     {
+        _live = live;
+        // Account problems (sign-in expired, server unreachable) show as a warning on the account in the sidebar.
+        live.AccountStatusChanged += (_, id) => ui.Post(() => UpdateAccountProblem(id));
         _mail = mail;
         _outbox = outbox;
         _smartFolders = smartFolders;
@@ -177,6 +181,8 @@ public sealed partial class ShellViewModel : ObservableObject
                 Subtitle = account.EmailAddress,
                 Children = children,
                 IsExpanded = account == accounts[0],
+                AccountId = account.Id,
+                ProblemText = ProblemFor(account.Id),
             });
         }
 
@@ -186,6 +192,21 @@ public sealed partial class ShellViewModel : ObservableObject
         foreach (var item in items) NavItems.Add(item);
         await RefreshCountsAsync();
         NavigationRebuilt?.Invoke(this, EventArgs.Empty);
+    }
+
+    private readonly Infrastructure.Live.LiveMailDataSource _live;
+
+    private string? ProblemFor(Guid accountId)
+    {
+        if (_mail.IsDemo) return null;
+        var status = _live.GetAccountStatus(accountId);
+        if (!status.HasProblem) return null;
+        return status.RequiresSignIn ? "sign in again (Settings → Accounts)" : status.LastError ?? "couldn't connect";
+    }
+
+    private void UpdateAccountProblem(Guid accountId)
+    {
+        foreach (var item in NavItems.Where(i => i.Kind == NavItemKind.Account && i.AccountId == accountId)) item.ProblemText = ProblemFor(accountId);
     }
 
     public bool IsFavouriteFolder(Guid folderId) => _settings.Current.FavouriteFolderIds.Contains(folderId);

@@ -11,21 +11,42 @@
   <Grid
       x:Name="RootGrid"
       AllowDrop="True"
-      DragLeave="OnDragLeave"
-      DragOver="OnDragOver"
-      Drop="OnDrop">
+      DragLeave="OnDragLeave">
     <Grid.KeyboardAccelerators>
       <KeyboardAccelerator Key="S" Invoked="OnSaveAcceleratorInvoked" Modifiers="Control" />
       <KeyboardAccelerator Key="Escape" Invoked="OnEscapeInvoked" />
     </Grid.KeyboardAccelerators>
     <Grid.Resources>
-      <!-- Borderless fields: the layout's hairlines provide the structure. -->
-      <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
-      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-      <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+      <!-- Borderless fields: the layout's hairlines provide the structure. The focused field keeps a soft accent
+           outline so keyboard users can see where they are; high contrast uses the system colours. -->
+      <ResourceDictionary>
+        <ResourceDictionary.ThemeDictionaries>
+          <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#998B7CFF" />
+          </ResourceDictionary>
+          <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#996E5EF0" />
+          </ResourceDictionary>
+          <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="TextControlBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{ThemeResource SystemColorHighlightColor}" />
+          </ResourceDictionary>
+        </ResourceDictionary.ThemeDictionaries>
+      </ResourceDictionary>
     </Grid.Resources>
 
     <Grid.RowDefinitions>
@@ -156,6 +177,7 @@
           FontFamily="{StaticResource SpDisplayFont}"
           FontSize="18"
           FontWeight="SemiBold"
+          IsSpellCheckEnabled="True"
           PlaceholderText="Subject"
           Text="{x:Bind ViewModel.Subject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
     </Grid>
@@ -233,6 +255,8 @@
           AutomationProperties.Name="Message"
           FontFamily="{StaticResource SpTextFont}"
           FontSize="14.5"
+          IsSpellCheckEnabled="True"
+          Paste="OnRichEditorPaste"
           PlaceholderText="Write your message…"
           TextChanged="OnEditorTextChanged"
           Visibility="{x:Bind h:X.Collapsed(ViewModel.IsPlainText), Mode=OneWay}" />
@@ -243,6 +267,7 @@
           AutomationProperties.Name="Message"
           FontFamily="Cascadia Mono, Consolas"
           FontSize="13.5"
+          IsSpellCheckEnabled="True"
           PlaceholderText="Write your message…"
           ScrollViewer.VerticalScrollBarVisibility="Auto"
           TextChanged="OnEditorTextChanged"
@@ -305,10 +330,12 @@
       </Grid.ColumnDefinitions>
       <StackPanel VerticalAlignment="Center" Spacing="6">
         <TextBlock
+            AutomationProperties.LiveSetting="Polite"
             Style="{StaticResource SpCaptionTextStyle}"
             Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
             Visibility="{x:Bind h:X.Collapsed(ViewModel.StatusIsError), Mode=OneWay}" />
         <TextBlock
+            AutomationProperties.LiveSetting="Assertive"
             Foreground="{ThemeResource SpDangerBrush}"
             Style="{StaticResource SpCaptionTextStyle}"
             Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"

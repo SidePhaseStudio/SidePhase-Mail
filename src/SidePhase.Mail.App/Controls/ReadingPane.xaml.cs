@@ -54,6 +54,7 @@ public sealed partial class ReadingPane : UserControl
     /// <summary>A short, subtle fade-and-rise when a different message is opened.</summary>
     private void PlayEntrance()
     {
+        if (!App.GetService<Services.ThemeService>().AnimationsEnabled) return; // Windows "Animation effects" off
         var storyboard = new Storyboard();
         var fade = new DoubleAnimation
         {

@@ -87,3 +87,11 @@ public sealed record AccountStatus(DateTimeOffset? LastSyncedAt, string? LastErr
 
     public bool HasProblem => LastError is not null && (LastSyncedAt is null || LastErrorAt > LastSyncedAt);
 }
+
+/// <summary>Server-side mailbox storage (from IMAP QUOTA), in bytes.</summary>
+public sealed record AccountStorage(long UsedBytes, long LimitBytes)
+{
+    public double Fraction => LimitBytes <= 0 ? 0 : Math.Clamp((double)UsedBytes / LimitBytes, 0, 1);
+
+    public string Describe() => $"{Formatting.FileSizeFormatter.Format(UsedBytes)} of {Formatting.FileSizeFormatter.Format(LimitBytes)} used ({Fraction:P0})";
+}

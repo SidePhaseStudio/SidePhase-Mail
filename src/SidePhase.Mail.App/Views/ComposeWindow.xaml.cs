@@ -46,6 +46,11 @@ public sealed partial class ComposeWindow : Window
         AppWindow.Closing += OnClosing;
         Closed += async (_, _) => await ViewModel.CloseAsync();
         RootGrid.Loaded += OnLoaded;
+
+        // The editors handle drag and drop themselves (for text), which would swallow dropped files before they reach
+        // the window; listening for handled events too means files dropped anywhere, editor included, are attached.
+        RootGrid.AddHandler(UIElement.DragOverEvent, new DragEventHandler(OnDragOver), handledEventsToo: true);
+        RootGrid.AddHandler(UIElement.DropEvent, new DragEventHandler(OnDrop), handledEventsToo: true);
     }
 
     public ComposeViewModel ViewModel { get; }
@@ -342,6 +347,37 @@ public sealed partial class ComposeWindow : Window
         finally
         {
             deferral.Complete();
+        }
+    }
+
+    /// <summary>
+    /// Pasting an image (a screenshot, say) would otherwise drop it silently: the editor only keeps text. It's saved as
+    /// a PNG in the app's private data folder and attached instead.
+    /// </summary>
+    private async void OnRichEditorPaste(object sender, TextControlPasteEventArgs e)
+    {
+        var content = Clipboard.GetContent();
+        if (!content.Contains(StandardDataFormats.Bitmap) || content.Contains(StandardDataFormats.Text)) return;
+        e.Handled = true;
+        try
+        {
+            var bitmap = await content.GetBitmapAsync();
+            var folder = Path.Combine(App.GetService<Infrastructure.Storage.AppDataPaths>().Root, "Pasted", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, $"Pasted image {DateTime.Now:yyyy-MM-dd HHmmss}.png");
+            using (var source = await bitmap.OpenReadAsync())
+            await using (var target = File.Create(path))
+            {
+                await source.AsStreamForRead().CopyToAsync(target);
+            }
+
+            // Clipboard bitmaps are usually PNG already; anything else still opens as an image in mail clients.
+            ViewModel.AddFiles([(path, Path.GetFileName(path), new FileInfo(path).Length, "image/png")]);
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Log("paste image", ex);
+            ViewModel.ReportStatus("The pasted image couldn't be attached. Try saving it and attaching the file.", error: true);
         }
     }
 

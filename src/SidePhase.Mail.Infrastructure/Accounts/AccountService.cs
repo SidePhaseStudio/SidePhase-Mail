@@ -22,8 +22,6 @@ public sealed class AccountService(
     LiveMailDataSource live,
     ISettingsService settings) : IAccountService
 {
-    private static readonly string[] Palette = ["#4F8EF7", "#2EC4B6", "#F7A23B", "#E5566A", "#9B7BFF", "#5BC46A", "#F25FA8", "#47B5E6"];
-
     public bool IsOAuthConfigured(AuthMethod method) => oauthConfiguration.IsConfigured(method);
 
     public Task<AccountDiscoveryResult> DiscoverAsync(string emailAddress, CancellationToken cancellationToken = default) =>
@@ -76,7 +74,7 @@ public sealed class AccountService(
             DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? email : request.DisplayName.Trim(),
             EmailAddress = email,
             Provider = request.Provider,
-            ColorHex = Palette[existing.Count % Palette.Length],
+            ColorHex = AccountPalette.ForNewAccount(existing.Count),
         };
 
         await SaveCredentialsAsync(account.Id, request, cancellationToken).ConfigureAwait(false);

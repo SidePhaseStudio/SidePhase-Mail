@@ -557,6 +557,8 @@ public sealed partial class ComposeViewModel : ObservableObject
         };
     }
 
+    public void ReportStatus(string text, bool error) => SetStatus(text, error);
+
     private void SetStatus(string text, bool error)
     {
         StatusText = text;

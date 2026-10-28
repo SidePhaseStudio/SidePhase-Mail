@@ -20,8 +20,22 @@ public sealed partial class SettingsPage : Page
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        if (e.Parameter is string section) ShowSection(section);
         await ViewModel.LoadAsync();
         Bindings.Update();
+    }
+
+    /// <summary>Selects a section by its tag ("accounts", "about", …).</summary>
+    public void ShowSection(string section)
+    {
+        foreach (var item in SectionBar.Items)
+        {
+            if (item.Tag as string == section)
+            {
+                SectionBar.SelectedItem = item;
+                return;
+            }
+        }
     }
 
     private void OnSectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
