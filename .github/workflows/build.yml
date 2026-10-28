@@ -333,8 +333,12 @@ jobs:
           Write-Host "Installed app running after 25 s: $alive"
           $data = Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalState"
           if (Test-Path "$data\Logs") { Get-ChildItem "$data\Logs" | ForEach-Object { Write-Host "---- $($_.Name) ----"; Get-Content $_.FullName; Copy-Item $_.FullName "artifacts/smoke/msix-$($_.Name)" } }
-          $dataOk = Test-Path (Join-Path $data "settings.json") -PathType Leaf
-          Write-Host "Data folder: $data (exists: $(Test-Path $data))"
+          # The portable smoke test above left data in %LOCALAPPDATA%\SidePhase Mail: the installed app must have copied it
+          # (settings + marker) on first start, without changing the original.
+          $imported = Test-Path (Join-Path $data "imported-from-portable.json")
+          $settingsCopied = Test-Path (Join-Path $data "settings.json")
+          $portableKept = Test-Path (Join-Path $env:LOCALAPPDATA "SidePhase Mail\settings.json")
+          Write-Host "Data folder: $data (exists: $(Test-Path $data)); copied from portable: $imported, settings: $settingsCopied, portable copy kept: $portableKept"
           if ($proc) { $proc | Stop-Process -Force; Start-Sleep -Seconds 2 }
 
           Remove-AppxPackage -Package $pkg.PackageFullName
@@ -345,6 +349,7 @@ jobs:
           Remove-Item $cert.PSPath
 
           if (-not $alive) { Write-Error "The installed app didn't stay running."; exit 1 }
+          if (-not ($imported -and $settingsCopied -and $portableKept)) { Write-Error "The portable build's data wasn't copied into the installed app (or the original changed)."; exit 1 }
           if ($left) { Write-Error "The package is still installed after Remove-AppxPackage."; exit 1 }
 
       - name: Add MSIX install instructions
