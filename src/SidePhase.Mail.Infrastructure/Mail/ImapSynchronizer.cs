@@ -18,7 +18,8 @@ public sealed class ImapSynchronizer(MailCache cache)
     /// <summary>How many of the most recent messages per folder are downloaded on first sync.</summary>
     public int InitialMessageLimit { get; set; } = 500;
 
-    private static readonly string[] HeaderFields = ["X-Spam-Status", "X-Spam-Flag", "X-Spam-Score", "X-Spam-Level"];
+    // Received headers are fetched only to check where the spam headers came from (see SpamHeaderTrust).
+    private static readonly string[] HeaderFields = ["X-Spam-Status", "X-Spam-Flag", "X-Spam-Score", "X-Spam-Level", "X-Spam-Report", "Received"];
 
     internal static FetchRequest SummaryRequest()
     {

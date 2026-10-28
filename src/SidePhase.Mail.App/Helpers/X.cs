@@ -37,6 +37,10 @@ public static class X
 
     public static bool Not(bool value) => !value;
 
+    public static double ShowIf(bool value) => value ? 1.0 : 0.0;
+
+    public static double HideIf(bool value) => value ? 0.0 : 1.0;
+
     public static FontWeight Weight(bool strong) => strong ? FontWeights.SemiBold : FontWeights.Normal;
 
     public static double Opacity(bool full, double dimmed) => full ? 1.0 : dimmed;

@@ -84,22 +84,32 @@ public sealed class MessageCommandService(
     {
         var sender = message.From;
         var canBlockDomain = SendTheBuggerBackService.CanBlockDomain(sender);
+        var inJunk = message.FolderKind == FolderKind.Junk;
 
-        var domainBox = new CheckBox
+        CheckBox Option(string text, bool isChecked, bool isEnabled = true) => new()
         {
-            Content = $"Also block everything from @{sender.Domain}",
-            IsChecked = canBlockDomain && settings.Current.BuggerBackBlocksDomainByDefault,
-            IsEnabled = canBlockDomain,
+            Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap },
+            IsChecked = isChecked && isEnabled,
+            IsEnabled = isEnabled,
         };
 
-        var panel = new StackPanel { Spacing = 12, MaxWidth = 440 };
+        var blockSender = Option($"Block {sender.Address}", true);
+        var blockDomain = Option($"Block everything from @{sender.Domain}", settings.Current.BuggerBackBlocksDomainByDefault, canBlockDomain);
+        var moveToJunk = Option(inJunk ? "Already in Junk" : "Move this message to Junk", !inJunk, !inJunk);
+        var applyToFuture = Option("Apply to future messages (keep these rules)", true);
+        applyToFuture.Checked += (_, _) => { blockSender.IsEnabled = true; blockDomain.IsEnabled = canBlockDomain; };
+        applyToFuture.Unchecked += (_, _) => { blockSender.IsEnabled = false; blockDomain.IsEnabled = false; };
+
+        var panel = new StackPanel { Spacing = 8, MaxWidth = 440 };
         panel.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Text = $"{sender.DisplayName} <{sender.Address}> will be blocked and this message moved to Junk. " +
-                   "Anything else they send goes straight to Junk and won't notify you.",
+            Text = $"Deal with {sender.DisplayName} <{sender.Address}>. Blocked mail goes to Junk and never notifies you.",
         });
-        panel.Children.Add(domainBox);
+        panel.Children.Add(blockSender);
+        panel.Children.Add(blockDomain);
+        panel.Children.Add(moveToJunk);
+        panel.Children.Add(applyToFuture);
         if (!canBlockDomain)
         {
             panel.Children.Add(new TextBlock
@@ -116,7 +126,7 @@ public sealed class MessageCommandService(
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.7,
             FontSize = 12,
-            Text = "Nothing is sent to them — no fake bounces, no replies. Just a very satisfying click.",
+            Text = "Nothing is sent to them — no fake bounces, no replies. You can undo this straight away.",
         });
 
         var dialog = new ContentDialog
@@ -130,7 +140,12 @@ public sealed class MessageCommandService(
 
         if (await dialogs.ShowAsync(dialog) != ContentDialogResult.Primary) return;
 
-        var result = await buggerBack.ExecuteAsync(message, new SendTheBuggerBackOptions(domainBox.IsChecked == true));
+        var options = new SendTheBuggerBackOptions(
+            BlockDomain: blockDomain.IsChecked == true,
+            BlockSender: blockSender.IsChecked == true,
+            MoveToJunk: moveToJunk.IsChecked == true,
+            ApplyToFuture: applyToFuture.IsChecked == true);
+        var result = await buggerBack.ExecuteAsync(message, options);
         toasts.ShowWithUndo(result.Summary, () => buggerBack.UndoAsync(result));
     }
 

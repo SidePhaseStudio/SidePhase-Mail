@@ -81,8 +81,16 @@ public static class MessageBodyExtractor
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// Reads SpamAssassin headers in message order, with the Received headers needed to tell whether a server added
+    /// them. X-Spam-Report is passed raw so its one-rule-per-line layout survives.
+    /// </summary>
     public static SpamReport ReadSpamHeaders(HeaderList headers) =>
-        SpamAssassinHeaderParser.Parse(headers.Select(h => new KeyValuePair<string, string>(h.Field, h.Value)));
+        SpamAssassinHeaderParser.Parse(headers.Select(h => new KeyValuePair<string, string>(
+            h.Field,
+            h.Field.Equals(SpamAssassinHeaderParser.ReportHeader, StringComparison.OrdinalIgnoreCase)
+                ? System.Text.Encoding.UTF8.GetString(h.RawValue)
+                : h.Value)));
 
     public static IReadOnlyList<EmailAddress> ToAddresses(InternetAddressList list) =>
         list.Mailboxes.Select(m => new EmailAddress(string.IsNullOrWhiteSpace(m.Name) ? null : m.Name, m.Address)).ToList();

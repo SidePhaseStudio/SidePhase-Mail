@@ -433,6 +433,17 @@ public sealed class MailCache(MailDatabase database)
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>Replaces a message's spam assessment (e.g. once the full headers have been downloaded).</summary>
+    public async Task UpdateSpamAsync(Guid messageId, SpamReport spam, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE messages SET spam_json = $s WHERE id = $id";
+        cmd.Parameters.AddWithValue("$s", spam.HasHeaders ? JsonSerializer.Serialize(spam, Json) : DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", messageId.ToString());
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task SetFlagsAsync(Guid messageId, bool? isRead, bool? isStarred, CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
@@ -480,6 +491,20 @@ public sealed class MailCache(MailDatabase database)
         cmd.Parameters.AddWithValue("$b", body.Bcc.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(body.Bcc, Json));
         cmd.Parameters.AddWithValue("$c", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Ids of messages whose downloaded text contains <paramref name="term"/> (case-insensitive for ASCII).</summary>
+    public async Task<IReadOnlySet<Guid>> SearchBodyTextAsync(string term, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = @"SELECT message_id FROM bodies WHERE text LIKE $p ESCAPE '\' LIMIT 10000";
+        var escaped = term.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+        cmd.Parameters.AddWithValue("$p", "%" + escaped + "%");
+        var result = new HashSet<Guid>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false)) result.Add(Guid.Parse(r.GetString(0)));
+        return result;
     }
 
     // ------------------------------------------------------------------ pins & local stars

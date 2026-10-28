@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
         _toastTimer.Tick += (_, _) => ToastBar.IsOpen = false;
         App.GetService<ToastService>().ToastRequested += (_, request) => DispatcherQueue.TryEnqueue(() => ShowToast(request));
         App.GetService<IMailDataSource>().ErrorOccurred += (_, e) => DispatcherQueue.TryEnqueue(() => ShowMailError(e));
-        App.GetService<Infrastructure.Live.LiveMailDataSource>().NewMailArrived += (_, messages) => DispatcherQueue.TryEnqueue(() => ShowNewMail(messages));
+        App.GetService<DesktopNotificationService>().OpenMessageRequested += (_, id) => DispatcherQueue.TryEnqueue(() => _ = OpenMessageAsync(id));
 
         Shell.NavigationRebuilt += (_, _) =>
         {
@@ -57,7 +57,11 @@ public sealed partial class MainWindow : Window
             SelectScope(_mailList.Scope);
         };
         RootGrid.Loaded += OnRootLoaded;
-        Closed += (_, _) => _settings.FlushAsync().Wait(TimeSpan.FromSeconds(2));
+        Closed += (_, _) =>
+        {
+            App.GetService<DesktopNotificationService>().Dispose();
+            _settings.FlushAsync().Wait(TimeSpan.FromSeconds(2));
+        };
     }
 
     public ShellViewModel Shell { get; }
@@ -137,14 +141,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ShowNewMail(IReadOnlyList<Core.Models.MessageSummary> messages)
+    /// <summary>Brings the window forward and opens a message (from a notification click).</summary>
+    public async Task OpenMessageAsync(Guid messageId)
     {
-        if (!_settings.Current.NotificationsEnabled || messages.Count == 0) return;
-        var first = messages[0];
-        var text = messages.Count == 1
-            ? $"New message from {first.From.DisplayName}: {first.DisplaySubject}"
-            : $"{messages.Count} new messages";
-        App.GetService<ToastService>().Show(text);
+        try
+        {
+            if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter) presenter.Restore();
+            Activate();
+
+            if (ContentFrame.CurrentSourcePageType != typeof(MailPage)) ShowInbox();
+            if (!await _mailList.SelectMessageAsync(messageId))
+            {
+                // Not in the current view (e.g. a folder was open): switch to the Unified Inbox and try again.
+                ShowInbox();
+                await _mailList.NavigateAsync(Core.Models.MailboxScope.UnifiedInbox, "Unified Inbox");
+                await _mailList.SelectMessageAsync(messageId);
+            }
+        }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Log("opening a message from a notification", ex);
+        }
     }
 
     public void ShowInbox()

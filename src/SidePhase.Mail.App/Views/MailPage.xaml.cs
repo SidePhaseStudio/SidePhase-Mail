@@ -158,4 +158,34 @@ public sealed partial class MailPage : Page
         args.Handled = true;
         if (ViewModel.Reading.HasMessage) ViewModel.Reading.DeleteCommand.Execute(null);
     }
+
+    private void OnArchiveAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.Reading.HasMessage) ViewModel.Reading.ArchiveCommand.Execute(null);
+    }
+
+    private void OnMarkReadAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.Reading.Message is { IsRead: false }) ViewModel.Reading.ToggleReadCommand.Execute(null);
+    }
+
+    private void OnMarkUnreadAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.Reading.Message is { IsRead: true }) ViewModel.Reading.ToggleReadCommand.Execute(null);
+    }
+
+    private void OnPinAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.Reading.HasMessage) ViewModel.Reading.TogglePinCommand.Execute(null);
+    }
+
+    private void OnStarAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.Reading.HasMessage) ViewModel.Reading.ToggleStarCommand.Execute(null);
+    }
 }

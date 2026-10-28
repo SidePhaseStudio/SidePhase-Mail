@@ -71,6 +71,21 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string Signature { get; set; }
 
+    public bool NotificationsEnabled
+    {
+        get => !_settings.Current.MutedNotificationAccounts.Contains(Account.Id);
+        set
+        {
+            if (value == NotificationsEnabled) return;
+            _settings.Update(s =>
+            {
+                if (value) s.MutedNotificationAccounts.Remove(Account.Id);
+                else s.MutedNotificationAccounts.Add(Account.Id);
+            });
+            OnPropertyChanged();
+        }
+    }
+
     partial void OnSignatureChanged(string value) =>
         _settings.Update(s =>
         {
@@ -254,6 +269,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         get => S.BuggerBackBlocksDomainByDefault;
         set => Set(s => s.BuggerBackBlocksDomainByDefault = value, S.BuggerBackBlocksDomainByDefault != value);
+    }
+
+    public bool MoveBlockedMailToServerJunk
+    {
+        get => S.MoveBlockedMailToServerJunk;
+        set => Set(s => s.MoveBlockedMailToServerJunk = value, S.MoveBlockedMailToServerJunk != value);
+    }
+
+    public bool NotifyWhenFiltered
+    {
+        get => S.NotifyWhenFiltered;
+        set => Set(s => s.NotifyWhenFiltered = value, S.NotifyWhenFiltered != value);
     }
 
     [ObservableProperty] public partial string NewTrustedSender { get; set; }

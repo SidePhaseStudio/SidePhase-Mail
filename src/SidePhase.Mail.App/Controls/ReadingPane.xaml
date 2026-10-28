@@ -233,6 +233,28 @@
 
       <!-- Banners -->
       <StackPanel Grid.Row="2" Padding="24,12,24,0" Spacing="8">
+        <Expander
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
+            CornerRadius="8"
+            Visibility="{x:Bind ViewModel.HasMessage, Mode=OneWay}">
+          <Expander.Header>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <FontIcon FontSize="12" Foreground="{ThemeResource SpTextSecondaryBrush}" Glyph="&#xE72E;" />
+              <TextBlock FontSize="12" Foreground="{ThemeResource SpTextSecondaryBrush}" Text="{x:Bind ViewModel.SpamCheckSummary, Mode=OneWay}" />
+            </StackPanel>
+          </Expander.Header>
+          <StackPanel Spacing="8">
+            <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.SpamCheckDetail, Mode=OneWay}" TextWrapping="Wrap" />
+            <ItemsControl ItemsSource="{x:Bind ViewModel.SpamRules}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock FontFamily="Consolas" FontSize="11" Foreground="{ThemeResource SpTextSecondaryBrush}" IsTextSelectionEnabled="True" Text="{x:Bind}" TextWrapping="Wrap" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Expander>
         <InfoBar
             Title="{x:Bind ViewModel.SpamTitle, Mode=OneWay}"
             CornerRadius="8"

@@ -207,6 +207,52 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
         await imap.DisconnectAsync(true);
     }
 
+    [MailServerFact]
+    public async Task Sent_copy_already_filed_by_the_server_is_detected()
+    {
+        using var imap = await ImapAsync(TestMailServer.User1);
+        var folders = await new ImapSynchronizer(_cache).SyncFolderListAsync(imap, _bob);
+        var sent = folders.Single(f => f.Kind == FolderKind.Sent);
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress("Alice", TestMailServer.User1.User));
+        message.To.Add(new MailboxAddress("Bob", TestMailServer.User2.User));
+        message.Subject = "Server-filed copy";
+        message.MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId("example.test");
+        message.Body = new TextPart("plain") { Text = "hi" };
+
+        Assert.False(await Infrastructure.Live.LiveMailDataSource.SentCopyExistsAsync(imap, sent.Path, message.MessageId));
+        var appended = await ImapOperations.AppendAsync(imap, sent.Path, message, MessageFlags.Seen, CancellationToken.None);
+        Assert.True(await Infrastructure.Live.LiveMailDataSource.SentCopyExistsAsync(imap, sent.Path, message.MessageId));
+
+        await ImapOperations.DeleteAsync(imap, sent.Path, appended.Uid!.Value, CancellationToken.None);
+        await imap.DisconnectAsync(true);
+    }
+
+    [MailServerFact]
+    public async Task Junk_keyword_is_stored_on_the_server()
+    {
+        using var imap = await ImapAsync(TestMailServer.User1);
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress("Spammer", "spam@example.test"));
+        message.Subject = "Junk keyword " + Guid.NewGuid().ToString("N")[..6];
+        message.Body = new TextPart("plain") { Text = "buy now" };
+        var appended = await ImapOperations.AppendAsync(imap, "INBOX", message, MessageFlags.None, CancellationToken.None);
+
+        await ImapOperations.SetJunkKeywordAsync(imap, "INBOX", appended.Uid!.Value, isJunk: true, CancellationToken.None);
+        var inbox = await imap.GetFolderAsync("INBOX");
+        var summary = (await inbox.FetchAsync([new UniqueId(inbox.UidValidity, appended.Uid.Value)], MessageSummaryItems.Flags)).Single();
+        Assert.Contains("$Junk", summary.Keywords);
+
+        await ImapOperations.SetJunkKeywordAsync(imap, "INBOX", appended.Uid.Value, isJunk: false, CancellationToken.None);
+        summary = (await inbox.FetchAsync([new UniqueId(inbox.UidValidity, appended.Uid.Value)], MessageSummaryItems.Flags)).Single();
+        Assert.Contains("$NotJunk", summary.Keywords);
+        Assert.DoesNotContain("$Junk", summary.Keywords);
+
+        await ImapOperations.DeleteAsync(imap, "INBOX", appended.Uid.Value, CancellationToken.None);
+        await imap.DisconnectAsync(true);
+    }
+
     private sealed class SyncProgress(List<double> values) : IProgress<double>
     {
         public void Report(double value)

@@ -46,7 +46,7 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         _clock = clock;
 
         Subject = SenderName = SenderAddress = Initials = DateText = ToLine = CcLine = string.Empty;
-        AccountName = FolderName = SpamTitle = SpamDetail = SpamActionText = string.Empty;
+        AccountName = FolderName = SpamTitle = SpamDetail = SpamActionText = SpamCheckSummary = SpamCheckDetail = string.Empty;
         AccountColor = "#8B7CFF";
         _mail.DataChanged += (_, e) =>
         {
@@ -91,6 +91,14 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [ObservableProperty] public partial string SpamTitle { get; set; }
     [ObservableProperty] public partial string SpamDetail { get; set; }
     [ObservableProperty] public partial string SpamActionText { get; set; }
+
+    /// <summary>One-line summary of the SpamAssassin check shown in the details expander header.</summary>
+    [ObservableProperty] public partial string SpamCheckSummary { get; set; }
+
+    /// <summary>Where the result came from and how far it can be trusted.</summary>
+    [ObservableProperty] public partial string SpamCheckDetail { get; set; }
+
+    public System.Collections.ObjectModel.ObservableCollection<string> SpamRules { get; } = [];
 
     public bool IsDraft => Message?.FolderKind == FolderKind.Drafts;
     public bool CanReply => Message is not null && !IsDraft;
@@ -211,6 +219,8 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             ? string.Empty
             : " Rules: " + string.Join(", ", m.Spam.Tests.Take(4)) + (m.Spam.Tests.Count > 4 ? $" +{m.Spam.Tests.Count - 4} more." : ".");
 
+        UpdateSpamDetails(m.Spam, verdict, threshold);
+
         if (_rules.IsBlocked(m.From))
         {
             ShowSpamBanner = true;
@@ -241,6 +251,49 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         {
             ShowSpamBanner = false;
         }
+    }
+
+    private void UpdateSpamDetails(SpamReport spam, SpamVerdict verdict, double threshold)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        var thresholdText = threshold.ToString("0.0", culture);
+        SpamCheckSummary = verdict switch
+        {
+            _ when !spam.HasHeaders => "Spam check: not checked by your mail server",
+            _ when spam.Trust == SpamHeaderTrust.Untrusted => "Spam check: ignored (added by the sender)",
+            SpamVerdict.Spam => $"Spam check: spam · score {Score(spam)} (your threshold {thresholdText})",
+            SpamVerdict.Suspicious => $"Spam check: suspicious · score {Score(spam)} (your threshold {thresholdText})",
+            SpamVerdict.Clean => $"Spam check: passed · score {Score(spam)} (your threshold {thresholdText})",
+            _ => "Spam check: no score reported",
+        };
+
+        var lines = new List<string>();
+        if (!spam.HasHeaders)
+        {
+            lines.Add("This message has no SpamAssassin headers. That doesn't mean it's safe — your provider may use a different spam filter or none.");
+        }
+        else
+        {
+            lines.Add(spam.Trust switch
+            {
+                SpamHeaderTrust.AddedInTransit => "Added by the mail servers that delivered this message.",
+                SpamHeaderTrust.Untrusted => "These headers were already in the message when it was sent, so the sender could have written them. They are not used.",
+                _ => "Where these headers were added couldn't be checked.",
+            });
+            if (spam.ServerFlaggedAsSpam is { } flagged) lines.Add(flagged ? "Your server marked it as spam." : "Your server didn't mark it as spam.");
+            if (spam.RequiredScore is { } required) lines.Add($"Server threshold: {required.ToString("0.0", culture)}.");
+            if (spam.HasConflictingHeaders) lines.Add("The message carries conflicting spam headers; the one added last is used.");
+            if (spam.Version is { } version) lines.Add($"SpamAssassin {version}.");
+        }
+
+        SpamCheckDetail = string.Join(" ", lines);
+        SpamRules.Clear();
+        var rules = spam.Rules.Count > 0
+            ? spam.Rules.OrderByDescending(r => Math.Abs(r.Score)).Select(r => $"{r.Score.ToString("+0.0;-0.0;0.0", culture),6}  {r.Name}  {r.Description}")
+            : spam.Tests.Select(t => t);
+        foreach (var rule in rules.Take(20)) SpamRules.Add(rule);
+
+        static string Score(SpamReport r) => r.Score?.ToString("0.0", CultureInfo.CurrentCulture) ?? "n/a";
     }
 
     [RelayCommand]

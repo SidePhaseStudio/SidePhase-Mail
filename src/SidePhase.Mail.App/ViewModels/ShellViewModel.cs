@@ -16,6 +16,8 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly IUiDispatcher _ui;
     private bool _refreshQueued;
+    private int _buildVersion;
+    private Task _latestBuild = Task.CompletedTask;
 
     public ShellViewModel(IMailDataSource mail, JunkPolicy junk, ISenderRulesService rules, ISettingsService settings, IUiDispatcher ui)
     {
@@ -61,20 +63,38 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Rebuilds the sidebar. Several rebuilds can be requested at once (e.g. while a new account syncs its folders),
+    /// so each builds its own list and only the newest one is shown; they never interleave.
+    /// </summary>
     public async Task BuildAsync()
     {
-        var accounts = await _mail.GetAccountsAsync();
-        NavItems.Clear();
+        var build = BuildCoreAsync(++_buildVersion);
+        _latestBuild = build;
+        await build;
 
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Unified Inbox", Glyphs.Mail, MailboxScope.UnifiedInbox));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "All Accounts", Glyphs.People, MailboxScope.AllAccounts, BadgeMode.None));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Pinned", Glyphs.Pin, MailboxScope.Pinned, BadgeMode.Total));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Favourites", Glyphs.Star, MailboxScope.Favourites, BadgeMode.None));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Drafts", Glyphs.Edit, MailboxScope.Unified(FolderKind.Drafts), BadgeMode.Total));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Sent", Glyphs.Send, MailboxScope.Unified(FolderKind.Sent), BadgeMode.None));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Junk", Glyphs.Junk, MailboxScope.Unified(FolderKind.Junk)));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Archive", Glyphs.Archive, MailboxScope.Unified(FolderKind.Archive), BadgeMode.None));
-        NavItems.Add(new NavItemViewModel(NavItemKind.Item, "Trash", Glyphs.Delete, MailboxScope.Unified(FolderKind.Trash), BadgeMode.None));
+        // If a newer rebuild started meanwhile, wait for it so callers always see the finished sidebar.
+        while (!ReferenceEquals(_latestBuild, build))
+        {
+            build = _latestBuild;
+            await build;
+        }
+    }
+
+    private async Task BuildCoreAsync(int version)
+    {
+        var accounts = await _mail.GetAccountsAsync();
+        var items = new List<NavItemViewModel>();
+
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Unified Inbox", Glyphs.Mail, MailboxScope.UnifiedInbox));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "All Accounts", Glyphs.People, MailboxScope.AllAccounts, BadgeMode.None));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Pinned", Glyphs.Pin, MailboxScope.Pinned, BadgeMode.Total));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Favourites", Glyphs.Star, MailboxScope.Favourites, BadgeMode.None));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Drafts", Glyphs.Edit, MailboxScope.Unified(FolderKind.Drafts), BadgeMode.Total));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Sent", Glyphs.Send, MailboxScope.Unified(FolderKind.Sent), BadgeMode.None));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Junk", Glyphs.Junk, MailboxScope.Unified(FolderKind.Junk)));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Archive", Glyphs.Archive, MailboxScope.Unified(FolderKind.Archive), BadgeMode.Total));
+        items.Add(new NavItemViewModel(NavItemKind.Item, "Trash", Glyphs.Delete, MailboxScope.Unified(FolderKind.Trash), BadgeMode.None));
 
         // Favourite folders (any account), in the order they were added.
         var favouriteIds = _settings.Current.FavouriteFolderIds;
@@ -89,10 +109,10 @@ public sealed partial class ShellViewModel : ObservableObject
             var favourites = favouriteIds.Where(allFolders.ContainsKey).Select(id => allFolders[id]).ToList();
             if (favourites.Count > 0)
             {
-                NavItems.Add(new NavItemViewModel(NavItemKind.Header, "Favourite folders"));
+                items.Add(new NavItemViewModel(NavItemKind.Header, "Favourite folders"));
                 foreach (var (folder, account) in favourites)
                 {
-                    NavItems.Add(new NavItemViewModel(NavItemKind.Item, folder.Name, Glyphs.ForFolder(folder.Kind), MailboxScope.ForFolder(folder), BadgeFor(folder.Kind))
+                    items.Add(new NavItemViewModel(NavItemKind.Item, folder.Name, Glyphs.ForFolder(folder.Kind), MailboxScope.ForFolder(folder), BadgeFor(folder.Kind))
                     {
                         Subtitle = account.EmailAddress,
                         ColorHex = account.ColorHex ?? "#8B7CFF",
@@ -104,7 +124,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
         if (accounts.Count > 0)
         {
-            NavItems.Add(new NavItemViewModel(NavItemKind.Header, "Accounts"));
+            items.Add(new NavItemViewModel(NavItemKind.Header, "Accounts"));
         }
 
         foreach (var account in accounts)
@@ -114,7 +134,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 new NavItemViewModel(NavItemKind.Item, f.Name, Glyphs.ForFolder(f.Kind), MailboxScope.ForFolder(f), BadgeFor(f.Kind))));
             var inbox = folders.FirstOrDefault(f => f.Kind == FolderKind.Inbox);
 
-            NavItems.Add(new NavItemViewModel(
+            items.Add(new NavItemViewModel(
                 NavItemKind.Account,
                 account.DisplayName,
                 Glyphs.Contact,
@@ -127,6 +147,10 @@ public sealed partial class ShellViewModel : ObservableObject
             });
         }
 
+        if (version != _buildVersion) return; // a newer rebuild has started; it will publish its own list
+
+        NavItems.Clear();
+        foreach (var item in items) NavItems.Add(item);
         await RefreshCountsAsync();
         NavigationRebuilt?.Invoke(this, EventArgs.Empty);
     }
@@ -148,8 +172,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private static BadgeMode BadgeFor(FolderKind kind) => kind switch
     {
-        FolderKind.Drafts => BadgeMode.Total,
-        FolderKind.Sent or FolderKind.Archive or FolderKind.Trash => BadgeMode.None,
+        FolderKind.Drafts or FolderKind.Archive => BadgeMode.Total,
+        FolderKind.Sent or FolderKind.Trash => BadgeMode.None,
         _ => BadgeMode.Unread,
     };
 
@@ -159,8 +183,14 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             if (_refreshQueued) return;
             _refreshQueued = true;
-            _ = RefreshCountsAsync();
+            _ = RefreshCountsSoonAsync();
         });
+    }
+
+    private async Task RefreshCountsSoonAsync()
+    {
+        await Task.Delay(200);
+        await RefreshCountsAsync();
     }
 
     private async Task RefreshCountsAsync()

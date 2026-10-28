@@ -115,8 +115,9 @@
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
-      <!-- Line 1: unread dot, sender, indicators, date / quick actions -->
-      <Grid ColumnSpacing="6">
+      <!-- Line 1: unread dot, sender, indicators, date / quick actions.
+           Fixed height so showing the hover actions never changes the row height (which made the list jump). -->
+      <Grid Height="20" ColumnSpacing="6">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
@@ -146,8 +147,8 @@
             Grid.Column="2"
             VerticalAlignment="Center"
             Orientation="Horizontal"
-            Spacing="6"
-            Visibility="{x:Bind h:X.Collapsed(IsHovered), Mode=OneWay}">
+            Opacity="{x:Bind h:X.HideIf(IsHovered), Mode=OneWay}"
+            Spacing="6">
           <FontIcon
               FontSize="12"
               Foreground="{ThemeResource SpTextSecondaryBrush}"
@@ -160,7 +161,7 @@
               Visibility="{x:Bind Item.IsPinned, Mode=OneWay}" />
         </StackPanel>
 
-        <Grid Grid.Column="3" Visibility="{x:Bind h:X.Collapsed(IsHovered), Mode=OneWay}">
+        <Grid Grid.Column="3" Opacity="{x:Bind h:X.HideIf(IsHovered), Mode=OneWay}">
           <TextBlock
               VerticalAlignment="Center"
               FontFamily="{StaticResource SpSmallFont}"
@@ -178,46 +179,54 @@
               Visibility="{x:Bind Item.IsRead, Mode=OneWay}" />
         </Grid>
 
-        <!-- Hover quick actions -->
+        <!-- Hover quick actions. They overlay the date instead of replacing it and only fade in, so hovering
+             never changes the row's layout. Keyboard users have the same actions as shortcuts and on the
+             context menu (Shift+F10). -->
         <StackPanel
-            Grid.Column="2"
-            Grid.ColumnSpan="2"
-            Margin="0,-5,-4,-5"
+            Grid.Column="1"
+            Grid.ColumnSpan="3"
+            Margin="0,-7,-4,-7"
             Padding="2"
+            VerticalAlignment="Center"
             HorizontalAlignment="Right"
             Background="{ThemeResource SpAcrylicBrush}"
             BorderBrush="{ThemeResource SpStrokeStrongBrush}"
             BorderThickness="1"
             CornerRadius="6"
             Orientation="Horizontal"
-            Spacing="0"
-            Visibility="{x:Bind IsHovered, Mode=OneWay}">
+            IsHitTestVisible="{x:Bind IsHovered, Mode=OneWay}"
+            Opacity="{x:Bind h:X.ShowIf(IsHovered), Mode=OneWay}"
+            Spacing="0">
           <Button
               AutomationProperties.Name="Archive"
               Command="{x:Bind Item.ArchiveCommand, Mode=OneWay}"
+              IsTabStop="False"
               Style="{StaticResource SpQuickActionButtonStyle}"
-              ToolTipService.ToolTip="Archive">
+              ToolTipService.ToolTip="Archive (Backspace)">
             <FontIcon FontSize="13" Glyph="&#xE7B8;" />
           </Button>
           <Button
               AutomationProperties.Name="Delete"
               Command="{x:Bind Item.DeleteCommand, Mode=OneWay}"
+              IsTabStop="False"
               Style="{StaticResource SpQuickActionButtonStyle}"
-              ToolTipService.ToolTip="Delete">
+              ToolTipService.ToolTip="Move to Trash (Delete)">
             <FontIcon FontSize="13" Glyph="&#xE74D;" />
           </Button>
           <Button
               AutomationProperties.Name="{x:Bind Item.ReadMenuText, Mode=OneWay}"
               Command="{x:Bind Item.ToggleReadCommand, Mode=OneWay}"
+              IsTabStop="False"
               Style="{StaticResource SpQuickActionButtonStyle}"
-              ToolTipService.ToolTip="{x:Bind Item.ReadMenuText, Mode=OneWay}">
+              ToolTipService.ToolTip="{x:Bind Item.ReadTooltip, Mode=OneWay}">
             <FontIcon FontSize="13" Glyph="{x:Bind Item.ReadGlyph, Mode=OneWay}" />
           </Button>
           <Button
               AutomationProperties.Name="{x:Bind Item.PinMenuText, Mode=OneWay}"
               Command="{x:Bind Item.TogglePinCommand, Mode=OneWay}"
+              IsTabStop="False"
               Style="{StaticResource SpQuickActionButtonStyle}"
-              ToolTipService.ToolTip="{x:Bind Item.PinMenuText, Mode=OneWay}">
+              ToolTipService.ToolTip="{x:Bind Item.PinTooltip, Mode=OneWay}">
             <FontIcon FontSize="13" Glyph="{x:Bind Item.PinGlyph, Mode=OneWay}" />
           </Button>
         </StackPanel>
@@ -279,9 +288,10 @@
             Padding="0"
             AutomationProperties.Name="{x:Bind Item.StarMenuText, Mode=OneWay}"
             Command="{x:Bind Item.ToggleStarCommand, Mode=OneWay}"
+            IsTabStop="False"
             Opacity="{x:Bind h:X.StarOpacity(Item.IsStarred, IsHovered), Mode=OneWay}"
             Style="{StaticResource SpQuickActionButtonStyle}"
-            ToolTipService.ToolTip="{x:Bind Item.StarMenuText, Mode=OneWay}">
+            ToolTipService.ToolTip="{x:Bind Item.StarTooltip, Mode=OneWay}">
           <Grid>
             <FontIcon
                 FontSize="13"
