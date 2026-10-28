@@ -49,6 +49,9 @@ public sealed partial class ComposeWindow : Window
 
         // The editors handle drag and drop themselves (for text), which would swallow dropped files before they reach
         // the window; listening for handled events too means files dropped anywhere, editor included, are attached.
+        RichEditor.Paste += OnRichEditorPaste;
+        ApplyFieldFocusBrushes();
+
         RootGrid.AddHandler(UIElement.DragOverEvent, new DragEventHandler(OnDragOver), handledEventsToo: true);
         RootGrid.AddHandler(UIElement.DropEvent, new DragEventHandler(OnDrop), handledEventsToo: true);
     }
@@ -348,6 +351,26 @@ public sealed partial class ComposeWindow : Window
         {
             deferral.Complete();
         }
+    }
+
+    /// <summary>
+    /// The fields are borderless, so without this keyboard users couldn't see which one has focus. High contrast uses the
+    /// user's system colours for the borders and the focus.
+    /// </summary>
+    private void ApplyFieldFocusBrushes()
+    {
+        var resources = RootGrid.Resources;
+        if (App.GetService<ThemeService>().IsHighContrast
+            && Application.Current.Resources.TryGetValue("SystemColorHighlightColor", out var highlight) && highlight is Windows.UI.Color focus
+            && Application.Current.Resources.TryGetValue("SystemColorWindowTextColor", out var text) && text is Windows.UI.Color border)
+        {
+            resources["TextControlBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(border);
+            resources["TextControlBorderBrushPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(focus);
+            resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(focus);
+            return;
+        }
+
+        resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0x8B, 0x7C, 0xFF));
     }
 
     /// <summary>

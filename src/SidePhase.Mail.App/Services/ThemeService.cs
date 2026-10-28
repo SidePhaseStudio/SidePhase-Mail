@@ -86,7 +86,7 @@ public sealed class ThemeService
         window.Closed += (_, _) => _windows.Remove(entry);
         root.ActualThemeChanged += (_, _) =>
         {
-            UpdateTitleBarColors(entry);
+            UpdateTitleBarColors(entry, _accessibility.HighContrast);
             ThemeApplied?.Invoke(this, EventArgs.Empty);
         };
         Apply(entry);
