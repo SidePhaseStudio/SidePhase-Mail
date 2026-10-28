@@ -8,7 +8,7 @@ namespace SidePhase.Mail.Core.Services;
 /// Decides whether an Inbox message should be shown in Junk locally. This is a view-level decision only:
 /// nothing is moved or deleted on the server unless the user explicitly moves the message.
 /// </summary>
-public sealed class JunkPolicy(ISenderRulesService rules, ISettingsService settings)
+public sealed class JunkPolicy(ISenderRulesService rules, ISettingsService settings, LocalSpamFilter? localFilter = null)
 {
     public SpamVerdict GetVerdict(MessageSummary message) =>
         SpamClassifier.Classify(message.Spam, settings.Current.SpamThreshold);
@@ -18,7 +18,10 @@ public sealed class JunkPolicy(ISenderRulesService rules, ISettingsService setti
         if (message.FolderKind != FolderKind.Inbox) return false;
         if (rules.IsTrusted(message.From)) return false;
         if (rules.IsBlocked(message.From)) return true;
-        return settings.Current.TreatHighScoresAsJunk && GetVerdict(message) == SpamVerdict.Spam;
+        if (settings.Current.TreatHighScoresAsJunk && GetVerdict(message) == SpamVerdict.Spam) return true;
+
+        // Optional and off by default: the local filter's very confident opinions (it only learns from your choices).
+        return settings.Current.LocalFilterShowsJunk && localFilter?.Classify(message) is { Probability: >= 0.97 };
     }
 
     /// <summary>The folder kind the message appears under in SidePhase Mail.</summary>

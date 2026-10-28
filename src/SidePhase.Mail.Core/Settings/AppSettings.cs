@@ -99,6 +99,12 @@ public sealed class AppSettings
     // Spam
     public double SpamThreshold { get; set; } = 5.0;
     public bool TreatHighScoresAsJunk { get; set; } = true;
+
+    /// <summary>Learn from messages marked Junk / Not junk (local only).</summary>
+    public bool LocalSpamLearning { get; set; } = true;
+
+    /// <summary>List Inbox messages the local filter is very sure about under Junk (view only; nothing is moved).</summary>
+    public bool LocalFilterShowsJunk { get; set; }
     public List<SenderRule> SenderRules { get; set; } = [];
 
     /// <summary>

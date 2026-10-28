@@ -24,6 +24,7 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     private readonly ISenderRulesService _rules;
     private readonly JunkPolicy _junk;
     private readonly IClock _clock;
+    private readonly Core.Spam.LocalSpamFilter _localFilter;
     private readonly HashSet<Guid> _remoteAllowed = [];
     private readonly Dictionary<Guid, MailAccount> _accounts = [];
     private readonly Dictionary<Guid, MailFolder> _folders = [];
@@ -36,8 +37,10 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         ISettingsService settings,
         ISenderRulesService rules,
         JunkPolicy junk,
-        IClock clock)
+        IClock clock,
+        Core.Spam.LocalSpamFilter localFilter)
     {
+        _localFilter = localFilter;
         _mail = mail;
         _commands = commands;
         _settings = settings;
@@ -90,6 +93,14 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [ObservableProperty] public partial bool ShowRemoteContentBanner { get; set; }
     [ObservableProperty] public partial bool ShowSpamBanner { get; set; }
     [ObservableProperty] public partial bool ShowFollowUpBanner { get; set; }
+
+    /// <summary>The local learning filter's opinion, when it has one worth showing.</summary>
+    [ObservableProperty] public partial bool ShowLocalSpamOpinion { get; set; }
+    [ObservableProperty] public partial string LocalSpamOpinion { get; set; } = string.Empty;
+
+    /// <summary>Score relative to the threshold (0–100) for the score bar; 0 when there's no score.</summary>
+    [ObservableProperty] public partial double SpamScorePercent { get; set; }
+    [ObservableProperty] public partial bool HasSpamScore { get; set; }
     [ObservableProperty] public partial bool FollowUpIsOverdue { get; set; }
     [ObservableProperty] public partial string FollowUpText { get; set; } = string.Empty;
     [ObservableProperty] public partial bool ShowSnoozeBanner { get; set; }
@@ -293,6 +304,9 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             : " Rules: " + string.Join(", ", m.Spam.Tests.Take(4)) + (m.Spam.Tests.Count > 4 ? $" +{m.Spam.Tests.Count - 4} more." : ".");
 
         UpdateSpamDetails(m.Spam, verdict, threshold);
+        UpdateLocalOpinion(m);
+        HasSpamScore = m.Spam.Score is not null && m.Spam.Trust != SpamHeaderTrust.Untrusted;
+        SpamScorePercent = m.Spam.Score is { } sc ? Math.Clamp(sc / (threshold * 2) * 100, 0, 100) : 0;
 
         if (_rules.IsBlocked(m.From))
         {
@@ -324,6 +338,24 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         {
             ShowSpamBanner = false;
         }
+    }
+
+    private void UpdateLocalOpinion(MessageSummary m)
+    {
+        var result = m.FolderKind is FolderKind.Sent or FolderKind.Drafts ? null : _localFilter.Classify(m);
+        if (result is null || !(result.LikelyJunk || (result.LikelyFine && m.FolderKind == FolderKind.Junk)))
+        {
+            ShowLocalSpamOpinion = false;
+            return;
+        }
+
+        var because = result.Evidence.Count == 0 ? string.Empty : " Mostly because of " + string.Join(", ", result.Evidence) + ".";
+        LocalSpamOpinion = (result.LikelyJunk
+                ? $"Your local filter thinks this is junk ({result.Probability:P0})."
+                : $"Your local filter thinks this isn't junk ({1 - result.Probability:P0}).")
+            + because
+            + $" It learns only from the {result.LearnedFrom} messages you've marked Junk or Not junk, on this PC.";
+        ShowLocalSpamOpinion = true;
     }
 
     private void UpdateSpamDetails(SpamReport spam, SpamVerdict verdict, double threshold)

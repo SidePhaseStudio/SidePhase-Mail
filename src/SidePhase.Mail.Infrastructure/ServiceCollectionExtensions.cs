@@ -4,6 +4,7 @@ using SidePhase.Mail.Core.Composition;
 using SidePhase.Mail.Core.Contacts;
 using SidePhase.Mail.Core.Organisation;
 using SidePhase.Mail.Core.Scheduling;
+using SidePhase.Mail.Core.Spam;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Demo;
 using SidePhase.Mail.Infrastructure.Live;
@@ -64,6 +65,10 @@ public static class ServiceCollectionExtensions
         // Smart folders (saved searches; never move mail).
         services.AddSingleton<ISmartFolderStore, SqliteSmartFolderStore>();
         services.AddSingleton<SmartFolderService>();
+
+        // Local spam learning (from messages the user marks; never leaves this PC).
+        services.AddSingleton<ISpamLearningStore, SqliteSpamLearningStore>();
+        services.AddSingleton<LocalSpamFilter>();
 
         // Crash recovery for messages being written.
         services.AddSingleton<IDraftRecoveryStore, FileDraftRecoveryStore>();

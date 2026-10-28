@@ -115,6 +115,19 @@ public partial class App : Application
             }
         });
 
+        // The local spam filter's learned word counts (small; loaded in the background).
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await GetService<Core.Spam.LocalSpamFilter>().LoadAsync(Shutdown.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                StartupDiagnostics.Log("loading the local spam filter", ex);
+            }
+        });
+
         // Snoozed messages come back and follow-up reminders fire on time.
         var watcher = GetService<TimedEventsWatcher>();
         watcher.Ticked += (_, _) => _ = GetService<MailListViewModel>().RefreshAsync();

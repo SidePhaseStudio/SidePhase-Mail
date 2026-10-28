@@ -434,6 +434,18 @@
             <ToggleSwitch IsOn="{x:Bind ViewModel.TreatHighScoresAsJunk, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
 
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Local learning" />
+          <TextBlock Margin="2,0,0,6" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="A small filter that learns from the messages you mark as Junk or Not junk. It runs only on this PC, looks only at the sender's domain, subject and preview, and never sends anything anywhere. It doesn't move or delete mail by itself." />
+          <controls:SettingsCard Description="{x:Bind ViewModel.LocalFilterStatus, Mode=OneWay}" Glyph="&#xEA18;" Header="Learn from my Junk and Not junk choices">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.LocalSpamLearning, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Inbox messages it's at least 97% sure about appear under Junk in SidePhase Mail (nothing is moved on the server). Off by default." Glyph="&#xE7BA;" Header="Show what it's sure about in Junk">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.LocalFilterShowsJunk, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Forget everything the local filter has learned." Glyph="&#xE72C;" Header="Reset learned data">
+            <Button Command="{x:Bind ViewModel.ResetLocalFilterCommand}" Content="Reset…" Style="{StaticResource SpSecondaryButtonStyle}" />
+          </controls:SettingsCard>
+
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Junk rules" />
           <controls:SettingsCard Description="Normally blocked mail only appears under Junk in SidePhase Mail. Turn this on to also move new mail from blocked senders and domains into your Junk folder on the server, so other apps see it there too. Trusted senders are never moved." Glyph="&#xE8DE;" Header="Move blocked senders' new mail to the server's Junk folder">
             <ToggleSwitch IsOn="{x:Bind ViewModel.MoveBlockedMailToServerJunk, Mode=TwoWay}" OffContent="Off" OnContent="On" />

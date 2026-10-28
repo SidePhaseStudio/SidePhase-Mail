@@ -316,6 +316,16 @@
             </StackPanel>
           </Expander.Header>
           <StackPanel Spacing="8">
+            <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.HasSpamScore, Mode=OneWay}" ToolTipService.ToolTip="Score compared with your threshold (the middle of the bar)">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock FontSize="11" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="Clean" />
+              <ProgressBar Grid.Column="1" VerticalAlignment="Center" Maximum="100" Value="{x:Bind ViewModel.SpamScorePercent, Mode=OneWay}" />
+              <TextBlock Grid.Column="2" FontSize="11" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="Spam" />
+            </Grid>
             <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.SpamCheckDetail, Mode=OneWay}" TextWrapping="Wrap" />
             <ItemsControl ItemsSource="{x:Bind ViewModel.SpamRules}">
               <ItemsControl.ItemTemplate>
@@ -361,6 +371,19 @@
           </InfoBar.IconSource>
           <InfoBar.ActionButton>
             <Button Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="Clear" Content="Unsnooze" />
+          </InfoBar.ActionButton>
+        </InfoBar>
+        <InfoBar
+            CornerRadius="8"
+            IsClosable="True"
+            IsOpen="{x:Bind ViewModel.ShowLocalSpamOpinion, Mode=OneWay}"
+            Message="{x:Bind ViewModel.LocalSpamOpinion, Mode=OneWay}"
+            Severity="Informational">
+          <InfoBar.IconSource>
+            <FontIconSource Glyph="&#xEA18;" />
+          </InfoBar.IconSource>
+          <InfoBar.ActionButton>
+            <Button Command="{x:Bind ViewModel.ToggleJunkCommand}" Content="{x:Bind ViewModel.JunkLabel, Mode=OneWay}" />
           </InfoBar.ActionButton>
         </InfoBar>
         <InfoBar

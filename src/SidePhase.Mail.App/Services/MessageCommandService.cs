@@ -20,8 +20,28 @@ public sealed class MessageCommandService(
     ToastService toasts,
     DialogService dialogs,
     WindowService windows,
-    IClock clock)
+    IClock clock,
+    Core.Spam.LocalSpamFilter localFilter)
 {
+    /// <summary>Teaches the local filter from an explicit Junk / Not junk choice (real accounts only).</summary>
+    private void Learn(IEnumerable<MessageSummary> messages, bool isSpam)
+    {
+        if (mail.IsDemo || !settings.Current.LocalSpamLearning) return;
+        foreach (var message in messages.ToList()) _ = LearnAsync(message, isSpam);
+    }
+
+    private async Task LearnAsync(MessageSummary message, bool isSpam)
+    {
+        try
+        {
+            await localFilter.TrainAsync(message, isSpam);
+        }
+        catch (Exception)
+        {
+            // Learning is a convenience; it must never get in the way of moving the message.
+        }
+    }
+
     public Task ToggleStarAsync(MessageSummary message) => mail.SetStarredAsync([message.Id], !message.IsStarred);
 
     public Task TogglePinAsync(MessageSummary message) => mail.SetPinnedAsync([message.Id], !message.IsPinned);
@@ -79,6 +99,7 @@ public sealed class MessageCommandService(
 
     public async Task MoveToJunkAsync(IReadOnlyList<MessageSummary> messages)
     {
+        Learn(messages, isSpam: true);
         var moves = await mail.MoveToAsync(messages.Select(m => m.Id).ToList(), FolderKind.Junk);
         toasts.ShowWithUndo("Moved to Junk", () => mail.RestoreAsync(moves));
     }
@@ -86,6 +107,7 @@ public sealed class MessageCommandService(
     /// <summary>Trusts the sender and returns the message to the Inbox.</summary>
     public async Task NotJunkAsync(MessageSummary message)
     {
+        Learn([message], isSpam: false);
         var addedTrust = rules.AddRule(SenderRuleKind.TrustedSender, message.From.Address);
         IReadOnlyList<MoveRecord> moves = message.FolderKind == FolderKind.Junk
             ? await mail.MoveToAsync([message.Id], FolderKind.Inbox)

@@ -291,6 +291,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IAccountService _accounts;
     private readonly ISecretStore _secrets;
     private readonly LiveMailDataSource _live;
+    private readonly Core.Spam.LocalSpamFilter _localFilter;
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -303,8 +304,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         AppDataPaths paths,
         IAccountService accounts,
         ISecretStore secrets,
-        LiveMailDataSource live)
+        LiveMailDataSource live,
+        Core.Spam.LocalSpamFilter localFilter)
     {
+        _localFilter = localFilter;
+        _localFilter.Changed += (_, _) => _ui.Post(() => OnPropertyChanged(nameof(LocalFilterStatus)));
         _accounts = accounts;
         _live = live;
         _live.AccountStatusChanged += (_, id) => _ui.Post(() =>
@@ -494,6 +498,35 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         get => S.TreatHighScoresAsJunk;
         set => Set(s => s.TreatHighScoresAsJunk = value, S.TreatHighScoresAsJunk != value);
+    }
+
+    public bool LocalSpamLearning
+    {
+        get => S.LocalSpamLearning;
+        set => Set(s => s.LocalSpamLearning = value, S.LocalSpamLearning != value);
+    }
+
+    public bool LocalFilterShowsJunk
+    {
+        get => S.LocalFilterShowsJunk;
+        set => Set(s => s.LocalFilterShowsJunk = value, S.LocalFilterShowsJunk != value);
+    }
+
+    public string LocalFilterStatus => _localFilter.IsReady
+        ? $"Learned from {_localFilter.SpamExamples} junk and {_localFilter.HamExamples} good messages you marked."
+        : $"Learning: it gives an opinion after you've marked at least {Core.Spam.LocalSpamFilter.MinimumExamples} messages as Junk and {Core.Spam.LocalSpamFilter.MinimumExamples} as Not junk (so far {_localFilter.SpamExamples} and {_localFilter.HamExamples}).";
+
+    [RelayCommand]
+    private async Task ResetLocalFilterAsync()
+    {
+        var confirmed = await _dialogs.ConfirmAsync(
+            "Reset the local spam filter?",
+            "Everything it learned from the messages you marked is forgotten. Your messages, Junk folder and sender rules aren't changed.",
+            "Reset");
+        if (!confirmed) return;
+        await _localFilter.ResetAsync();
+        OnPropertyChanged(nameof(LocalFilterStatus));
+        _toasts.Show("The local spam filter has been reset.", ToastKind.Success);
     }
 
     public bool MoveBlockedMailToServerJunk
