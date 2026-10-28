@@ -69,7 +69,7 @@
                   <TextBlock Text="Reply all" />
                 </StackPanel>
               </Button>
-              <Button Command="{x:Bind ViewModel.ForwardCommand}" Style="{StaticResource SpToolbarButtonStyle}" ToolTipService.ToolTip="Forward (Ctrl+F)">
+              <Button Command="{x:Bind ViewModel.ForwardCommand}" Style="{StaticResource SpToolbarButtonStyle}" ToolTipService.ToolTip="Forward (Ctrl+Shift+F)">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <FontIcon FontSize="15" Glyph="&#xE89C;" />
                   <TextBlock Text="Forward" />

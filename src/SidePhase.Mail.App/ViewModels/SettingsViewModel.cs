@@ -7,6 +7,7 @@ using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Composition;
 using SidePhase.Mail.Core.Models;
 using SidePhase.Mail.Core.Settings;
+using SidePhase.Mail.Infrastructure.Live;
 using SidePhase.Mail.Infrastructure.Storage;
 
 namespace SidePhase.Mail.App.ViewModels;
@@ -33,18 +34,132 @@ public sealed partial class SenderRuleItemViewModel(SenderRule rule, Action<Send
     private void Remove() => remove(this);
 }
 
+public sealed partial class AccountColorOption(string hex, Action<string> select)
+{
+    public string Hex { get; } = hex;
+
+    [RelayCommand]
+    private void Select() => select(Hex);
+}
+
 public sealed partial class AccountSettingsViewModel : ObservableObject
 {
+    private static readonly int?[] SyncChoices = [null, 1, 5, 15, 30, 60];
+
     private readonly ISettingsService _settings;
     private readonly Func<AccountSettingsViewModel, Task> _reauthenticate;
     private readonly Func<AccountSettingsViewModel, Task> _remove;
+    private readonly Func<AccountSettingsViewModel, string, string?, Task<bool>> _saveAppearance;
+    private readonly Func<Guid, AccountStatus> _status;
 
-    public AccountSettingsViewModel(MailAccount account, ISettingsService settings, Func<AccountSettingsViewModel, Task> reauthenticate, Func<AccountSettingsViewModel, Task> remove)
+    public AccountSettingsViewModel(
+        MailAccount account,
+        ISettingsService settings,
+        Func<AccountSettingsViewModel, Task> reauthenticate,
+        Func<AccountSettingsViewModel, Task> remove,
+        Func<AccountSettingsViewModel, string, string?, Task<bool>> saveAppearance,
+        Func<Guid, AccountStatus> status)
     {
         Account = account;
         _settings = settings;
         _reauthenticate = reauthenticate;
         _remove = remove;
+        _saveAppearance = saveAppearance;
+        _status = status;
+        EditName = account.DisplayName;
+        ColorOptions = AccountColors.Select(c => new AccountColorOption(c, SelectColor)).ToList();
+    }
+
+    /// <summary>Colours to tell accounts apart (the same family as the accent colours).</summary>
+    public static readonly string[] AccountColors = ["#8B7CFF", "#6C8CFF", "#3FA7F5", "#3FB6A8", "#4CC38A", "#E9A93B", "#FF7A6B", "#F06BA8", "#9DA5B4"];
+
+    public IReadOnlyList<AccountColorOption> ColorOptions { get; }
+
+    /// <summary>The name being edited (saved with <see cref="SaveNameCommand"/>).</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveNameCommand))]
+    public partial string EditName { get; set; }
+
+    public bool CanEditAppearance => !Account.IsDemo;
+
+    private bool CanSaveName() => CanEditAppearance && !string.IsNullOrWhiteSpace(EditName) && EditName.Trim() != Account.DisplayName;
+
+    [RelayCommand(CanExecute = nameof(CanSaveName))]
+    private async Task SaveNameAsync()
+    {
+        if (await _saveAppearance(this, EditName.Trim(), Account.ColorHex)) SetAccount(Account with { DisplayName = EditName.Trim() });
+    }
+
+    private async void SelectColor(string hex)
+    {
+        if (!CanEditAppearance || string.Equals(hex, Account.ColorHex, StringComparison.OrdinalIgnoreCase)) return;
+        if (await _saveAppearance(this, Account.DisplayName, hex)) SetAccount(Account with { ColorHex = hex });
+    }
+
+    private void SetAccount(MailAccount account)
+    {
+        Account = account;
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(ColorHex));
+        SaveNameCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>"Same as all accounts", then 1, 5, 15, 30 and 60 minutes.</summary>
+    public int SyncIntervalIndex
+    {
+        get => _settings.Current.AccountSyncIntervals.TryGetValue(Account.Id, out var m) ? Math.Max(0, Array.IndexOf(SyncChoices, m)) : 0;
+        set
+        {
+            if (value < 0 || value >= SyncChoices.Length || value == SyncIntervalIndex) return;
+            _settings.Update(s =>
+            {
+                if (SyncChoices[value] is { } minutes) s.AccountSyncIntervals[Account.Id] = minutes;
+                else s.AccountSyncIntervals.Remove(Account.Id);
+            });
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>New messages written from the Unified Inbox (or anywhere without an account) are sent from here.</summary>
+    public bool IsDefaultSender
+    {
+        get => _settings.Current.DefaultSendingAccountId == Account.Id;
+        set
+        {
+            if (value == IsDefaultSender) return;
+            _settings.Update(s => s.DefaultSendingAccountId = value ? Account.Id : null);
+            DefaultSenderChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Lets the page refresh the other accounts' "default" switches (only one can be on).</summary>
+    public event EventHandler? DefaultSenderChanged;
+
+    public void RefreshDefaultSender() => OnPropertyChanged(nameof(IsDefaultSender));
+
+    public bool HasConnectionProblem => !Account.IsDemo && _status(Account.Id).HasProblem;
+
+    public string StatusText
+    {
+        get
+        {
+            if (Account.IsDemo) return "Demonstration account · nothing is sent or received";
+            var status = _status(Account.Id);
+            if (status.HasProblem)
+            {
+                return (status.RequiresSignIn ? "Sign-in needed: " : "Couldn't connect: ") + status.LastError;
+            }
+
+            return status.LastSyncedAt is { } at
+                ? "Connected · last checked " + at.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)
+                : "Not checked yet since SidePhase Mail started";
+        }
+    }
+
+    public void RefreshStatus()
+    {
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(HasConnectionProblem));
     }
 
     /// <summary>"None" followed by the signature library, for the default-signature picker.</summary>
@@ -83,7 +198,7 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
     [RelayCommand]
     private Task RemoveAsync() => _remove(this);
 
-    public MailAccount Account { get; }
+    public MailAccount Account { get; private set; }
     public string Name => Account.DisplayName;
     public string Address => Account.EmailAddress;
     public string ColorHex => Account.ColorHex ?? "#8B7CFF";
@@ -175,6 +290,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly AppDataPaths _paths;
     private readonly IAccountService _accounts;
     private readonly ISecretStore _secrets;
+    private readonly LiveMailDataSource _live;
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -186,9 +302,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         IUiDispatcher ui,
         AppDataPaths paths,
         IAccountService accounts,
-        ISecretStore secrets)
+        ISecretStore secrets,
+        LiveMailDataSource live)
     {
         _accounts = accounts;
+        _live = live;
+        _live.AccountStatusChanged += (_, id) => _ui.Post(() =>
+        {
+            foreach (var account in Accounts.Where(a => a.Account.Id == id)) account.RefreshStatus();
+        });
         _secrets = secrets;
         _settings = settings;
         _rules = rules;
@@ -452,6 +574,25 @@ public sealed partial class SettingsViewModel : ObservableObject
         GoogleClientSecret = string.Empty;
     }
 
+    private async Task<bool> SaveAppearanceAsync(AccountSettingsViewModel item, string name, string? color)
+    {
+        try
+        {
+            await _accounts.UpdateAppearanceAsync(item.Account.Id, name, color);
+            return true;
+        }
+        catch (ArgumentException ex)
+        {
+            _toasts.Show(ex.Message, ToastKind.Warning);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _toasts.Show("Couldn't update the account: " + ex.Message, ToastKind.Error);
+            return false;
+        }
+    }
+
     private async Task ReauthenticateAccountAsync(AccountSettingsViewModel item)
     {
         try
@@ -532,7 +673,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         Accounts.Clear();
         foreach (var account in await _mail.GetAccountsAsync())
         {
-            Accounts.Add(new AccountSettingsViewModel(account, _settings, ReauthenticateAccountAsync, RemoveAccountAsync));
+            var item = new AccountSettingsViewModel(account, _settings, ReauthenticateAccountAsync, RemoveAccountAsync, SaveAppearanceAsync, _live.GetAccountStatus);
+            item.DefaultSenderChanged += (_, _) =>
+            {
+                foreach (var other in Accounts) other.RefreshDefaultSender();
+            };
+            Accounts.Add(item);
         }
 
         Signatures.Clear();

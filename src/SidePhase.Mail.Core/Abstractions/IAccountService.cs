@@ -73,6 +73,17 @@ public interface IAccountService
     /// <summary>Replaces the stored password or tokens after a successful test.</summary>
     Task ReauthenticateAsync(Guid accountId, string? password, OAuthTokens? tokens, CancellationToken cancellationToken = default);
 
+    /// <summary>Changes the name shown for the account and its colour. Connection settings and sign-in are unchanged.</summary>
+    Task UpdateAppearanceAsync(Guid accountId, string displayName, string? colorHex, CancellationToken cancellationToken = default);
+
     /// <summary>Removes the account, its local cache and its stored credentials. Never touches the server.</summary>
     Task RemoveAsync(Guid accountId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>How an account's connection is doing, from its most recent sync.</summary>
+public sealed record AccountStatus(DateTimeOffset? LastSyncedAt, string? LastError, bool RequiresSignIn, DateTimeOffset? LastErrorAt)
+{
+    public static readonly AccountStatus Unknown = new(null, null, false, null);
+
+    public bool HasProblem => LastError is not null && (LastSyncedAt is null || LastErrorAt > LastSyncedAt);
 }

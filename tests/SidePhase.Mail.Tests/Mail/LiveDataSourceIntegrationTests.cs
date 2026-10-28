@@ -131,15 +131,40 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
     }
 
     [MailServerFact]
+    public async Task Renaming_and_recolouring_keeps_sign_in_and_reports_status()
+    {
+        var alice = await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        var settingsBefore = await _app.Accounts.GetConnectionSettingsAsync(alice.Id);
+
+        await _app.Accounts.UpdateAppearanceAsync(alice.Id, "  Work mail  ", "#3fb6a8");
+
+        var renamed = Assert.Single(await _app.Mail.GetAccountsAsync());
+        Assert.Equal("Work mail", renamed.DisplayName);
+        Assert.Equal("#3FB6A8", renamed.ColorHex);
+        Assert.Equal(alice.EmailAddress, renamed.EmailAddress);
+        Assert.Equal(settingsBefore, await _app.Accounts.GetConnectionSettingsAsync(alice.Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _app.Accounts.UpdateAppearanceAsync(alice.Id, " ", null));
+        await Assert.ThrowsAsync<ArgumentException>(() => _app.Accounts.UpdateAppearanceAsync(alice.Id, "x", "red"));
+
+        // The saved password still works after the change.
+        var result = await _app.Mail.SyncAsync();
+        Assert.True(result.Succeeded, result.Message);
+        var status = _app.Live.GetAccountStatus(alice.Id);
+        Assert.NotNull(status.LastSyncedAt);
+        Assert.False(status.HasProblem);
+    }
+
+    [MailServerFact]
     public async Task Large_attachments_are_streamed_to_disk_intact()
     {
+        var subject = "Big attachment " + Guid.NewGuid().ToString("N")[..6];
         var content = new byte[3 * 1024 * 1024 + 123];
         new Random(42).NextBytes(content);
         using (var imap = await TestMailServer.Connector().ConnectImapAsync(TestMailServer.Imap, new MailCredential(TestMailServer.User1.User, TestMailServer.User1.Password, null)))
         {
             var m = new MimeKit.MimeMessage();
             m.From.Add(new MimeKit.MailboxAddress("Sender", "sender@example.test"));
-            m.Subject = "Big attachment";
+            m.Subject = subject;
             var builder = new MimeKit.BodyBuilder { TextBody = "See attached." };
             builder.Attachments.Add("data.bin", content);
             m.Body = builder.ToMessageBody();
@@ -149,7 +174,7 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
 
         await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
         await _app.Mail.SyncAsync();
-        var message = (await _app.Mail.GetMessagesAsync()).Single(m => m.Subject == "Big attachment");
+        var message = (await _app.Mail.GetMessagesAsync()).Single(m => m.Subject == subject);
 
         var reports = new List<double>();
         using var saved = new MemoryStream();

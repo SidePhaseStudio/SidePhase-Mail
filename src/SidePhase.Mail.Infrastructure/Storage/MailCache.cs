@@ -76,6 +76,18 @@ public sealed class MailCache(MailDatabase database)
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>Renames or recolours an account. Only these two columns change: connection settings and saved sign-ins are untouched.</summary>
+    public async Task UpdateAccountAppearanceAsync(Guid accountId, string displayName, string? colorHex, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE accounts SET display_name = $name, color = $color WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", accountId.ToString());
+        cmd.Parameters.AddWithValue("$name", displayName);
+        cmd.Parameters.AddWithValue("$color", (object?)colorHex ?? DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     /// <summary>Deletes the account and, through cascades, its folders, messages, bodies, pins and drafts.</summary>
     public async Task DeleteAccountAsync(Guid accountId, CancellationToken ct = default)
     {

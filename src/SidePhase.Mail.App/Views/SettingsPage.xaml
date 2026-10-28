@@ -33,6 +33,17 @@
         </Button>
       </Grid>
     </DataTemplate>
+
+    <DataTemplate x:Key="ShortcutTemplate" x:DataType="h:ShortcutEntry">
+      <Grid Padding="12,7" Background="{ThemeResource SpCardBrush}" ColumnSpacing="16" CornerRadius="6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="200" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <TextBlock FontFamily="{StaticResource SpSmallFont}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource SpAccentTextBrush}" Text="{x:Bind Keys}" />
+        <TextBlock Grid.Column="1" FontSize="13" Text="{x:Bind Action}" TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
   </Page.Resources>
 
   <Grid Style="{StaticResource SpPanelStyle}">
@@ -67,6 +78,11 @@
         <SelectorBarItem Tag="privacy" Text="Privacy">
           <SelectorBarItem.Icon>
             <FontIcon Glyph="&#xE72E;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
+        <SelectorBarItem Tag="shortcuts" Text="Shortcuts">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE765;" />
           </SelectorBarItem.Icon>
         </SelectorBarItem>
         <SelectorBarItem Tag="about" Text="About">
@@ -176,15 +192,62 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                       </Grid.ColumnDefinitions>
-                      <Ellipse Width="12" Height="12" VerticalAlignment="Center" Fill="{x:Bind h:X.HexBrush(ColorHex)}" />
+                      <Ellipse Width="12" Height="12" VerticalAlignment="Center" Fill="{x:Bind h:X.HexBrush(ColorHex), Mode=OneWay}" />
                       <StackPanel Grid.Column="1" Spacing="1">
-                        <TextBlock FontSize="14" Text="{x:Bind Name}" />
+                        <TextBlock FontSize="14" Text="{x:Bind Name, Mode=OneWay}" />
                         <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind Address}" />
                         <TextBlock Style="{StaticResource SpCaptionTextStyle}" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind ProviderText}" />
+                        <TextBlock
+                            Style="{StaticResource SpCaptionTextStyle}"
+                            Foreground="{ThemeResource SpDangerBrush}"
+                            Text="{x:Bind StatusText, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind HasConnectionProblem, Mode=OneWay}" />
                       </StackPanel>
                     </Grid>
                   </Expander.Header>
                   <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind StatusText, Mode=OneWay}" TextWrapping="Wrap" />
+                    <Grid ColumnSpacing="8" Visibility="{x:Bind CanEditAppearance}">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="360" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBox Header="Name shown in SidePhase Mail" MaxLength="100" Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                      <Button Grid.Column="1" VerticalAlignment="Bottom" Command="{x:Bind SaveNameCommand}" Content="Rename" Style="{StaticResource SpSecondaryButtonStyle}" />
+                    </Grid>
+                    <StackPanel Spacing="6" Visibility="{x:Bind CanEditAppearance}">
+                      <TextBlock FontSize="13" Text="Colour" />
+                      <ItemsRepeater ItemsSource="{x:Bind ColorOptions}">
+                        <ItemsRepeater.Layout>
+                          <StackLayout Orientation="Horizontal" Spacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                          <DataTemplate x:DataType="vm:AccountColorOption">
+                            <Button
+                                Width="26"
+                                Height="26"
+                                MinWidth="0"
+                                Padding="0"
+                                AutomationProperties.Name="{x:Bind Hex}"
+                                Background="{x:Bind h:X.HexBrush(Hex)}"
+                                BorderBrush="{ThemeResource SpStrokeStrongBrush}"
+                                Command="{x:Bind SelectCommand}"
+                                CornerRadius="13"
+                                ToolTipService.ToolTip="{x:Bind Hex}" />
+                          </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                      </ItemsRepeater>
+                    </StackPanel>
+                    <ToggleSwitch Header="Send new messages from this account by default" IsOn="{x:Bind IsDefaultSender, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+                    <ComboBox MinWidth="220" Header="Check for new mail" SelectedIndex="{x:Bind SyncIntervalIndex, Mode=TwoWay}">
+                      <ComboBoxItem Content="Same as all accounts" />
+                      <ComboBoxItem Content="Every minute" />
+                      <ComboBoxItem Content="Every 5 minutes" />
+                      <ComboBoxItem Content="Every 15 minutes" />
+                      <ComboBoxItem Content="Every 30 minutes" />
+                      <ComboBoxItem Content="Every hour" />
+                    </ComboBox>
                     <ToggleSwitch Header="Desktop notifications for this account" IsOn="{x:Bind NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
                     <ComboBox
                         MinWidth="220"
@@ -478,6 +541,23 @@
           <controls:SettingsCard Description="{x:Bind ViewModel.CredentialSummary}" Glyph="&#xE8D7;" Header="Stored sign-ins">
             <TextBlock VerticalAlignment="Center" Style="{StaticResource SpCaptionTextStyle}" Text="Passwords are never stored for Google or Microsoft." />
           </controls:SettingsCard>
+        </StackPanel>
+
+        <!-- ============================ Shortcuts ============================ -->
+        <StackPanel x:Name="ShortcutsSection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Message list and reading" />
+          <ItemsRepeater ItemTemplate="{StaticResource ShortcutTemplate}" ItemsSource="{x:Bind h:ShortcutReference.MessageList}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="2" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Writing a message" />
+          <ItemsRepeater ItemTemplate="{StaticResource ShortcutTemplate}" ItemsSource="{x:Bind h:ShortcutReference.Compose}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="2" />
+            </ItemsRepeater.Layout>
+          </ItemsRepeater>
+          <TextBlock Margin="2,10,0,0" Style="{StaticResource SpCaptionTextStyle}" Text="Shortcuts only act where they make sense: list shortcuts work while the message list has focus, compose shortcuts in a message window." TextWrapping="Wrap" />
         </StackPanel>
 
         <!-- ============================ About ============================ -->

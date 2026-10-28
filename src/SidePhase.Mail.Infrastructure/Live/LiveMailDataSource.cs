@@ -55,6 +55,21 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     public event EventHandler<MailErrorEventArgs>? ErrorOccurred;
 
+    private readonly ConcurrentDictionary<Guid, AccountStatus> _status = new();
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastAutoSync = new();
+
+    /// <summary>Raised (on a background thread) when an account's connection status changes.</summary>
+    public event EventHandler<Guid>? AccountStatusChanged;
+
+    /// <summary>The result of the account's most recent sync on this run of the app.</summary>
+    public AccountStatus GetAccountStatus(Guid accountId) => _status.GetValueOrDefault(accountId, AccountStatus.Unknown);
+
+    private void SetStatus(Guid accountId, Func<AccountStatus, AccountStatus> change)
+    {
+        _status.AddOrUpdate(accountId, _ => change(AccountStatus.Unknown), (_, old) => change(old));
+        AccountStatusChanged?.Invoke(this, accountId);
+    }
+
     /// <summary>
     /// Raised after a sync finds messages that newly arrived in an Inbox (read or unread), for notifications and
     /// automatic Junk rules. Never raised for the first download of a folder.
@@ -764,6 +779,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 if (summaries.Count > 0) handler(this, summaries);
             }
 
+            SetStatus(account.Account.Id, s => s with { LastSyncedAt = DateTimeOffset.UtcNow, RequiresSignIn = false });
             return (true, total);
         }
         catch (OperationCanceledException)
@@ -772,6 +788,8 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            var error = MailErrorTranslator.Describe(ex, account.Settings.Imap.Host);
+            SetStatus(account.Account.Id, s => s with { LastError = error.Message, RequiresSignIn = error.RequiresSignIn, LastErrorAt = DateTimeOffset.UtcNow });
             Report(account, ex, $"Couldn't synchronise {account.Account.DisplayName}");
             return (false, 0);
         }
@@ -794,20 +812,37 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     /// Runs <see cref="SyncAsync"/> now and then every <paramref name="interval"/> until the app closes, whenever
     /// <paramref name="isActive"/> says real accounts are in use.
     /// </summary>
-    public void StartBackgroundSync(Func<TimeSpan> interval, Func<bool> isActive)
+    public void StartBackgroundSync(Func<TimeSpan> interval, Func<bool> isActive) => StartBackgroundSync(_ => interval(), isActive);
+
+    /// <summary>
+    /// Checks each account on its own schedule (<paramref name="intervalFor"/>) while <paramref name="isActive"/> says
+    /// real accounts are in use. Everything is checked once straight away.
+    /// </summary>
+    public void StartBackgroundSync(Func<Guid, TimeSpan> intervalFor, Func<bool> isActive)
     {
         _ = Task.Run(async () =>
         {
             try
             {
+                var first = true;
                 while (!_shutdown.IsCancellationRequested)
                 {
-                    if (isActive() && (await GetStoredAccountsAsync(_shutdown.Token).ConfigureAwait(false)).Count > 0)
+                    var accounts = isActive() ? await GetStoredAccountsAsync(_shutdown.Token).ConfigureAwait(false) : [];
+                    var now = DateTimeOffset.UtcNow;
+                    var due = accounts.Where(a => first || !_lastAutoSync.TryGetValue(a.Account.Id, out var last) || now - last >= intervalFor(a.Account.Id)).ToList();
+                    foreach (var account in due) _lastAutoSync[account.Account.Id] = now;
+
+                    if (due.Count > 0 && due.Count == accounts.Count)
                     {
                         await SyncAsync().ConfigureAwait(false);
                     }
+                    else if (due.Count > 0)
+                    {
+                        await Task.WhenAll(due.Select(a => Task.Run(() => SyncAccountAsync(a, null, _shutdown.Token)))).ConfigureAwait(false);
+                    }
 
-                    await Task.Delay(interval(), _shutdown.Token).ConfigureAwait(false);
+                    first = false;
+                    await Task.Delay(TimeSpan.FromSeconds(30), _shutdown.Token).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)

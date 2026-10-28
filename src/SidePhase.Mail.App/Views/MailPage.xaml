@@ -67,7 +67,8 @@
     <KeyboardAccelerator Key="N" Invoked="OnComposeAccelerator" Modifiers="Control" />
     <KeyboardAccelerator Key="R" Invoked="OnReplyAccelerator" Modifiers="Control" />
     <KeyboardAccelerator Key="R" Invoked="OnReplyAllAccelerator" Modifiers="Control,Shift" />
-    <KeyboardAccelerator Key="F" Invoked="OnForwardAccelerator" Modifiers="Control" />
+    <KeyboardAccelerator Key="F" Invoked="OnForwardAccelerator" Modifiers="Control,Shift" />
+    <KeyboardAccelerator Key="F" Invoked="OnSearchAccelerator" Modifiers="Control" />
     <KeyboardAccelerator Key="E" Invoked="OnSearchAccelerator" Modifiers="Control" />
     <KeyboardAccelerator Key="F5" Invoked="OnSyncAccelerator" />
   </Page.KeyboardAccelerators>
@@ -157,7 +158,7 @@
             PlaceholderText="Search mail"
             QueryIcon="Find"
             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-            ToolTipService.ToolTip="Search (Ctrl+E). Try from:, to:, subject:, body:, is:unread, is:pinned, has:attachment, after:2026-01-31, before:, newer_than:7d" />
+            ToolTipService.ToolTip="Search (Ctrl+F or Ctrl+E). Try from:, to:, subject:, body:, is:unread, is:pinned, has:attachment, after:2026-01-31, before:, newer_than:7d" />
 
         <Button
             Grid.Column="1"

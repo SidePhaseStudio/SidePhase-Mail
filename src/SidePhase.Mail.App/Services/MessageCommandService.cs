@@ -183,7 +183,9 @@ public sealed class MessageCommandService(
     public async Task ComposeNewAsync(Guid? accountId = null, EmailAddress? to = null)
     {
         var accounts = await mail.GetAccountsAsync();
-        var account = accounts.FirstOrDefault(a => a.Id == accountId) ?? accounts.FirstOrDefault();
+        var account = accounts.FirstOrDefault(a => a.Id == accountId)
+            ?? accounts.FirstOrDefault(a => a.Id == settings.Current.DefaultSendingAccountId)
+            ?? accounts.FirstOrDefault();
         if (account is null)
         {
             toasts.Show("Add an account before writing a message.", ToastKind.Warning);

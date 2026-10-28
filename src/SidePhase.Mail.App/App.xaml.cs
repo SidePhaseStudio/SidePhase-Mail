@@ -128,7 +128,7 @@ public partial class App : Application
         // Real accounts sync in the background (only while real accounts, not the demo, are shown).
         var settings = GetService<ISettingsService>();
         GetService<LiveMailDataSource>().StartBackgroundSync(
-            () => TimeSpan.FromMinutes(Math.Max(1, settings.Current.SyncIntervalMinutes)),
+            accountId => settings.Current.SyncIntervalFor(accountId),
             () => settings.Current.DataMode == DataMode.Live);
     }
 

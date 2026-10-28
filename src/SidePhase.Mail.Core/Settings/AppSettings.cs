@@ -119,6 +119,12 @@ public sealed class AppSettings
     /// <summary>Signature per account id (before Milestone 4; migrated into <see cref="SignatureLibrary"/>).</summary>
     public Dictionary<Guid, string> Signatures { get; set; } = [];
 
+    /// <summary>The account new messages are sent from when no account is implied (e.g. from the Unified Inbox).</summary>
+    public Guid? DefaultSendingAccountId { get; set; }
+
+    /// <summary>Minutes between automatic checks, per account (missing = <see cref="SyncIntervalMinutes"/>).</summary>
+    public Dictionary<Guid, int> AccountSyncIntervals { get; set; } = [];
+
     /// <summary>Named signatures that any account can use.</summary>
     public List<SignatureDefinition> SignatureLibrary { get; set; } = [];
 
@@ -127,6 +133,9 @@ public sealed class AppSettings
 
     /// <summary>The old per-account signatures have been copied into the library.</summary>
     public bool SignaturesMigrated { get; set; }
+
+    public TimeSpan SyncIntervalFor(Guid accountId) =>
+        TimeSpan.FromMinutes(AccountSyncIntervals.TryGetValue(accountId, out var minutes) ? minutes : Math.Max(1, SyncIntervalMinutes));
 
     public SignatureDefinition? DefaultSignatureFor(Guid accountId) =>
         DefaultSignatureIds.TryGetValue(accountId, out var id) ? SignatureLibrary.FirstOrDefault(s => s.Id == id) : null;
@@ -140,6 +149,7 @@ public sealed class AppSettings
         copy.Signatures = new Dictionary<Guid, string>(Signatures);
         copy.SignatureLibrary = SignatureLibrary.Select(s => s.Clone()).ToList();
         copy.DefaultSignatureIds = new Dictionary<Guid, Guid>(DefaultSignatureIds);
+        copy.AccountSyncIntervals = new Dictionary<Guid, int>(AccountSyncIntervals);
         return copy;
     }
 
@@ -169,6 +179,7 @@ public sealed class AppSettings
         }
 
         DefaultSignatureIds ??= [];
+        AccountSyncIntervals = (AccountSyncIntervals ?? []).Where(p => p.Value is >= 1 and <= 240).ToDictionary();
         if (!SignaturesMigrated)
         {
             // Keep every signature written before the library existed, as each account's default.

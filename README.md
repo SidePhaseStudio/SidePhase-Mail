@@ -76,15 +76,20 @@ Design tokens and the visual language are documented in [docs/DESIGN_SYSTEM.md](
 | --- | --- |
 | Ctrl+N | New message |
 | Ctrl+R / Ctrl+Shift+R | Reply / Reply all |
-| Ctrl+F | Forward |
-| Ctrl+E | Search |
+| Ctrl+Shift+F | Forward |
+| Ctrl+F (or Ctrl+E) | Search |
 | F5 | Check for new mail |
-| Delete | Move selected message to Trash |
+| Delete | Move selected message (or conversation) to Trash |
 | Backspace | Archive |
 | Ctrl+Q / Ctrl+U | Mark read / unread |
 | Ctrl+Shift+P | Pin / unpin |
 | Insert | Favourite / unfavourite |
-| Ctrl+Enter | Send (compose window) |
+| Ctrl+Enter | Send (compose window; can ask first — Settings › Mail) |
+| Ctrl+S | Save draft (compose window) |
+| Ctrl+K | Insert link (compose window) |
+| Esc | Close the compose window or dialog |
+
+The same list is in *Settings › Shortcuts*.
 
 ## Demonstration data
 
