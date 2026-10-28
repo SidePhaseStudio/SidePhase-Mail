@@ -5,7 +5,7 @@ namespace SidePhase.Mail.Advertising;
 /// subjects, addresses, contacts, folders, accounts or identifiers. A test enforces that this type stays this small.
 /// </summary>
 /// <param name="Placement">Where the card will be shown.</param>
-/// <param name="AppVersion">SidePhase Mail's version (e.g. "0.6.0-beta.1").</param>
+/// <param name="AppVersion">SidePhase Mail's version (e.g. "0.7.0-beta.1").</param>
 /// <param name="Language">The display language (e.g. "en-GB"), for choosing a card in the right language.</param>
 public sealed record AdRequest(AdPlacement Placement, string AppVersion, string Language);
 

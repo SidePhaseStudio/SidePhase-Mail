@@ -144,6 +144,32 @@ status are in [RELEASE_READINESS.md](RELEASE_READINESS.md).
 | About / metadata / licences | ❔ | Version, build, channel, data folder, report link, generated third-party notices. |
 | Beta docs | ✅ | RELEASE_READINESS.md, docs/BETA_TESTING.md, PRIVACY.md (draft), docs/PACKAGING.md, docs/ADVERTISING.md, bug report template. |
 
+## Milestone 7 — Final polish, account experience, reliability and controlled beta
+
+Started with an audit of message actions, offline behaviour, notifications, compose, accounts and accessibility.
+Version 0.7.0-beta.1. Legend as above; ❔ = compiles and starts in CI, not yet checked by hand on Windows.
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Message actions report real results | 🧪 / ❔ | Move, archive, delete, junk, drag: success and Undo only for what the server moved; partial results reported; server errors not covered by "Done"; permanent delete counts; Junk learning only from moved mail. Hover toolbar unchanged. |
+| Forward with attachments (real accounts) | 🧪 / ❔ | Originals downloaded to a private folder, never opened; missing ones listed. |
+| Offline sending | 🔌 | Unreachable server = still queued (NotConnected), backoff to 10 min, sent once on reconnect (2-hour offline test). Never reported delivered before the server accepts it. |
+| Offline drafts, reconnect, status | 🔌 / ❔ | Drafts saved offline uploaded once; offline bar; reconnect syncs, sends, files Sent copies; no read-flip offline. |
+| Notifications | ❔ | Clicks handed over from a second process open the message. Junk/blocked suppression and per-account settings from M3. |
+| Accounts | 🧪 / ❔ | Named colours with selection; problem badge on the account; sign-in toast opens Settings → Accounts; IMAP QUOTA storage. Rename, signatures, default account, sync interval, notifications and re-authenticate from M4/M6. |
+| Compose | ❔ | Spellcheck (subject, body); drop files on the editor; paste images as attachments; live-region status; focus outline with high-contrast fallback; autosave retries; Cc/Bcc can't hide content. |
+| Accessibility | ❔ | High-contrast caption buttons; reduced-motion fade; message-row names. No full Narrator pass yet. |
+| Footer promotion banner | 🧪 / ❔ | One labelled ~728×90 banner in the footer; approved bundled SidePhase Studio promotions only (none approved); collapses when empty or < 680 epx; remote API only when explicitly configured; no SDKs, no tracking. |
+| Version | ✅ | 0.7.0-beta.1, manifest 0.7.0.0. |
+| Beta docs | ✅ | CHANGELOG.md, docs/INSTALL.md, docs/KNOWN_ISSUES.md, docs/RELEASE_NOTES.md, docs/STORE_SUBMISSION.md (owner actions: Partner Center, signing, Google/Microsoft registrations), PRIVACY.md promotions section. |
+
+Not done in this milestone (see Known limitations): HTML signatures, inline pasted images, offline download of
+unopened bodies/attachments, flag/sync race (D7), compact navigation when narrow, compose on the owner's monitor,
+minimum size on DPI change, cleanup of the Pasted/Forwarding folders.
+
+**Testing note:** everything marked 🧪/🔌 is automated (unit tests and a real test IMAP/SMTP server in CI). Passing CI
+does not mean the app has been fully tested on Windows; the ❔ items need the hand-check in docs/BETA_TESTING.md.
+
 ## Future
 
 Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side scheduled send where providers offer it.
@@ -162,6 +188,8 @@ Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side schedule
 * Drafts edited in another app open without their attachments.
 * Proton Mail Bridge (self-signed certificate) isn't supported.
 * No automated UI tests yet.
+* Signatures are plain text; pasted images are attached rather than inline.
+* Bodies and attachments are offline only if opened while online.
 * Snoozes, follow-up reminders and conversation grouping are local to this PC and don't sync to other mail apps.
 * Scheduled messages and Undo Send need SidePhase Mail to be running; a message that couldn't be sent within a day of its
   time is held rather than sent late.

@@ -19,7 +19,7 @@
     with -RemoveCertificate when you're done.
 
 .EXAMPLE
-    .\Install-DevPackage.ps1 -Package .\SidePhaseMail_0.6.0.0_x64.msix
+    .\Install-DevPackage.ps1 -Package .\SidePhaseMail_0.7.0.0_x64.msix
 .EXAMPLE
     .\Install-DevPackage.ps1 -RemoveCertificate
 #>

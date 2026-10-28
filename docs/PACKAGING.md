@@ -40,7 +40,7 @@ app, build once with `-p:SidePhasePackage=msix` or add a `MsixPackage` launch pr
 One version is used everywhere: `<VersionPrefix>` (and `<VersionSuffix>`, e.g. `beta.1`) in `Directory.Build.props`.
 The package's `Identity Version` in `Package.appxmanifest` must be `VersionPrefix.0` (the Store requires the last
 number to be 0); `PackagingTests` fails the build if they drift apart. CI adds the commit to the informational version
-(`0.6.0-beta.1+<sha>`), shown in *Settings → About*.
+(`0.7.0-beta.1+<sha>`), shown in *Settings → About*.
 
 ### Identity placeholders (must be replaced before Store submission)
 
@@ -69,7 +69,7 @@ Windows only installs signed MSIX packages.
   the MSIX artifact) from an administrator PowerShell:
 
   ```powershell
-  .\Install-DevPackage.ps1 -Package .\SidePhase.Mail.App_0.6.0.0_x64.msix
+  .\Install-DevPackage.ps1 -Package .\SidePhase.Mail.App_0.7.0.0_x64.msix
   ```
 
   It creates a self-signed certificate **on that PC only** (subject = the manifest's Publisher, private key not
