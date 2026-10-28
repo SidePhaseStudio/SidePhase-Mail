@@ -155,6 +155,49 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
     }
 
     [MailServerFact]
+    public async Task Bulk_moves_go_in_one_batch_keep_the_cache_in_step_and_undo()
+    {
+        var tag = "Bulk " + Guid.NewGuid().ToString("N")[..6];
+        using (var imap = await TestMailServer.Connector().ConnectImapAsync(TestMailServer.Imap, new MailCredential(TestMailServer.User1.User, TestMailServer.User1.Password, null)))
+        {
+            for (var i = 0; i < 25; i++)
+            {
+                var m = new MimeKit.MimeMessage();
+                m.From.Add(new MimeKit.MailboxAddress("Sender", "sender@example.test"));
+                m.Subject = $"{tag} {i}";
+                m.Body = new MimeKit.TextPart("plain") { Text = "bulk" };
+                await Infrastructure.Mail.ImapOperations.AppendAsync(imap, "INBOX", m, MailKit.MessageFlags.None, CancellationToken.None);
+            }
+
+            await imap.DisconnectAsync(true);
+        }
+
+        var alice = await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        await _app.Mail.SyncAsync();
+        var messages = (await _app.Mail.GetMessagesAsync()).Where(m => m.Subject.StartsWith(tag)).ToList();
+        Assert.Equal(25, messages.Count);
+        var archive = (await _app.Mail.GetFoldersAsync(alice.Id)).Single(f => f.Kind == FolderKind.Archive);
+
+        var reports = new List<double>();
+        var moves = await _app.Mail.MoveToFolderAsync(messages.Select(m => m.Id).ToList(), archive.Id, new SyncProgress(reports.Add));
+        Assert.Equal(25, moves.Count);
+        Assert.Equal(1.0, reports[^1]);
+        var cached = (await _app.Mail.GetMessagesAsync()).Where(m => m.Subject.StartsWith(tag)).ToList();
+        Assert.Equal(25, cached.Count);
+        Assert.All(cached, m => Assert.Equal(archive.Id, m.FolderId));
+
+        // The server agrees after a fresh sync, and nothing was duplicated.
+        await _app.Mail.SyncAsync();
+        Assert.Equal(25, (await _app.Mail.GetMessagesAsync()).Count(m => m.Subject.StartsWith(tag) && m.FolderId == archive.Id));
+
+        await _app.Mail.RestoreAsync(moves);
+        await _app.Mail.SyncAsync();
+        var restored = (await _app.Mail.GetMessagesAsync()).Where(m => m.Subject.StartsWith(tag)).ToList();
+        Assert.Equal(25, restored.Count);
+        Assert.All(restored, m => Assert.Equal(FolderKind.Inbox, m.FolderKind));
+    }
+
+    [MailServerFact]
     public async Task Large_attachments_are_streamed_to_disk_intact()
     {
         var subject = "Big attachment " + Guid.NewGuid().ToString("N")[..6];
@@ -175,6 +218,12 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
         await _app.Mail.SyncAsync();
         var message = (await _app.Mail.GetMessagesAsync()).Single(m => m.Subject == subject);
+
+        // Attachment details come from the server's message structure: known and searchable before any download.
+        var info = Assert.Single(message.Attachments);
+        Assert.Equal("data.bin", info.FileName);
+        Assert.InRange(info.SizeBytes, content.Length - 64, content.Length + 64);
+        Assert.Contains(message.Id, (await _app.Mail.SearchDownloadedTextAsync(["filename:data"]))["filename:data"]);
 
         var reports = new List<double>();
         using var saved = new MemoryStream();
@@ -202,7 +251,8 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
                 var m = new MimeKit.MimeMessage();
                 m.From.Add(new MimeKit.MailboxAddress("Archivist", "archive@example.test"));
                 m.Subject = $"Search test {i}";
-                m.Body = new MimeKit.TextPart("plain") { Text = $"The secret word is {word}." };
+                // The word comes after the part the server returns as a preview, so it is only found once downloaded.
+                m.Body = new MimeKit.TextPart("plain") { Text = string.Concat(Enumerable.Repeat("Lorem ipsum dolor sit amet. ", 40)) + $"The secret word is {word}." };
                 await Infrastructure.Mail.ImapOperations.AppendAsync(imap, "INBOX", m, MailKit.MessageFlags.None, CancellationToken.None);
             }
 

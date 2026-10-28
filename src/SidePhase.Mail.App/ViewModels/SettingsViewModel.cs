@@ -275,6 +275,30 @@ public sealed partial class SignatureItemViewModel(Guid id, ISettingsService set
     }
 }
 
+/// <summary>One mail rule in Settings › Rules.</summary>
+public sealed partial class RuleItemViewModel(Core.Organisation.MailRule rule, string description, SettingsViewModel owner) : ObservableObject
+{
+    public Core.Organisation.MailRule Rule { get; private set; } = rule;
+    public string Name => Rule.Name;
+    public string Description { get; } = description;
+
+    public bool Enabled
+    {
+        get => Rule.Enabled;
+        set
+        {
+            if (value == Rule.Enabled) return;
+            Rule = Rule with { Enabled = value };
+            _ = owner.SaveRuleAsync(Rule);
+            OnPropertyChanged();
+        }
+    }
+
+    [RelayCommand] private Task EditAsync() => owner.EditRuleAsync(this);
+    [RelayCommand] private Task DeleteAsync() => owner.DeleteRuleAsync(this);
+    [RelayCommand] private Task RunNowAsync() => owner.RunRuleNowAsync(this);
+}
+
 /// <summary>Settings page. Every property writes straight through to <see cref="ISettingsService"/>.</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -291,6 +315,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IAccountService _accounts;
     private readonly ISecretStore _secrets;
     private readonly LiveMailDataSource _live;
+    private readonly Core.Spam.LocalSpamFilter _localFilter;
+    private readonly Core.Organisation.MailRuleService _mailRules;
+    private readonly Services.RuleEditor _ruleEditor;
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -303,11 +330,19 @@ public sealed partial class SettingsViewModel : ObservableObject
         AppDataPaths paths,
         IAccountService accounts,
         ISecretStore secrets,
-        LiveMailDataSource live)
+        LiveMailDataSource live,
+        Core.Spam.LocalSpamFilter localFilter,
+        Core.Organisation.MailRuleService mailRules,
+        Services.RuleEditor ruleEditor)
     {
+        _mailRules = mailRules;
+        _ruleEditor = ruleEditor;
+        _mailRules.Changed += (_, _) => ui.Post(() => _ = LoadRulesAsync());
+        _localFilter = localFilter;
+        _localFilter.Changed += (_, _) => ui.Post(() => OnPropertyChanged(nameof(LocalFilterStatus)));
         _accounts = accounts;
         _live = live;
-        _live.AccountStatusChanged += (_, id) => _ui.Post(() =>
+        _live.AccountStatusChanged += (_, id) => ui.Post(() =>
         {
             foreach (var account in Accounts.Where(a => a.Account.Id == id)) account.RefreshStatus();
         });
@@ -345,6 +380,90 @@ public sealed partial class SettingsViewModel : ObservableObject
     public ObservableCollection<AccentOptionViewModel> AccentOptions { get; }
     public ObservableCollection<AccountSettingsViewModel> Accounts { get; } = [];
     public ObservableCollection<SignatureItemViewModel> Signatures { get; } = [];
+
+    // ---------------------------------------------------------------- Rules
+
+    public ObservableCollection<RuleItemViewModel> Rules { get; } = [];
+
+    [ObservableProperty] public partial bool HasNoRules { get; set; }
+
+    public async Task LoadRulesAsync()
+    {
+        var folderNames = new Dictionary<Guid, string>();
+        foreach (var account in await _mail.GetAccountsAsync())
+        {
+            foreach (var folder in await _mail.GetFoldersAsync(account.Id)) folderNames[folder.Id] = folder.Name;
+        }
+
+        Rules.Clear();
+        foreach (var rule in await _mailRules.ListAsync()) Rules.Add(new RuleItemViewModel(rule, Services.RuleEditor.Describe(rule, folderNames), this));
+        HasNoRules = Rules.Count == 0;
+    }
+
+    [RelayCommand]
+    private Task AddRuleAsync() => _ruleEditor.EditAsync(null);
+
+    internal Task EditRuleAsync(RuleItemViewModel item) => _ruleEditor.EditAsync(item.Rule);
+
+    internal async Task SaveRuleAsync(Core.Organisation.MailRule rule)
+    {
+        try
+        {
+            await _mailRules.SaveAsync(rule);
+        }
+        catch (ArgumentException ex)
+        {
+            _toasts.Show(ex.Message, ToastKind.Warning);
+        }
+    }
+
+    internal async Task DeleteRuleAsync(RuleItemViewModel item)
+    {
+        if (!await _dialogs.ConfirmAsync("Delete rule?", $"\"{item.Name}\" will stop acting on new mail. Messages it already handled aren't changed.", "Delete")) return;
+        await _mailRules.DeleteAsync(item.Rule.Id);
+    }
+
+    /// <summary>Runs a rule on a folder's messages stored on this PC (each message at most once per rule).</summary>
+    internal async Task RunRuleNowAsync(RuleItemViewModel item)
+    {
+        var folders = new List<(MailFolder Folder, MailAccount Account)>();
+        foreach (var account in await _mail.GetAccountsAsync())
+        {
+            if (item.Rule.AccountId is { } only && only != account.Id) continue;
+            foreach (var folder in await _mail.GetFoldersAsync(account.Id)) folders.Add((folder, account));
+        }
+
+        var combo = new Microsoft.UI.Xaml.Controls.ComboBox { Header = "Folder", HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Stretch, MinWidth = 300 };
+        foreach (var (f, a) in folders) combo.Items.Add($"{a.DisplayName} · {f.Name}");
+        combo.SelectedIndex = Math.Max(0, folders.FindIndex(f => f.Folder.Kind == FolderKind.Inbox));
+        var panel = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 10 };
+        panel.Children.Add(combo);
+        panel.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock
+        {
+            Text = "The rule runs on the messages in this folder that are stored on this PC. Messages it has already handled are skipped.",
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+            MaxWidth = 340,
+            Opacity = 0.75,
+        });
+        var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+        {
+            Title = $"Run \"{item.Name}\" now",
+            Content = panel,
+            PrimaryButtonText = "Run",
+            CloseButtonText = "Cancel",
+            DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
+        };
+        if (await _dialogs.ShowAsync(dialog) != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary || combo.SelectedIndex < 0) return;
+
+        var target = folders[combo.SelectedIndex].Folder;
+        var messages = (await _mail.GetMessagesAsync()).Where(m => m.FolderId == target.Id).ToList();
+        _toasts.Show($"Running \"{item.Name}\" on {messages.Count} messages…");
+        var result = await _mailRules.RunNowAsync(item.Rule with { Enabled = true }, messages);
+        _toasts.Show(result.Problems.Count > 0
+            ? result.Problems[0]
+            : result.Matched == 0 ? "No messages matched (or they were already handled)." : $"\"{item.Name}\" handled {result.Matched} message{(result.Matched == 1 ? string.Empty : "s")}.",
+            result.Problems.Count > 0 ? ToastKind.Warning : ToastKind.Success);
+    }
 
     [RelayCommand]
     private void AddSignature()
@@ -494,6 +613,35 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         get => S.TreatHighScoresAsJunk;
         set => Set(s => s.TreatHighScoresAsJunk = value, S.TreatHighScoresAsJunk != value);
+    }
+
+    public bool LocalSpamLearning
+    {
+        get => S.LocalSpamLearning;
+        set => Set(s => s.LocalSpamLearning = value, S.LocalSpamLearning != value);
+    }
+
+    public bool LocalFilterShowsJunk
+    {
+        get => S.LocalFilterShowsJunk;
+        set => Set(s => s.LocalFilterShowsJunk = value, S.LocalFilterShowsJunk != value);
+    }
+
+    public string LocalFilterStatus => _localFilter.IsReady
+        ? $"Learned from {_localFilter.SpamExamples} junk and {_localFilter.HamExamples} good messages you marked."
+        : $"Learning: it gives an opinion after you've marked at least {Core.Spam.LocalSpamFilter.MinimumExamples} messages as Junk and {Core.Spam.LocalSpamFilter.MinimumExamples} as Not junk (so far {_localFilter.SpamExamples} and {_localFilter.HamExamples}).";
+
+    [RelayCommand]
+    private async Task ResetLocalFilterAsync()
+    {
+        var confirmed = await _dialogs.ConfirmAsync(
+            "Reset the local spam filter?",
+            "Everything it learned from the messages you marked is forgotten. Your messages, Junk folder and sender rules aren't changed.",
+            "Reset");
+        if (!confirmed) return;
+        await _localFilter.ResetAsync();
+        OnPropertyChanged(nameof(LocalFilterStatus));
+        _toasts.Show("The local spam filter has been reset.", ToastKind.Success);
     }
 
     public bool MoveBlockedMailToServerJunk
@@ -683,6 +831,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         Signatures.Clear();
         foreach (var signature in _settings.Current.SignatureLibrary) Signatures.Add(CreateSignatureItem(signature.Id));
+        await LoadRulesAsync();
 
         OnPropertyChanged(string.Empty);
     }

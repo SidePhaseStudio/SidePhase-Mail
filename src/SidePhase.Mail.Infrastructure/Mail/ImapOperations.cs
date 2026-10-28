@@ -61,6 +61,43 @@ public static class ImapOperations
         return new MoveResult(newUid?.Id, newUid?.Validity ?? 0);
     }
 
+    /// <summary>
+    /// Moves many messages from one folder in a single UID MOVE (or COPY + \Deleted without MOVE/UIDPLUS). Returns
+    /// each source UID's new UID where the server reports it (COPYUID), and the destination's UIDVALIDITY.
+    /// </summary>
+    public static async Task<(IReadOnlyDictionary<uint, uint> NewUids, uint DestinationUidValidity)> MoveManyAsync(
+        ImapClient client, string sourcePath, IReadOnlyList<uint> uids, string destinationPath, CancellationToken ct)
+    {
+        var destination = await client.GetFolderAsync(destinationPath, ct).ConfigureAwait(false);
+        var source = await OpenAsync(client, sourcePath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
+        var ids = uids.Select(u => new UniqueId(source.UidValidity, u)).ToList();
+        UniqueIdMap map;
+        if ((client.Capabilities & (ImapCapabilities.Move | ImapCapabilities.UidPlus)) != 0)
+        {
+            map = await source.MoveToAsync(ids, destination, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            map = await source.CopyToAsync(ids, destination, ct).ConfigureAwait(false);
+            await source.StoreAsync(ids, new StoreFlagsRequest(StoreAction.Add, MessageFlags.Deleted) { Silent = true }, ct).ConfigureAwait(false);
+        }
+
+        var result = new Dictionary<uint, uint>();
+        for (var i = 0; i < Math.Min(map.Source.Count, map.Destination.Count); i++) result[map.Source[i].Id] = map.Destination[i].Id;
+        var validity = map.Destination.Count > 0 ? map.Destination[0].Validity : 0;
+        return (result, validity);
+    }
+
+    /// <summary>Sets $Junk / $NotJunk on several messages at once (ignored where keywords aren't allowed).</summary>
+    public static async Task SetJunkKeywordAsync(ImapClient client, string folderPath, IReadOnlyList<uint> uids, bool isJunk, CancellationToken ct)
+    {
+        var folder = await OpenAsync(client, folderPath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
+        if (!folder.PermanentFlags.HasFlag(MessageFlags.UserDefined)) return;
+        var ids = uids.Select(u => new UniqueId(folder.UidValidity, u)).ToList();
+        await folder.StoreAsync(ids, new StoreFlagsRequest(StoreAction.Add, [isJunk ? "$Junk" : "$NotJunk"]) { Silent = true }, ct).ConfigureAwait(false);
+        await folder.StoreAsync(ids, new StoreFlagsRequest(StoreAction.Remove, [isJunk ? "$NotJunk" : "$Junk"]) { Silent = true }, ct).ConfigureAwait(false);
+    }
+
     public static async Task<AppendResult> AppendAsync(ImapClient client, string folderPath, MimeMessage message, MessageFlags flags, CancellationToken ct)
     {
         var folder = await client.GetFolderAsync(folderPath, ct).ConfigureAwait(false);

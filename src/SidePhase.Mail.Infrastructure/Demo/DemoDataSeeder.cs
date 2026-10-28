@@ -473,7 +473,9 @@ public static class DemoDataSeeder
                 IsPinned = pinned,
                 PinnedAt = pinned ? now.AddHours(-pinnedHoursAgo) : null,
                 HasAttachments = attachments is { Count: > 0 },
+                Attachments = attachments ?? [],
                 Spam = spam ?? SpamReport.None,
+                Size = 2048 + (html?.Length ?? 0) + plain.Length + (attachments?.Sum(a => a.SizeBytes * 4 / 3) ?? 0),
             });
             Bodies.Add(new MessageBody
             {

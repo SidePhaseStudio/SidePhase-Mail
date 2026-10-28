@@ -92,6 +92,9 @@ public sealed class ImapSynchronizer(MailCache cache)
     }
 
     /// <summary>Incrementally synchronises one folder (new messages, flag changes, removals, UIDVALIDITY resets).</summary>
+    /// <summary>How many older messages per folder and sync get their attachment details filled in.</summary>
+    private const int AttachmentBackfillLimit = 300;
+
     public async Task<FolderSyncResult> SyncFolderAsync(ImapClient client, StoredFolder folder, CancellationToken ct = default)
     {
         var remote = await client.GetFolderAsync(folder.Path, ct).ConfigureAwait(false);
@@ -128,6 +131,19 @@ public sealed class ImapSynchronizer(MailCache cache)
                 var stored = summaries.Select(s => ToStored(s, folder, validity)).ToList();
                 await cache.UpsertMessagesAsync(stored, ct).ConfigureAwait(false);
                 newIds.AddRange(stored.Select(s => s.Id));
+            }
+
+            // Older cached mail (from before attachment details were recorded): fetch just BODYSTRUCTURE, a few
+            // hundred at a time, so attachment search covers it without downloading any attachment.
+            var missing = await cache.GetMessagesMissingAttachmentDetailsAsync(folder.Id, validity, AttachmentBackfillLimit, ct).ConfigureAwait(false);
+            if (missing.Count > 0)
+            {
+                var byUid = missing.ToDictionary(m => m.Uid, m => m.Id);
+                var structures = await remote.FetchAsync(missing.Select(m => new UniqueId(validity, m.Uid)).ToList(), new FetchRequest(MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure), ct).ConfigureAwait(false);
+                foreach (var summary in structures)
+                {
+                    if (byUid.TryGetValue(summary.UniqueId.Id, out var id)) await cache.SaveAttachmentDetailsAsync(id, DescribeAttachments(summary), ct).ConfigureAwait(false);
+                }
             }
 
             var highest = serverUids.Count == 0 ? (plan.ResetFolder ? 0u : folder.HighestUid) : Math.Max(serverUids.Max(), plan.ResetFolder ? 0u : folder.HighestUid);
@@ -174,8 +190,18 @@ public sealed class ImapSynchronizer(MailCache cache)
             Size = s.Size ?? 0,
             InReplyTo = envelope?.InReplyTo,
             References = s.References?.ToList() ?? [],
+            Attachments = DescribeAttachments(s),
         };
     }
+
+    /// <summary>Attachment names, types and sizes from BODYSTRUCTURE (no content is downloaded).</summary>
+    internal static IReadOnlyList<Core.Models.AttachmentInfo> DescribeAttachments(IMessageSummary s) =>
+        s.Attachments?.Select(a => new Core.Models.AttachmentInfo(
+                string.IsNullOrWhiteSpace(a.FileName) ? "attachment" : a.FileName,
+                a.ContentType?.MimeType ?? "application/octet-stream",
+                // Octets are the encoded size: base64 is 4/3 of the file plus a line break every 76 characters.
+                a.ContentTransferEncoding?.Equals("base64", StringComparison.OrdinalIgnoreCase) == true ? a.Octets * 3 * 76 / (4 * 78) : a.Octets))
+            .ToList() ?? [];
 
     private static string DisplayName(IMailFolder folder, FolderNamespace personal, IMailFolder inbox)
     {

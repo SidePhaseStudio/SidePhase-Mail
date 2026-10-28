@@ -6,13 +6,14 @@ using SidePhase.Mail.Infrastructure.Live;
 namespace SidePhase.Mail.App.Services;
 
 /// <summary>
-/// Handles mail that arrives during background sync: applies the optional automatic Junk rule, then notifies about
-/// what's left. Each message is announced at most once per session, and never for Junk, blocked senders or muted
+/// Handles mail that arrives during background sync: applies the optional automatic Junk rule and your mail rules
+/// (each acts on a message at most once), then notifies about what's left. Each message is announced at most once per session, and never for Junk, blocked senders or muted
 /// accounts.
 /// </summary>
 public sealed class NewMailCoordinator(
     LiveMailDataSource live,
     AutoJunkService autoJunk,
+    Core.Organisation.MailRuleService mailRules,
     JunkPolicy junk,
     NotificationPolicy policy,
     ISettingsService settings,
@@ -39,7 +40,10 @@ public sealed class NewMailCoordinator(
                 toasts.Show(filtered == 1 ? "1 new message was filtered into Junk." : $"{filtered} new messages were filtered into Junk.");
             }
 
-            var notify = fresh.Where(m => !movedToJunk.Contains(m.Id) && policy.ShouldNotify(m)).ToList();
+            var rules = await mailRules.RunOnNewMailAsync(fresh.Where(m => !movedToJunk.Contains(m.Id)).ToList()).ConfigureAwait(false);
+            if (rules.Problems.Count > 0) toasts.Show(rules.Problems[0], ToastKind.Warning);
+
+            var notify = fresh.Where(m => !movedToJunk.Contains(m.Id) && !rules.SuppressNotifications.Contains(m.Id) && policy.ShouldNotify(m)).ToList();
             if (notify.Count == 0) return;
 
             if (!desktop.Show(notify))

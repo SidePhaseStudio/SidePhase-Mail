@@ -228,7 +228,19 @@ public sealed partial class MainWindow : Window
                 // Not in the current view (e.g. a folder was open): switch to the Unified Inbox and try again.
                 ShowInbox();
                 await _mailList.NavigateAsync(Core.Models.MailboxScope.UnifiedInbox, "Unified Inbox");
-                await _mailList.SelectMessageAsync(messageId);
+                if (!await _mailList.SelectMessageAsync(messageId))
+                {
+                    // Elsewhere (Archive, Sent, a folder): open the folder it's in.
+                    var mail = App.GetService<IMailDataSource>();
+                    if (await mail.GetMessageAsync(messageId) is { } message
+                        && (await mail.GetFoldersAsync(message.AccountId)).FirstOrDefault(f => f.Id == message.FolderId) is { } folder)
+                    {
+                        var scope = Core.Models.MailboxScope.ForFolder(folder);
+                        SelectScope(scope);
+                        await _mailList.NavigateAsync(scope, folder.Name);
+                        await _mailList.SelectMessageAsync(messageId);
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -249,6 +261,12 @@ public sealed partial class MainWindow : Window
 
     private void OnNavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
+        if (args.InvokedItemContainer?.Tag is NavItemViewModel { PageTag: "new-smart-folder" })
+        {
+            _ = App.GetService<SmartFolderEditor>().EditAsync(null);
+            return;
+        }
+
         // Re-invoking the selected mailbox while in Settings returns to it.
         if (args.InvokedItemContainer?.Tag is NavItemViewModel { Scope: not null } item
             && ReferenceEquals(sender.SelectedItem, args.InvokedItemContainer)
@@ -266,6 +284,9 @@ public sealed partial class MainWindow : Window
         {
             case "settings":
                 ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
+                break;
+            case "attachments":
+                ContentFrame.Navigate(typeof(AttachmentsPage), null, new EntranceNavigationTransitionInfo());
                 break;
             case "contacts":
                 ContentFrame.Navigate(typeof(ContactsPage), null, new EntranceNavigationTransitionInfo());
@@ -331,7 +352,8 @@ public sealed partial class MainWindow : Window
         {
             Tag = model,
             Icon = icon,
-            SelectsOnInvoked = model.Scope is not null || model.PageTag is not null,
+            // "New smart folder…" is an action, so it isn't selected when clicked.
+            SelectsOnInvoked = model.Scope is not null || model.PageTag is "outbox",
         };
 
         if (model.Kind == NavItemKind.Account)
@@ -360,6 +382,19 @@ public sealed partial class MainWindow : Window
         {
             container.ContextFlyout = CreateFolderMenu(folderId);
         }
+        else if (model.SmartFolder is { } smart)
+        {
+            var editor = App.GetService<SmartFolderEditor>();
+            var edit = new MenuFlyoutItem { Text = "Edit smart folder…", Icon = new FontIcon { Glyph = Helpers.Glyphs.Edit } };
+            edit.Click += async (_, _) => await editor.EditAsync(smart);
+            var delete = new MenuFlyoutItem { Text = "Delete smart folder", Icon = new FontIcon { Glyph = Helpers.Glyphs.Delete } };
+            delete.Click += async (_, _) => await editor.DeleteAsync(smart);
+            var menu = new MenuFlyout();
+            menu.Items.Add(edit);
+            menu.Items.Add(delete);
+            container.ContextFlyout = menu;
+            ToolTipService.SetToolTip(container, $"{smart.Name} · {smart.Query}");
+        }
 
         if (model.Children is { Count: > 0 } children)
         {
@@ -370,6 +405,8 @@ public sealed partial class MainWindow : Window
 
             container.IsExpanded = model.IsExpanded;
         }
+
+        EnableMessageDrop(model, container);
 
         var badge = new InfoBadge();
         if (Application.Current.Resources.TryGetValue("SpInfoBadgeStyle", out var style) && style is Style badgeStyle)
@@ -383,6 +420,56 @@ public sealed partial class MainWindow : Window
 
         _navContainers[model] = container;
         return container;
+    }
+
+    /// <summary>Folders in the sidebar accept messages dragged from the list (moved on the server, with undo).</summary>
+    private void EnableMessageDrop(NavItemViewModel model, NavigationViewItem container)
+    {
+        var scope = model.Scope;
+        var accepts = scope is { Kind: Core.Models.MailboxScopeKind.AccountFolder }
+            || scope is { Kind: Core.Models.MailboxScopeKind.UnifiedFolder, FolderKind: Core.Models.FolderKind.Inbox or Core.Models.FolderKind.Archive or Core.Models.FolderKind.Junk or Core.Models.FolderKind.Trash }
+            || scope is { Kind: Core.Models.MailboxScopeKind.UnifiedInbox };
+        if (!accepts) return;
+
+        container.AllowDrop = true;
+        container.DragOver += (_, e) =>
+        {
+            if (!e.DataView.Properties.ContainsKey(MailPage.MessageDragFormat)) return;
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+            if (e.DragUIOverride is not null) e.DragUIOverride.Caption = "Move to " + model.Title;
+        };
+        container.Drop += async (_, e) =>
+        {
+            if (!e.DataView.Properties.TryGetValue(MailPage.MessageDragFormat, out var value) || value is not string text) return;
+            var ids = text.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Guid.Parse).ToHashSet();
+            var messages = (await App.GetService<IMailDataSource>().GetMessagesAsync()).Where(m => ids.Contains(m.Id)).ToList();
+            if (messages.Count == 0) return;
+
+            var commands = App.GetService<MessageCommandService>();
+            if (scope!.Kind == Core.Models.MailboxScopeKind.AccountFolder)
+            {
+                var folder = (await App.GetService<IMailDataSource>().GetFoldersAsync(scope.AccountId!.Value)).FirstOrDefault(f => f.Id == scope.FolderId);
+                if (folder is not null) await commands.MoveToFolderAsync(messages, folder);
+                return;
+            }
+
+            switch (scope.FolderKind ?? Core.Models.FolderKind.Inbox)
+            {
+                case Core.Models.FolderKind.Archive:
+                    await commands.ArchiveAsync(messages);
+                    break;
+                case Core.Models.FolderKind.Trash:
+                    await commands.DeleteAsync(messages);
+                    break;
+                case Core.Models.FolderKind.Junk:
+                    await commands.MoveToJunkAsync(messages);
+                    break;
+                default:
+                    var moves = await App.GetService<IMailDataSource>().MoveToAsync(messages.Select(m => m.Id).ToList(), Core.Models.FolderKind.Inbox);
+                    App.GetService<ToastService>().ShowWithUndo(moves.Count == 1 ? "Moved to Inbox" : $"Moved {moves.Count} messages to Inbox", () => App.GetService<IMailDataSource>().RestoreAsync(moves));
+                    break;
+            }
+        };
     }
 
     private MenuFlyout CreateFolderMenu(Guid folderId)

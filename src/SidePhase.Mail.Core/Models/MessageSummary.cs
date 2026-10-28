@@ -35,6 +35,18 @@ public sealed record MessageSummary
     public DateTimeOffset? PinnedAt { get; init; }
     public bool HasAttachments { get; init; }
 
+    /// <summary>Size of the whole message on the server in bytes (0 if unknown).</summary>
+    public long Size { get; init; }
+
+    /// <summary>
+    /// Names, types and sizes of the attachments, from the server's description of the message (nothing is
+    /// downloaded to learn them). May be empty for older cached mail until its details are fetched.
+    /// </summary>
+    public IReadOnlyList<AttachmentInfo> Attachments { get; init; } = [];
+
+    /// <summary>Local categories (labels) added by you or your rules. Kept on this PC.</summary>
+    public IReadOnlyList<string> Categories { get; init; } = [];
+
     /// <summary>When a snoozed message returns to its folder. Null when not snoozed (local to this PC).</summary>
     public DateTimeOffset? SnoozedUntil { get; init; }
 

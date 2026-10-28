@@ -102,6 +102,12 @@ public interface IMailDataSource
     /// <summary>Moves messages back to where they were (undo).</summary>
     Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default);
 
+    /// <summary>Moves messages to a specific folder of their own account, in batches. Progress runs from 0 to 1.</summary>
+    Task<IReadOnlyList<MoveRecord>> MoveToFolderAsync(IReadOnlyCollection<Guid> messageIds, Guid folderId, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Adds or removes a local category on messages (stored on this PC by message identity).</summary>
+    Task SetCategoryAsync(IReadOnlyCollection<Guid> messageIds, string category, bool add, CancellationToken cancellationToken = default);
+
     /// <summary>Permanently deletes messages that are already in Trash.</summary>
     Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default);
 

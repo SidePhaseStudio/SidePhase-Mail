@@ -2,7 +2,7 @@
 
 Legend: ✅ implemented · 🧪 implemented and covered by automated tests · 🔌 tested end-to-end against a real IMAP/SMTP server (CI) · ❔ implemented, not yet verified · 🟡 partial · ⏳ planned
 
-Automated tests: `tests/SidePhase.Mail.Tests` (~295 xUnit tests). Unit tests run on Windows and Linux; the
+Automated tests: `tests/SidePhase.Mail.Tests` (~350 xUnit tests). Unit tests run on Windows and Linux; the
 integration tests run in CI against a throwaway Dovecot/Postfix server (`scripts/ci/setup-test-mail-server.sh`), never real accounts.
 UI behaviour is verified manually on Windows; there are no automated UI tests yet.
 
@@ -99,6 +99,28 @@ UI items below compile and pass the CI smoke test; ❔ means not yet checked by 
 | Shortcuts | ❔ | Ctrl+N, Ctrl+R, Ctrl+Shift+R, Ctrl+Shift+F (forward), Ctrl+F / Ctrl+E (search), F5, Delete → Trash, Backspace, Ctrl+Q/U, Ctrl+Shift+P, Insert; compose: Ctrl+Enter (optional confirmation), Ctrl+S, Ctrl+K, Esc. Reference in Settings › Shortcuts. |
 | Database migration | 🧪 | Schema 2 only adds tables; accounts, messages and saved sign-ins are untouched (tested from a schema-1 database). |
 
+## Milestone 5 — Smart inbox, search, rules and spam
+
+Checked first: Milestones 3 and 4 build and pass CI; conversation view, search and junk handling already existed and
+were extended rather than duplicated. UI items compile and pass the CI smoke test; ❔ means not yet checked by hand.
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Conversation view | 🧪 / ❔ | (Milestone 4) Message-ID/In-Reply-To/References grouping, across folders incl. Sent, per account, expand/collapse, settings switch. New: the reading pane lists every message in the conversation (sender, preview, date, attachments, unread) and opens any of them to read or reply to that one. |
+| Search index (SQLite FTS5) | 🧪 / 🔌 | Subjects, people, downloaded text and attachment names; maintained by triggers (no rebuilds), filled from existing mail by the schema-3 migration; prefix matching, diacritics folded, user input can't inject FTS syntax. Only mail stored on this PC is indexed, and the UI says so; *Search on server* covers the rest. |
+| Advanced search | 🧪 / ❔ | Operators for account, folder, location, size, attachment name/type, category, follow-ups; a compact form behind the search box that reads and writes the same query; "this view" or "all mail". |
+| Attachment details | 🔌 | Names, types and sizes from BODYSTRUCTURE during sync; older cached mail is filled in gradually; nothing is downloaded to learn them. |
+| Smart folders | 🧪 / ❔ | Saved searches in SQLite (never move mail): Unread, With attachments, Recently received, Large messages to start; create/edit/delete; unread counts. |
+| Spam | 🧪 / ❔ | SpamAssassin handling kept (verified headers only, explanations per rule, threshold, trusted/blocked senders and domains, Junk folder integration, Mark Junk / Not junk). New: score bar in the details. |
+| Local spam learning (optional) | 🧪 / ❔ | Naive Bayes on sender domain, subject and preview, trained only by explicit Junk / Not junk on real accounts; local only; explains its opinion; reset in Settings. It never moves or deletes; listing very sure messages (97%+) under Junk is optional and off by default. |
+| Rules | 🧪 / 🔌 / ❔ | Sender, domain, recipient, subject, keywords, verified spam score, attachments; all/any, per account, stop processing. Actions: move, mark read, favourite, category, no notification. Run on new Inbox mail before notifications, once per message per rule (by identity, so moves don't re-trigger), and "Run now" on a folder. Never deletes. |
+| Categories | 🧪 / ❔ | Local labels by message identity; chip on the row; edit from the context menu; `category:` in search and smart folders. |
+| Bulk actions | 🧪 / 🔌 / ❔ | Multi-select, bulk archive/delete/read/unread/move/favourite/junk with undo, drag to sidebar folders; moves are one UID MOVE per 200 messages with progress; cache work runs off the UI thread. |
+| Attachment finder | 🧪 / ❔ | Sidebar › Attachments: by name, type, size, sender, date; opens the containing email; uses recorded details only; never opens files. |
+| Privacy & security review | 🧪 | Diagnostic logs now redact tokens, bearer/XOAUTH2 headers, passwords, auth codes, JWTs and the user part of email addresses, and rotate at 1 MB. Tokens and passwords stay DPAPI-encrypted outside SQLite; HTML stays sanitised with a strict CSP; remote images blocked by default; links confirmed; risky attachments warned about and never run. No cloud scanning. |
+| Performance | ✅ | List filtering, search, conversation grouping and sorting run off the UI thread; incremental FTS; batched IMAP moves; attachment details back-filled a few hundred per folder per sync. |
+| Database migration | 🧪 | Schema 3 only adds tables, indexes and triggers; tested from a schema-2 database with cached mail (indexed on upgrade, accounts untouched). |
+
 ## Future
 
 Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side scheduled send where providers offer it.
@@ -118,3 +140,7 @@ Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side schedule
 * Scheduled messages and Undo Send need SidePhase Mail to be running; a message that couldn't be sent within a day of its
   time is held rather than sent late.
 * A message reopened from Undo Send, the Scheduled page or crash recovery keeps its text but loses rich formatting.
+* Search, smart folders and the attachment finder cover mail stored on this PC (the newest 500 per folder on first sync);
+  older mail is found with *Search on server*.
+* Rules run while SidePhase Mail is open, on new Inbox mail; they aren't server-side filters.
+* Local categories and spam learning aren't shared with other mail apps.

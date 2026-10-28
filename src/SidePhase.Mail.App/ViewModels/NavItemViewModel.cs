@@ -44,6 +44,9 @@ public sealed partial class NavItemViewModel : ObservableObject
     /// <summary>Opens a page instead of a mailbox (e.g. "outbox" for Scheduled).</summary>
     public string? PageTag { get; init; }
 
+    /// <summary>The smart folder this entry shows, if any (for its Edit/Delete menu).</summary>
+    public Core.Organisation.SmartFolder? SmartFolder { get; init; }
+
     /// <summary>A shortcut in the "Favourite folders" section (the folder also appears under its account).</summary>
     public bool IsFavouriteFolder { get; init; }
 

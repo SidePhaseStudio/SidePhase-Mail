@@ -24,6 +24,7 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     private readonly ISenderRulesService _rules;
     private readonly JunkPolicy _junk;
     private readonly IClock _clock;
+    private readonly Core.Spam.LocalSpamFilter _localFilter;
     private readonly HashSet<Guid> _remoteAllowed = [];
     private readonly Dictionary<Guid, MailAccount> _accounts = [];
     private readonly Dictionary<Guid, MailFolder> _folders = [];
@@ -36,8 +37,10 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         ISettingsService settings,
         ISenderRulesService rules,
         JunkPolicy junk,
-        IClock clock)
+        IClock clock,
+        Core.Spam.LocalSpamFilter localFilter)
     {
+        _localFilter = localFilter;
         _mail = mail;
         _commands = commands;
         _settings = settings;
@@ -90,6 +93,14 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [ObservableProperty] public partial bool ShowRemoteContentBanner { get; set; }
     [ObservableProperty] public partial bool ShowSpamBanner { get; set; }
     [ObservableProperty] public partial bool ShowFollowUpBanner { get; set; }
+
+    /// <summary>The local learning filter's opinion, when it has one worth showing.</summary>
+    [ObservableProperty] public partial bool ShowLocalSpamOpinion { get; set; }
+    [ObservableProperty] public partial string LocalSpamOpinion { get; set; } = string.Empty;
+
+    /// <summary>Score relative to the threshold (0–100) for the score bar; 0 when there's no score.</summary>
+    [ObservableProperty] public partial double SpamScorePercent { get; set; }
+    [ObservableProperty] public partial bool HasSpamScore { get; set; }
     [ObservableProperty] public partial bool FollowUpIsOverdue { get; set; }
     [ObservableProperty] public partial string FollowUpText { get; set; } = string.Empty;
     [ObservableProperty] public partial bool ShowSnoozeBanner { get; set; }
@@ -119,10 +130,22 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     public string JunkLabel => IsInJunk ? "Not junk" : "Move to Junk";
     public string JunkGlyph => IsInJunk ? Glyphs.Accept : Glyphs.Junk;
 
-    public async Task ShowAsync(MessageSummary? message)
+    /// <summary>The other messages in the open message's conversation (conversation view), oldest first.</summary>
+    public ObservableCollection<ThreadEntryViewModel> ThreadItems { get; } = [];
+
+    [ObservableProperty] public partial bool HasThread { get; set; }
+    [ObservableProperty] public partial string ThreadSummary { get; set; } = string.Empty;
+
+    /// <summary>Raised when a message in the conversation list is chosen, so the message list can select it.</summary>
+    public event EventHandler<Guid>? ThreadMessageRequested;
+
+    public Task ShowAsync(MessageSummary? message) => ShowAsync(message, null);
+
+    public async Task ShowAsync(MessageSummary? message, IReadOnlyList<MessageSummary>? thread)
     {
         _loadCts?.Cancel();
         _loadCts = null;
+        UpdateThread(message, thread);
 
         if (message is null)
         {
@@ -189,6 +212,28 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         if (Message is null || Message.Id != message.Id || Message == message) return;
         Message = message;
         _ = ApplyHeaderAsync(message);
+    }
+
+    private void UpdateThread(MessageSummary? message, IReadOnlyList<MessageSummary>? thread)
+    {
+        ThreadItems.Clear();
+        if (message is null || thread is not { Count: > 1 })
+        {
+            HasThread = false;
+            return;
+        }
+
+        var now = _clock.Now;
+        foreach (var m in thread)
+        {
+            ThreadItems.Add(new ThreadEntryViewModel(m, m.Id == message.Id, now, id => ThreadMessageRequested?.Invoke(this, id)));
+        }
+
+        var people = thread.Select(m => m.From.Address).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var attachments = thread.Count(m => m.HasAttachments);
+        ThreadSummary = $"{thread.Count} messages in this conversation · {people} {(people == 1 ? "person" : "people")}"
+            + (attachments > 0 ? $" · {attachments} with attachments" : string.Empty);
+        HasThread = true;
     }
 
     private void RenderBody()
@@ -259,6 +304,9 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             : " Rules: " + string.Join(", ", m.Spam.Tests.Take(4)) + (m.Spam.Tests.Count > 4 ? $" +{m.Spam.Tests.Count - 4} more." : ".");
 
         UpdateSpamDetails(m.Spam, verdict, threshold);
+        UpdateLocalOpinion(m);
+        HasSpamScore = m.Spam.Score is not null && m.Spam.Trust != SpamHeaderTrust.Untrusted;
+        SpamScorePercent = m.Spam.Score is { } sc ? Math.Clamp(sc / (threshold * 2) * 100, 0, 100) : 0;
 
         if (_rules.IsBlocked(m.From))
         {
@@ -290,6 +338,24 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         {
             ShowSpamBanner = false;
         }
+    }
+
+    private void UpdateLocalOpinion(MessageSummary m)
+    {
+        var result = m.FolderKind is FolderKind.Sent or FolderKind.Drafts ? null : _localFilter.Classify(m);
+        if (result is null || !(result.LikelyJunk || (result.LikelyFine && m.FolderKind == FolderKind.Junk)))
+        {
+            ShowLocalSpamOpinion = false;
+            return;
+        }
+
+        var because = result.Evidence.Count == 0 ? string.Empty : " Mostly because of " + string.Join(", ", result.Evidence) + ".";
+        LocalSpamOpinion = (result.LikelyJunk
+                ? $"Your local filter thinks this is junk ({result.Probability:P0})."
+                : $"Your local filter thinks this isn't junk ({1 - result.Probability:P0}).")
+            + because
+            + $" It learns only from the {result.LearnedFrom} messages you've marked Junk or Not junk, on this PC.";
+        ShowLocalSpamOpinion = true;
     }
 
     private void UpdateSpamDetails(SpamReport spam, SpamVerdict verdict, double threshold)
@@ -406,4 +472,24 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     }
 
     public Task ComposeToAsync(EmailAddress to) => _commands.ComposeNewAsync(Message?.AccountId, to);
+}
+
+/// <summary>One message in the reading pane's conversation list.</summary>
+public sealed partial class ThreadEntryViewModel(MessageSummary message, bool isCurrent, DateTimeOffset now, Action<Guid> open)
+{
+    public MessageSummary Message { get; } = message;
+    public bool IsCurrent { get; } = isCurrent;
+    public bool IsUnread => !Message.IsRead;
+    public bool HasAttachments => Message.HasAttachments;
+    public string Sender => Message.FolderKind is FolderKind.Sent or FolderKind.Drafts ? "You" : Message.From.DisplayName;
+    public string DateText { get; } = DateDisplayFormatter.ForList(message.Date, now);
+    public string Preview => Message.Preview;
+    public double RowOpacity => IsCurrent ? 1.0 : 0.82;
+    public string AutomationName => $"{Sender}, {DateText}{(IsCurrent ? ", open" : string.Empty)}{(IsUnread ? ", unread" : string.Empty)}";
+
+    [RelayCommand]
+    private void Open()
+    {
+        if (!IsCurrent) open(Message.Id);
+    }
 }

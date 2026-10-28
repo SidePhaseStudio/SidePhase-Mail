@@ -17,14 +17,25 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly IUiDispatcher _ui;
     private readonly OutboxService _outbox;
+    private readonly Core.Organisation.SmartFolderService _smartFolders;
+    private IReadOnlyList<Core.Organisation.SmartFolder> _smartFolderList = [];
     private bool _refreshQueued;
     private int _buildVersion;
     private Task _latestBuild = Task.CompletedTask;
 
-    public ShellViewModel(IMailDataSource mail, JunkPolicy junk, ISenderRulesService rules, ISettingsService settings, IUiDispatcher ui, OutboxService outbox)
+    public ShellViewModel(
+        IMailDataSource mail,
+        JunkPolicy junk,
+        ISenderRulesService rules,
+        ISettingsService settings,
+        IUiDispatcher ui,
+        OutboxService outbox,
+        Core.Organisation.SmartFolderService smartFolders)
     {
         _mail = mail;
         _outbox = outbox;
+        _smartFolders = smartFolders;
+        _smartFolders.Changed += (_, _) => ui.Post(() => _ = BuildAsync());
         _outbox.Changed += (_, _) => QueueCountRefresh();
         _junk = junk;
         _settings = settings;
@@ -102,6 +113,21 @@ public sealed partial class ShellViewModel : ObservableObject
         items.Add(new NavItemViewModel(NavItemKind.Item, "Junk", Glyphs.Junk, MailboxScope.Unified(FolderKind.Junk)));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Archive", Glyphs.Archive, MailboxScope.Unified(FolderKind.Archive), BadgeMode.Total));
         items.Add(new NavItemViewModel(NavItemKind.Item, "Trash", Glyphs.Delete, MailboxScope.Unified(FolderKind.Trash), BadgeMode.None));
+
+        // Smart folders: saved searches. They never move mail.
+        _smartFolderList = await _smartFolders.ListAsync();
+        items.Add(new NavItemViewModel(NavItemKind.Header, "Smart folders"));
+        foreach (var smart in _smartFolderList)
+        {
+            var countable = Core.Organisation.SmartFolderFilter.IndexTerms(smart).Count == 0;
+            items.Add(new NavItemViewModel(NavItemKind.Item, smart.Name, smart.Glyph, MailboxScope.ForSmartFolder(smart.Id), countable ? BadgeMode.Unread : BadgeMode.None)
+            {
+                SmartFolder = smart,
+                Subtitle = smart.Query,
+            });
+        }
+
+        items.Add(new NavItemViewModel(NavItemKind.Item, "New smart folder…", Glyphs.AddSmartFolder, badgeMode: BadgeMode.None) { PageTag = "new-smart-folder" });
 
         // Favourite folders (any account), in the order they were added.
         var favouriteIds = _settings.Current.FavouriteFolderIds;
@@ -206,6 +232,8 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             var messages = await _mail.GetMessagesAsync();
             var showBadges = _settings.Current.ShowUnreadBadges;
+            var accounts = await _mail.GetAccountsAsync();
+            var context = new SearchContext { AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress) };
             var outbox = await _outbox.GetItemsAsync(_mail.IsDemo);
             var waiting = outbox.Count(i => i.State is OutboxState.Failed or OutboxState.Uncertain
                 || (i.Kind == OutboxKind.Scheduled && i.State is OutboxState.Queued or OutboxState.Sending));
@@ -214,6 +242,13 @@ public sealed partial class ShellViewModel : ObservableObject
                 item.ShowBadges = showBadges;
                 if (item.PageTag == "outbox") item.Count = waiting;
                 if (item.Scope is null || item.BadgeMode == BadgeMode.None) continue;
+                if (item.SmartFolder is { } smart)
+                {
+                    var matches = Core.Organisation.SmartFolderFilter.Build(smart, context, _junk.IsLocallyJunk);
+                    item.Count = messages.Count(m => !m.IsRead && matches(m));
+                    continue;
+                }
+
                 item.Count = item.BadgeMode == BadgeMode.Total
                     ? messages.Count(m => MailboxScopeMatcher.Matches(m, item.Scope, _junk.IsLocallyJunk))
                     : messages.Count(m => !m.IsRead && MailboxScopeMatcher.Matches(m, item.Scope, _junk.IsLocallyJunk));

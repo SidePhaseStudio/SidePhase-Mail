@@ -6,6 +6,7 @@ using SidePhase.Mail.App.Services;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Collections;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Organisation;
 using SidePhase.Mail.Core.Services;
 using SidePhase.Mail.Core.Settings;
 using SidePhase.Mail.Core.Spam;
@@ -23,6 +24,7 @@ public sealed partial class MailListViewModel : ObservableObject
     private readonly IUiDispatcher _ui;
     private readonly MessageCommandService _commands;
     private readonly ToastService _toasts;
+    private readonly SmartFolderService _smartFolders;
     private readonly Dictionary<Guid, MessageItemViewModel> _items = [];
     private readonly Dictionary<Guid, MessageItemViewModel> _childItems = [];
     private readonly HashSet<Guid> _expanded = [];
@@ -45,8 +47,11 @@ public sealed partial class MailListViewModel : ObservableObject
         IUiDispatcher ui,
         MessageCommandService commands,
         ToastService toasts,
-        ReadingPaneViewModel reading)
+        ReadingPaneViewModel reading,
+        SmartFolderService smartFolders)
     {
+        _smartFolders = smartFolders;
+        _smartFolders.Changed += (_, _) => QueueRefresh();
         _mail = mail;
         _settings = settings;
         _rules = rules;
@@ -65,7 +70,12 @@ public sealed partial class MailListViewModel : ObservableObject
         SyncStatus = string.Empty;
         SearchStatus = string.Empty;
 
-        _mail.DataChanged += (_, _) => QueueRefresh();
+        _mail.DataChanged += (_, e) =>
+        {
+            if (e.Kind == MailDataChangeKind.Reset) _folderNames = new Dictionary<Guid, string>();
+            QueueRefresh();
+        };
+        Reading.ThreadMessageRequested += async (_, id) => await OpenInConversationAsync(id);
         _rules.RulesChanged += (_, _) => QueueRefresh();
         _settings.SettingsChanged += (_, _) => QueueRefresh();
     }
@@ -115,6 +125,31 @@ public sealed partial class MailListViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SearchServerCommand))]
     public partial bool IsSearchActive { get; set; }
 
+    /// <summary>Search every account and folder instead of only the open view.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SearchScopeToggleText))]
+    public partial bool SearchAllMail { get; set; }
+
+    public string SearchScopeToggleText => SearchAllMail ? "Only this view" : "Search all mail";
+
+    /// <summary>Account names for the advanced search form.</summary>
+    public IReadOnlyList<string> AccountNames { get; private set; } = [];
+
+    private IReadOnlyDictionary<Guid, string> _folderNames = new Dictionary<Guid, string>();
+
+    [RelayCommand]
+    private void ToggleSearchAllMail() => SearchAllMail = !SearchAllMail;
+
+    partial void OnSearchAllMailChanged(bool value)
+    {
+        SearchStatus = SearchStatusText();
+        _ = RefreshAsync();
+    }
+
+    private string SearchStatusText() => !IsSearchActive
+        ? string.Empty
+        : SearchAllMail ? "Searching all mail stored on this PC" : "Searching this view on this PC";
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchServerCommand))]
     public partial bool IsSearchingServer { get; set; }
@@ -134,6 +169,88 @@ public sealed partial class MailListViewModel : ObservableObject
 
     [ObservableProperty]
     public partial MessageItemViewModel? SelectedItem { get; set; }
+
+    // ---------------------------------------------------------------- multi-select and bulk actions
+
+    private IReadOnlyList<MessageItemViewModel> _selection = [];
+
+    /// <summary>More than one message is selected (Ctrl/Shift+click): the bulk toolbar is shown.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectionText))]
+    public partial bool IsMultiSelect { get; set; }
+
+    public string SelectionText => $"{SelectionTargets().Count} selected";
+
+    /// <summary>Called by the page with the list's current selection.</summary>
+    public void SetSelection(IReadOnlyList<MessageItemViewModel> items)
+    {
+        _selection = items;
+        IsMultiSelect = items.Count > 1;
+        OnPropertyChanged(nameof(SelectionText));
+    }
+
+    /// <summary>The messages a bulk action applies to (whole conversations for conversation rows), without duplicates.</summary>
+    public IReadOnlyList<MessageSummary> SelectionTargets() =>
+        _selection.SelectMany(i => i.Targets).DistinctBy(m => m.Id).ToList();
+
+    /// <summary>Raised when the selection should be cleared (after a bulk action or Esc).</summary>
+    public event EventHandler? ClearSelectionRequested;
+
+    [RelayCommand]
+    private void ClearSelection() => ClearSelectionRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private async Task BulkArchiveAsync() => await RunBulkAsync(t => _commands.ArchiveAsync(t));
+
+    [RelayCommand]
+    private async Task BulkDeleteAsync() => await RunBulkAsync(t => _commands.DeleteAsync(t));
+
+    [RelayCommand]
+    private async Task BulkJunkAsync() => await RunBulkAsync(t => _commands.MoveToJunkAsync(t));
+
+    [RelayCommand]
+    private async Task BulkMarkReadAsync() => await RunBulkAsync(t => _commands.SetReadWithUndoAsync(t, true), clear: false);
+
+    [RelayCommand]
+    private async Task BulkMarkUnreadAsync() => await RunBulkAsync(t => _commands.SetReadWithUndoAsync(t, false), clear: false);
+
+    [RelayCommand]
+    private async Task BulkStarAsync() => await RunBulkAsync(t => _commands.SetStarredWithUndoAsync(t, true), clear: false);
+
+    [RelayCommand]
+    private async Task BulkUnstarAsync() => await RunBulkAsync(t => _commands.SetStarredWithUndoAsync(t, false), clear: false);
+
+    public Task BulkMoveAsync(MailFolder folder) => RunBulkAsync(t => _commands.MoveToFolderAsync(t, folder));
+
+    /// <summary>The folders bulk "Move to" offers (those of the selected messages' accounts).</summary>
+    public async Task<IReadOnlyList<(MailAccount Account, MailFolder Folder)>> MoveTargetsAsync(IReadOnlyCollection<Guid>? accountIds = null)
+    {
+        var accounts = await _mail.GetAccountsAsync();
+        var wanted = accountIds ?? SelectionTargets().Select(m => m.AccountId).ToHashSet();
+        var result = new List<(MailAccount, MailFolder)>();
+        foreach (var account in accounts.Where(a => wanted.Contains(a.Id)))
+        {
+            foreach (var folder in await _mail.GetFoldersAsync(account.Id)) result.Add((account, folder));
+        }
+
+        return result;
+    }
+
+    private async Task RunBulkAsync(Func<IReadOnlyList<MessageSummary>, Task> action, bool clear = true)
+    {
+        var targets = SelectionTargets();
+        if (targets.Count == 0) return;
+        try
+        {
+            await action(targets);
+        }
+        catch (Exception ex)
+        {
+            _toasts.Show("That didn't work: " + ex.Message, ToastKind.Error);
+        }
+
+        if (clear) ClearSelectionRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     public bool HasActiveFilter => Filter != MessageFilter.All;
 
@@ -172,7 +289,7 @@ public sealed partial class MailListViewModel : ObservableObject
             _searchVersion++;
             _serverMatches = new HashSet<Guid>();
             HasServerResults = false;
-            SearchStatus = IsSearchActive ? "Searching messages stored on this PC" : string.Empty;
+            SearchStatus = SearchStatusText();
         }
 
         OnPropertyChanged(nameof(CanSearchServer));
@@ -191,7 +308,7 @@ public sealed partial class MailListViewModel : ObservableObject
             _lastSelectedIndex = Entries.IndexOf(value);
         }
 
-        _ = Reading.ShowAsync(value?.Summary);
+        _ = Reading.ShowAsync(value?.Summary, value?.ThreadMessages);
 
         // Opening a conversation expands it, like Gmail.
         if (value is { IsConversation: true, IsExpanded: false, ConversationKey: { } key } && _expanded.Add(key)) QueueRefresh();
@@ -209,7 +326,7 @@ public sealed partial class MailListViewModel : ObservableObject
         _serverMatches = new HashSet<Guid>();
         HasServerResults = false;
         IsSearchActive = !string.IsNullOrWhiteSpace(value);
-        SearchStatus = IsSearchActive ? "Searching messages stored on this PC" : string.Empty;
+        SearchStatus = SearchStatusText();
 
         _searchDelay?.Cancel();
         _searchDelay = new CancellationTokenSource();
@@ -253,7 +370,7 @@ public sealed partial class MailListViewModel : ObservableObject
             if (version != _searchVersion) return;
             _serverMatches = result.MessageIds;
             HasServerResults = result.Supported;
-            SearchStatus = result.Supported ? "Results from this PC and the server · " + result.Message : result.Message;
+            SearchStatus = result.Supported ? "This PC and the server · " + result.Message : result.Message;
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -329,6 +446,16 @@ public sealed partial class MailListViewModel : ObservableObject
         return null;
     }
 
+    /// <summary>Opens a message from the reading pane's conversation list, expanding its conversation in the list.</summary>
+    private async Task OpenInConversationAsync(Guid messageId)
+    {
+        var head = Entries.OfType<MessageItemViewModel>().FirstOrDefault(i => !i.IsThreadChild && i.ConversationMessages.Any(m => m.Id == messageId));
+        if (head?.ConversationKey is { } key && _expanded.Add(key)) await RefreshAsync();
+        var target = Entries.OfType<MessageItemViewModel>().FirstOrDefault(i => i.IsThreadChild && i.Id == messageId)
+            ?? Entries.OfType<MessageItemViewModel>().FirstOrDefault(i => i.Id == messageId);
+        if (target is not null) SelectedItem = target;
+    }
+
     private void ToggleConversation(MessageItemViewModel head)
     {
         if (head.ConversationKey is not { } key) return;
@@ -372,28 +499,101 @@ public sealed partial class MailListViewModel : ObservableObject
             : null;
 
         var settings = _settings.Current;
-        var inScope = all.Where(m => MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk)).ToList();
-
-        // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
-        // Trash, Junk, drafts and snoozed messages only take part when they're what is being viewed.
-        var groupConversations = settings.ConversationView && Scope.FolderKind is not (FolderKind.Drafts or FolderKind.Trash or FolderKind.Junk);
-        var conversationContext = groupConversations
-            ? all.Where(m => m.FolderKind is not (FolderKind.Trash or FolderKind.Junk or FolderKind.Drafts) && !m.IsSnoozed && !_junk.IsLocallyJunk(m))
-            : null;
-
-        var sections = MessageListBuilder.Build(inScope, new MessageListOptions
+        if (_folderNames.Count == 0 || accounts.Count != AccountNames.Count)
         {
-            SearchText = SearchText,
-            Search = new SearchContext { BodyMatches = _bodyMatches, ServerMatches = _serverMatches },
-            Filter = Filter,
-            Sort = Sort,
-            ShowPinnedSection = settings.ShowPinnedSection && Scope.Kind != MailboxScopeKind.Pinned,
-            PinnedSectionCollapsed = settings.PinnedSectionCollapsed,
-            Now = _clock.Now,
-            FirstDayOfWeek = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek,
-            GroupConversations = groupConversations,
-            ConversationContext = conversationContext,
+            var folders = new Dictionary<Guid, string>();
+            foreach (var account in accounts)
+            {
+                foreach (var folder in await _mail.GetFoldersAsync(account.Id)) folders[folder.Id] = folder.Name;
+            }
+
+            _folderNames = folders;
+            AccountNames = accounts.Select(a => a.DisplayName).ToList();
+        }
+
+        // A smart folder is a saved search: look up its words in the local index, then filter.
+        Func<MessageSummary, bool>? smartFilter = null;
+        if (Scope.Kind == MailboxScopeKind.SmartFolder)
+        {
+            var smart = (await _smartFolders.ListAsync()).FirstOrDefault(f => f.Id == Scope.FolderId);
+            if (smart is not null)
+            {
+                var terms = SmartFolderFilter.IndexTerms(smart);
+                IReadOnlyDictionary<string, IReadOnlySet<Guid>> smartMatches = new Dictionary<string, IReadOnlySet<Guid>>();
+                if (terms.Count > 0)
+                {
+                    try
+                    {
+                        smartMatches = await _mail.SearchDownloadedTextAsync(terms);
+                    }
+                    catch (Exception)
+                    {
+                        // Headers and previews are still searched.
+                    }
+                }
+
+                smartFilter = SmartFolderFilter.Build(smart, new SearchContext
+                {
+                    Now = _clock.Now,
+                    BodyMatches = smartMatches,
+                    AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress),
+                    FolderNames = _folderNames,
+                }, _junk.IsLocallyJunk);
+            }
+
+            if (version != _refreshVersion) return;
+        }
+
+        // "All mail" searches every account and folder; Junk and Trash only when asked for with in:.
+        // Filtering, searching, grouping into conversations and sorting run off the UI thread, so big mailboxes
+        // don't make the window stutter. Everything they read is a snapshot taken here.
+        var searchEverywhere = IsSearchActive && SearchAllMail;
+        var searchText = SearchText;
+        var scope = Scope;
+        var filter = Filter;
+        var sort = Sort;
+        var searchContext = new SearchContext
+        {
+            BodyMatches = _bodyMatches,
+            ServerMatches = _serverMatches,
+            AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress),
+            FolderNames = _folderNames,
+        };
+        var clockNow = _clock.Now;
+        var firstDay = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var isLocallyJunk = (Func<MessageSummary, bool>)_junk.IsLocallyJunk;
+
+        var (inScope, sections) = await Task.Run(() =>
+        {
+            var asksForJunkOrTrash = searchEverywhere && MessageSearch.Parse(searchText).Any(t => t.Operator == "in");
+            var matching = all.Where(m => searchEverywhere
+                    ? !m.IsSnoozed && (asksForJunkOrTrash || m.FolderKind is not (FolderKind.Junk or FolderKind.Trash))
+                    : smartFilter?.Invoke(m) ?? MailboxScopeMatcher.Matches(m, scope, isLocallyJunk))
+                .ToList();
+
+            // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
+            // Trash, Junk, drafts and snoozed messages only take part when they're what is being viewed.
+            var groupConversations = settings.ConversationView && scope.FolderKind is not (FolderKind.Drafts or FolderKind.Trash or FolderKind.Junk);
+            var conversationContext = groupConversations
+                ? all.Where(m => m.FolderKind is not (FolderKind.Trash or FolderKind.Junk or FolderKind.Drafts) && !m.IsSnoozed && !isLocallyJunk(m)).ToList()
+                : null;
+
+            var built = MessageListBuilder.Build(matching, new MessageListOptions
+            {
+                SearchText = searchText,
+                Search = searchContext,
+                Filter = filter,
+                Sort = sort,
+                ShowPinnedSection = settings.ShowPinnedSection && scope.Kind != MailboxScopeKind.Pinned,
+                PinnedSectionCollapsed = settings.PinnedSectionCollapsed,
+                Now = clockNow,
+                FirstDayOfWeek = firstDay,
+                GroupConversations = groupConversations,
+                ConversationContext = conversationContext,
+            });
+            return (matching, built);
         });
+        if (version != _refreshVersion) return; // a newer refresh superseded this one
 
         var now = _clock.Now;
         var compact = settings.Density == ListDensity.Compact;
@@ -466,6 +666,7 @@ public sealed partial class MailListViewModel : ObservableObject
                     if (_childItems.TryGetValue(child.Id, out var childItem)) childItem.Update(child, childContext);
                     else _childItems[child.Id] = childItem = new MessageItemViewModel(child, childContext, _commands, isThreadChild: true);
                     childItem.SetCompact(true);
+                    childItem.SetThread(entry.Conversation.Messages);
                     seenChildren.Add(child.Id);
                     desired.Add(childItem);
                 }
@@ -525,6 +726,7 @@ public sealed partial class MailListViewModel : ObservableObject
             MailboxScopeKind.Pinned => ("No pinned messages", "Right-click any message and choose \"Pin to top\" to keep it here, above everything else."),
             MailboxScopeKind.Favourites => ("No favourites yet", "Star a message to add it to your favourites."),
             MailboxScopeKind.Snoozed => ("Nothing snoozed", "Right-click a message and choose Snooze to hide it until later. Snoozing is kept on this PC only and isn't shared with other mail apps."),
+            MailboxScopeKind.SmartFolder => ("Nothing here yet", "No messages stored on this PC match this smart folder. It updates by itself as mail arrives."),
             MailboxScopeKind.FollowUps => ("No follow-ups", "Right-click a message and choose \"Remind me to follow up\". You'll get a Windows notification when it's due."),
             _ when Scope.FolderKind == FolderKind.Junk => ("No junk", "Nice and tidy. Messages flagged by SpamAssassin or from blocked senders appear here."),
             _ => ("All caught up", $"There are no messages in {Title}."),

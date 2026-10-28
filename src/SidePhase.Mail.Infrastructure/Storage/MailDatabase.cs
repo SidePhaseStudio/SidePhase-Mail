@@ -179,6 +179,121 @@ public sealed class MailDatabase
             use_count    INTEGER NOT NULL
         );
         """,
+
+        // 3 — Milestone 5: full-text search, attachment details, smart folders, rules, categories, local spam learning.
+        // Only adds tables, indexes and triggers; existing data is untouched (the search index is filled from it).
+        """
+        CREATE TABLE message_attachments (
+            message_id   TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+            position     INTEGER NOT NULL,
+            file_name    TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            size         INTEGER NOT NULL,
+            PRIMARY KEY (message_id, position)
+        );
+        CREATE INDEX ix_message_attachments_name ON message_attachments (file_name COLLATE NOCASE);
+
+        -- Search index. fts_map gives every message a stable integer key (implicit rowids can change on VACUUM).
+        CREATE TABLE fts_map (
+            fts_rowid  INTEGER PRIMARY KEY,
+            message_id TEXT NOT NULL UNIQUE
+        );
+        CREATE VIRTUAL TABLE message_fts USING fts5(
+            subject, sender, recipients, body, attachments,
+            tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3');
+
+        CREATE TRIGGER trg_messages_fts_insert AFTER INSERT ON messages BEGIN
+            INSERT OR IGNORE INTO fts_map (message_id) VALUES (new.id);
+            INSERT INTO message_fts (rowid, subject, sender, recipients, body, attachments)
+            SELECT fts_rowid, new.subject, COALESCE(new.from_name, '') || ' ' || new.from_address,
+                   (SELECT COALESCE(group_concat(COALESCE(json_extract(value, '$.name'), '') || ' ' || COALESCE(json_extract(value, '$.address'), ''), ' '), '')
+                      FROM json_each(new.to_json)) || ' ' ||
+                   (SELECT COALESCE(group_concat(COALESCE(json_extract(value, '$.name'), '') || ' ' || COALESCE(json_extract(value, '$.address'), ''), ' '), '')
+                      FROM json_each(new.cc_json)),
+                   new.preview, ''
+            FROM fts_map WHERE message_id = new.id;
+        END;
+
+        CREATE TRIGGER trg_messages_fts_delete AFTER DELETE ON messages BEGIN
+            DELETE FROM message_fts WHERE rowid = (SELECT fts_rowid FROM fts_map WHERE message_id = old.id);
+            DELETE FROM fts_map WHERE message_id = old.id;
+        END;
+
+        CREATE TRIGGER trg_bodies_fts AFTER INSERT ON bodies BEGIN
+            UPDATE message_fts SET body = COALESCE(new.text, body)
+            WHERE rowid = (SELECT fts_rowid FROM fts_map WHERE message_id = new.message_id);
+        END;
+
+        CREATE TRIGGER trg_bodies_fts_update AFTER UPDATE OF text ON bodies BEGIN
+            UPDATE message_fts SET body = COALESCE(new.text, body)
+            WHERE rowid = (SELECT fts_rowid FROM fts_map WHERE message_id = new.message_id);
+        END;
+
+        CREATE TRIGGER trg_attachments_fts AFTER INSERT ON message_attachments BEGIN
+            UPDATE message_fts SET attachments = attachments || ' ' || new.file_name
+            WHERE rowid = (SELECT fts_rowid FROM fts_map WHERE message_id = new.message_id);
+        END;
+
+        INSERT INTO fts_map (message_id) SELECT id FROM messages;
+        INSERT INTO message_fts (rowid, subject, sender, recipients, body, attachments)
+        SELECT fm.fts_rowid, m.subject, COALESCE(m.from_name, '') || ' ' || m.from_address,
+               (SELECT COALESCE(group_concat(COALESCE(json_extract(value, '$.name'), '') || ' ' || COALESCE(json_extract(value, '$.address'), ''), ' '), '')
+                  FROM json_each(m.to_json)) || ' ' ||
+               (SELECT COALESCE(group_concat(COALESCE(json_extract(value, '$.name'), '') || ' ' || COALESCE(json_extract(value, '$.address'), ''), ' '), '')
+                  FROM json_each(m.cc_json)),
+               COALESCE(b.text, m.preview), ''
+        FROM messages m JOIN fts_map fm ON fm.message_id = m.id LEFT JOIN bodies b ON b.message_id = m.id;
+
+        CREATE TABLE smart_folders (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            query      TEXT NOT NULL,
+            glyph      TEXT,
+            position   INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE mail_rules (
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            enabled         INTEGER NOT NULL,
+            position        INTEGER NOT NULL DEFAULT 0,
+            definition_json TEXT NOT NULL,
+            created_at      INTEGER NOT NULL,
+            updated_at      INTEGER NOT NULL
+        );
+
+        -- Which rule has already acted on which message (by identity, so moving a message doesn't re-run rules).
+        CREATE TABLE rule_applications (
+            rule_id      TEXT NOT NULL,
+            account_id   TEXT NOT NULL,
+            identity_key TEXT NOT NULL,
+            applied_at   INTEGER NOT NULL,
+            PRIMARY KEY (rule_id, account_id, identity_key)
+        );
+
+        CREATE TABLE message_categories (
+            account_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            identity_key TEXT NOT NULL,
+            category     TEXT NOT NULL COLLATE NOCASE,
+            PRIMARY KEY (account_id, identity_key, category)
+        );
+
+        -- Local spam learning: word counts from messages you marked Junk / Not junk. Never leaves this PC.
+        CREATE TABLE spam_tokens (
+            token      TEXT PRIMARY KEY,
+            spam_count INTEGER NOT NULL DEFAULT 0,
+            ham_count  INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE spam_training (
+            account_id   TEXT NOT NULL,
+            identity_key TEXT NOT NULL,
+            is_spam      INTEGER NOT NULL,
+            tokens_json  TEXT NOT NULL,
+            trained_at   INTEGER NOT NULL,
+            PRIMARY KEY (account_id, identity_key)
+        );
+        """,
     ];
 
     private readonly string _connectionString;

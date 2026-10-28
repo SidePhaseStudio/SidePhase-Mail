@@ -53,6 +53,11 @@
         SelectionChanged="OnNavSelectionChanged">
 
       <NavigationView.FooterMenuItems>
+        <NavigationViewItem x:Name="AttachmentsItem" Content="Attachments" Tag="attachments" ToolTipService.ToolTip="Find attachments">
+          <NavigationViewItem.Icon>
+            <FontIcon Glyph="&#xE723;" />
+          </NavigationViewItem.Icon>
+        </NavigationViewItem>
         <NavigationViewItem x:Name="ContactsItem" Content="Contacts" Tag="contacts" ToolTipService.ToolTip="Contacts">
           <NavigationViewItem.Icon>
             <FontIcon Glyph="&#xE716;" />

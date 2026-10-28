@@ -44,6 +44,13 @@ public sealed partial class MessageItemViewModel : ObservableObject
     /// <summary>Messages in the conversation, oldest first (including your own replies from Sent).</summary>
     public IReadOnlyList<MessageSummary> ConversationMessages { get; private set; } = [];
 
+    /// <summary>The conversation this row belongs to (head or expanded child), for the reading pane.</summary>
+    public IReadOnlyList<MessageSummary> ThreadMessages => IsThreadChild ? _thread : ConversationMessages;
+
+    private IReadOnlyList<MessageSummary> _thread = [];
+
+    public void SetThread(IReadOnlyList<MessageSummary> thread) => _thread = thread;
+
     public int ConversationCount => ConversationMessages.Count;
     public bool IsConversation => ConversationCount > 1;
     public string ConversationCountText => ConversationCount.ToString(CultureInfo.CurrentCulture);
@@ -52,7 +59,7 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public string ExpandTooltip => IsExpanded ? "Collapse conversation" : $"Show all {ConversationCount} messages";
 
     /// <summary>What list actions (archive, delete, read) apply to: the whole conversation in view, or this message.</summary>
-    private IReadOnlyList<MessageSummary> Targets => IsConversation && _inView.Count > 0 ? _inView : [Summary];
+    public IReadOnlyList<MessageSummary> Targets => IsConversation && _inView.Count > 0 ? _inView : [Summary];
 
     /// <summary>Makes this row the head of a conversation (or a single message again when <paramref name="conversation"/> is null).</summary>
     public void SetConversation(Guid? key, IReadOnlyList<MessageSummary>? conversation, IReadOnlyList<MessageSummary>? inView, bool expanded)
@@ -100,6 +107,9 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public bool IsDraft { get; private set; }
     public bool IsInJunk { get; private set; }
     public bool HasPreview => !IsCompact && Preview.Length > 0;
+
+    public string CategoriesText { get; private set; } = string.Empty;
+    public bool HasCategories => CategoriesText.Length > 0;
 
     public bool IsSnoozed { get; private set; }
     public bool IsNotSnoozed => !IsSnoozed;
@@ -174,6 +184,7 @@ public sealed partial class MessageItemViewModel : ObservableObject
         Subject = m.DisplaySubject;
         Preview = m.Preview;
         DateText = DateDisplayFormatter.ForList(m.Date, context.Now);
+        CategoriesText = string.Join(" · ", m.Categories);
         IsSnoozed = m.SnoozedUntil is not null;
         SnoozeTooltip = m.SnoozedUntil is { } until ? "Snoozed until " + QuickTimes.Describe(until, context.Now, TimeZoneInfo.Local) : string.Empty;
         if (m.SnoozedUntil is { } back) DateText = QuickTimes.Describe(back, context.Now, TimeZoneInfo.Local);
@@ -250,4 +261,7 @@ public sealed partial class MessageItemViewModel : ObservableObject
     /// <param name="choice">A <see cref="QuickTime"/> name, "Custom" or "Clear".</param>
     [RelayCommand]
     private Task FollowUpAsync(string choice) => _commands.FollowUpAsync(Summary, choice);
+
+    [RelayCommand]
+    private Task EditCategoriesAsync() => _commands.EditCategoriesAsync(Summary);
 }

@@ -20,8 +20,28 @@ public sealed class MessageCommandService(
     ToastService toasts,
     DialogService dialogs,
     WindowService windows,
-    IClock clock)
+    IClock clock,
+    Core.Spam.LocalSpamFilter localFilter)
 {
+    /// <summary>Teaches the local filter from an explicit Junk / Not junk choice (real accounts only).</summary>
+    private void Learn(IEnumerable<MessageSummary> messages, bool isSpam)
+    {
+        if (mail.IsDemo || !settings.Current.LocalSpamLearning) return;
+        foreach (var message in messages.ToList()) _ = LearnAsync(message, isSpam);
+    }
+
+    private async Task LearnAsync(MessageSummary message, bool isSpam)
+    {
+        try
+        {
+            await localFilter.TrainAsync(message, isSpam);
+        }
+        catch (Exception)
+        {
+            // Learning is a convenience; it must never get in the way of moving the message.
+        }
+    }
+
     public Task ToggleStarAsync(MessageSummary message) => mail.SetStarredAsync([message.Id], !message.IsStarred);
 
     public Task TogglePinAsync(MessageSummary message) => mail.SetPinnedAsync([message.Id], !message.IsPinned);
@@ -30,6 +50,50 @@ public sealed class MessageCommandService(
 
     public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool isRead) =>
         mail.SetReadAsync(messages.Where(m => m.IsRead != isRead).Select(m => m.Id).ToList(), isRead);
+
+    /// <summary>Marks many messages read or unread, with undo.</summary>
+    public async Task SetReadWithUndoAsync(IReadOnlyList<MessageSummary> messages, bool isRead)
+    {
+        var changed = messages.Where(m => m.IsRead != isRead).Select(m => m.Id).ToList();
+        if (changed.Count == 0) return;
+        await mail.SetReadAsync(changed, isRead);
+        toasts.ShowWithUndo($"Marked {changed.Count} as {(isRead ? "read" : "unread")}", () => mail.SetReadAsync(changed, !isRead));
+    }
+
+    /// <summary>Adds many messages to (or removes them from) favourites, with undo.</summary>
+    public async Task SetStarredWithUndoAsync(IReadOnlyList<MessageSummary> messages, bool isStarred)
+    {
+        var changed = messages.Where(m => m.IsStarred != isStarred).Select(m => m.Id).ToList();
+        if (changed.Count == 0) return;
+        await mail.SetStarredAsync(changed, isStarred);
+        toasts.ShowWithUndo(isStarred ? $"Added {changed.Count} to favourites" : $"Removed {changed.Count} from favourites", () => mail.SetStarredAsync(changed, !isStarred));
+    }
+
+    /// <summary>Moves messages to a folder (of their own account), showing progress for big batches, with undo.</summary>
+    public async Task MoveToFolderAsync(IReadOnlyList<MessageSummary> messages, MailFolder folder)
+    {
+        var targets = messages.Where(m => m.AccountId == folder.AccountId && m.FolderId != folder.Id).Select(m => m.Id).ToList();
+        var otherAccounts = messages.Count(m => m.AccountId != folder.AccountId);
+        if (targets.Count == 0)
+        {
+            toasts.Show(otherAccounts > 0 ? "Messages can only be moved to folders of their own account." : $"Already in {folder.Name}.");
+            return;
+        }
+
+        var lastShown = -1;
+        var progress = new Progress<double>(p =>
+        {
+            var percent = (int)(p * 100);
+            if (targets.Count < 50 || percent - lastShown < 10) return;
+            lastShown = percent;
+            toasts.Show($"Moving {targets.Count} messages to {folder.Name}… {percent}%");
+        });
+        if (targets.Count >= 50) toasts.Show($"Moving {targets.Count} messages to {folder.Name}…");
+
+        var moves = await mail.MoveToFolderAsync(targets, folder.Id, progress);
+        var note = otherAccounts > 0 ? $" ({otherAccounts} from other accounts stayed where they were)" : string.Empty;
+        toasts.ShowWithUndo(moves.Count == 1 ? $"Moved to {folder.Name}{note}" : $"Moved {moves.Count} messages to {folder.Name}{note}", () => mail.RestoreAsync(moves));
+    }
 
     public Task ArchiveAsync(MessageSummary message) => ArchiveAsync([message]);
 
@@ -79,6 +143,7 @@ public sealed class MessageCommandService(
 
     public async Task MoveToJunkAsync(IReadOnlyList<MessageSummary> messages)
     {
+        Learn(messages, isSpam: true);
         var moves = await mail.MoveToAsync(messages.Select(m => m.Id).ToList(), FolderKind.Junk);
         toasts.ShowWithUndo("Moved to Junk", () => mail.RestoreAsync(moves));
     }
@@ -86,6 +151,7 @@ public sealed class MessageCommandService(
     /// <summary>Trusts the sender and returns the message to the Inbox.</summary>
     public async Task NotJunkAsync(MessageSummary message)
     {
+        Learn([message], isSpam: false);
         var addedTrust = rules.AddRule(SenderRuleKind.TrustedSender, message.From.Address);
         IReadOnlyList<MoveRecord> moves = message.FolderKind == FolderKind.Junk
             ? await mail.MoveToAsync([message.Id], FolderKind.Inbox)
@@ -155,6 +221,50 @@ public sealed class MessageCommandService(
     }
 
     public string Describe(DateTimeOffset when) => QuickTimes.Describe(when, clock.Now, TimeZoneInfo.Local);
+
+    /// <summary>Edits a message's local categories (comma-separated). Categories stay on this PC.</summary>
+    public async Task EditCategoriesAsync(MessageSummary message)
+    {
+        var box = new TextBox
+        {
+            Header = "Categories",
+            Text = string.Join(", ", message.Categories),
+            PlaceholderText = "e.g. Bills, Family",
+            MinWidth = 320,
+        };
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(box);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Separate categories with commas. Find them later with category:name in search or a smart folder. They're kept on this PC.",
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 340,
+            Opacity = 0.75,
+        });
+        var dialog = new ContentDialog
+        {
+            Title = "Edit categories",
+            Content = panel,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialogs.ShowAsync(dialog) != ContentDialogResult.Primary) return;
+
+        var wanted = box.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(c => c.Length > 40 ? c[..40] : c)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        foreach (var removed in message.Categories.Where(c => !wanted.Contains(c, StringComparer.CurrentCultureIgnoreCase)))
+        {
+            await mail.SetCategoryAsync([message.Id], removed, add: false);
+        }
+
+        foreach (var added in wanted.Where(c => !message.Categories.Contains(c, StringComparer.CurrentCultureIgnoreCase)))
+        {
+            await mail.SetCategoryAsync([message.Id], added, add: true);
+        }
+    }
 
     public async Task ReplyAsync(MessageSummary message, ComposeMode mode)
     {

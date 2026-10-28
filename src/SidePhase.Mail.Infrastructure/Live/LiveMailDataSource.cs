@@ -6,6 +6,7 @@ using MimeKit;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Models;
 using SidePhase.Mail.Core.Scheduling;
+using SidePhase.Mail.Core.Services;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Mail;
 using SidePhase.Mail.Infrastructure.Storage;
@@ -198,11 +199,13 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     // ------------------------------------------------------------------ flags (optimistic, reverted on failure)
 
+    // Cache work for many messages runs off the caller's thread (SQLite calls complete synchronously), so bulk
+    // actions never freeze the window.
     public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) =>
-        ChangeFlagsAsync(messageIds, MessageFlags.Seen, isRead, (id, value) => _cache.SetFlagsAsync(id, value, null, CancellationToken.None), r => r.IsRead);
+        Task.Run(() => ChangeFlagsAsync(messageIds, MessageFlags.Seen, isRead, (id, value) => _cache.SetFlagsAsync(id, value, null, CancellationToken.None), r => r.IsRead), cancellationToken);
 
     public Task SetStarredAsync(IReadOnlyCollection<Guid> messageIds, bool isStarred, CancellationToken cancellationToken = default) =>
-        ChangeFlagsAsync(messageIds, MessageFlags.Flagged, isStarred, (id, value) => _cache.SetFlagsAsync(id, null, value, CancellationToken.None), r => r.IsStarred);
+        Task.Run(() => ChangeFlagsAsync(messageIds, MessageFlags.Flagged, isStarred, (id, value) => _cache.SetFlagsAsync(id, null, value, CancellationToken.None), r => r.IsStarred), cancellationToken);
 
     private async Task ChangeFlagsAsync(
         IReadOnlyCollection<Guid> ids,
@@ -291,6 +294,9 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     public Task SetSnoozeAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? until, CancellationToken cancellationToken = default) =>
         SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetSnoozeAsync(r.AccountId, r.IdentityKey, until, _clock.Now, ct), cancellationToken);
 
+    public Task SetCategoryAsync(IReadOnlyCollection<Guid> messageIds, string category, bool add, CancellationToken cancellationToken = default) =>
+        SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetCategoryAsync(r.AccountId, r.IdentityKey, category.Trim(), add, ct), cancellationToken);
+
     public Task SetFollowUpAsync(IReadOnlyCollection<Guid> messageIds, DateTimeOffset? due, CancellationToken cancellationToken = default) =>
         SetLocalMarkerAsync(messageIds, (r, ct) => _cache.SetFollowUpAsync(r.AccountId, r.IdentityKey, due, _clock.Now, ct), cancellationToken);
 
@@ -345,102 +351,156 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     // ------------------------------------------------------------------ moves & deletes (explicit user actions)
 
-    public async Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default)
-    {
-        var moves = new List<MoveRecord>();
-        foreach (var id in messageIds)
+    public Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default) =>
+        MoveManyAsync(messageIds, async (account, reference, ct) =>
         {
-            var (reference, account) = await ResolveAsync(id, cancellationToken).ConfigureAwait(false);
-            if (reference is null || account is null || reference.FolderKind == target) continue;
+            if (reference.FolderKind == target) return null;
+            var destination = await FindOrCreateFolderAsync(account, target, ct).ConfigureAwait(false);
+            if (destination is null) Report(account, $"{account.Account.DisplayName} has no {target} folder.");
+            return destination;
+        }, null, cancellationToken);
 
-            try
-            {
-                var destination = await FindOrCreateFolderAsync(account, target, cancellationToken).ConfigureAwait(false);
-                if (destination is null)
-                {
-                    Report(account, $"{account.Account.DisplayName} has no {target} folder.");
-                    continue;
-                }
-
-                var newId = await MoveOneAsync(account, reference, destination, cancellationToken).ConfigureAwait(false);
-                moves.Add(new MoveRecord(newId, reference.FolderId));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Report(account, ex, "Couldn't move the message");
-            }
-        }
-
-        if (moves.Count > 0) Raise(MailDataChangeKind.Moved, moves.Select(m => m.MessageId).Concat(messageIds).ToList());
-        return moves;
-    }
+    public Task<IReadOnlyList<MoveRecord>> MoveToFolderAsync(IReadOnlyCollection<Guid> messageIds, Guid folderId, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+        MoveManyAsync(messageIds, async (account, reference, ct) =>
+        {
+            if (reference.FolderId == folderId) return null;
+            var destination = (await _cache.GetFoldersAsync(account.Account.Id, ct).ConfigureAwait(false)).FirstOrDefault(f => f.Id == folderId);
+            if (destination is null) Report(account, "Messages can only be moved to folders of the same account.");
+            return destination;
+        }, progress, cancellationToken);
 
     public async Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default)
     {
-        var restored = new List<Guid>();
-        foreach (var move in moves)
+        var from = moves.ToDictionary(m => m.MessageId, m => m.FromFolderId);
+        await MoveManyAsync(from.Keys, async (account, reference, ct) =>
+            (await _cache.GetFoldersAsync(account.Account.Id, ct).ConfigureAwait(false)).FirstOrDefault(f => f.Id == from[reference.Id]),
+            null, cancellationToken, undo: true).ConfigureAwait(false);
+    }
+
+    /// <summary>Most messages moved in one IMAP command.</summary>
+    private const int MoveBatchSize = 200;
+
+    /// <summary>
+    /// Moves messages grouped by account, source and destination folder, a batch per IMAP command, keeping the cache
+    /// in step: moved rows are re-keyed to their new UID so the list updates at once, and messages whose new location
+    /// isn't cached are remembered so they can still be moved back.
+    /// </summary>
+    private Task<IReadOnlyList<MoveRecord>> MoveManyAsync(
+        IReadOnlyCollection<Guid> messageIds,
+        Func<StoredAccount, StoredMessageRef, CancellationToken, Task<StoredFolder?>> destinationFor,
+        IProgress<double>? progress,
+        CancellationToken ct,
+        bool undo = false) =>
+        Task.Run(() => MoveManyCoreAsync(messageIds.ToList(), destinationFor, progress, ct, undo), ct);
+
+    private async Task<IReadOnlyList<MoveRecord>> MoveManyCoreAsync(
+        IReadOnlyCollection<Guid> messageIds,
+        Func<StoredAccount, StoredMessageRef, CancellationToken, Task<StoredFolder?>> destinationFor,
+        IProgress<double>? progress,
+        CancellationToken ct,
+        bool undo)
+    {
+        var moves = new List<MoveRecord>();
+        var touched = new List<Guid>(messageIds);
+        var groups = new Dictionary<(Guid Account, Guid Source, Guid Destination), (StoredAccount Account, StoredFolder Destination, List<StoredMessageRef> Refs)>();
+        foreach (var id in messageIds)
         {
-            var (reference, account) = await ResolveAsync(move.MessageId, cancellationToken).ConfigureAwait(false);
+            var (reference, account) = await ResolveAsync(id, ct).ConfigureAwait(false);
             if (reference is null || account is null) continue;
-            var original = (await _cache.GetFoldersAsync(account.Account.Id, cancellationToken).ConfigureAwait(false)).FirstOrDefault(f => f.Id == move.FromFolderId);
-            if (original is null) continue;
+            StoredFolder? destination;
             try
             {
-                restored.Add(await MoveOneAsync(account, reference, original, cancellationToken).ConfigureAwait(false));
+                destination = await destinationFor(account, reference, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                Report(account, ex, "Couldn't undo the move");
+                Report(account, ex, "Couldn't find the folder to move to");
+                continue;
             }
+
+            if (destination is null || destination.Id == reference.FolderId) continue;
+            var key = (account.Account.Id, reference.FolderId, destination.Id);
+            if (!groups.TryGetValue(key, out var group)) groups[key] = group = (account, destination, []);
+            group.Refs.Add(reference);
         }
 
-        Raise(MailDataChangeKind.Moved, restored);
-    }
-
-    private async Task<Guid> MoveOneAsync(StoredAccount account, StoredMessageRef reference, StoredFolder destination, CancellationToken ct)
-    {
-        var result = await _imap.RunAsync(account, async client =>
+        var total = groups.Values.Sum(g => g.Refs.Count);
+        var done = 0;
+        foreach (var (account, destination, refs) in groups.Values)
         {
-            // Teach server-side spam filters: junk in, or rescued out of junk.
-            var junkChange = destination.Kind == FolderKind.Junk ? true : reference.FolderKind == FolderKind.Junk ? false : (bool?)null;
-            if (junkChange is { } isJunk)
+            foreach (var batch in refs.Chunk(MoveBatchSize))
             {
                 try
                 {
-                    await ImapOperations.SetJunkKeywordAsync(client, reference.FolderPath, reference.Uid, isJunk, ct).ConfigureAwait(false);
+                    var (newUids, validity) = await _imap.RunAsync(account, async client =>
+                    {
+                        // Teach server-side spam filters: junk in, or rescued out of junk.
+                        var junkChange = destination.Kind == FolderKind.Junk ? true : batch[0].FolderKind == FolderKind.Junk ? false : (bool?)null;
+                        if (junkChange is { } isJunk)
+                        {
+                            try
+                            {
+                                await ImapOperations.SetJunkKeywordAsync(client, batch[0].FolderPath, batch.Select(r => r.Uid).ToList(), isJunk, ct).ConfigureAwait(false);
+                            }
+                            catch (MailKit.Net.Imap.ImapCommandException)
+                            {
+                                // Keywords are a hint; the move itself is what matters.
+                            }
+                        }
+
+                        var result = await ImapOperations.MoveManyAsync(client, batch[0].FolderPath, batch.Select(r => r.Uid).ToList(), destination.Path, ct).ConfigureAwait(false);
+
+                        // Servers without COPYUID: find the moved copies by Message-ID.
+                        var map = new Dictionary<uint, uint>(result.NewUids);
+                        var uidValidity = result.DestinationUidValidity;
+                        foreach (var r in batch.Where(r => !map.ContainsKey(r.Uid) && r.MessageIdHeader is not null))
+                        {
+                            if (await ImapOperations.FindByMessageIdAsync(client, destination.Path, r.MessageIdHeader!, ct).ConfigureAwait(false) is { } found)
+                            {
+                                map[r.Uid] = found.Uid;
+                                uidValidity = found.UidValidity;
+                            }
+                        }
+
+                        return ((IReadOnlyDictionary<uint, uint>)map, uidValidity);
+                    }, ct).ConfigureAwait(false);
+
+                    foreach (var reference in batch)
+                    {
+                        var newId = await RecordMoveAsync(account, reference, destination, newUids.TryGetValue(reference.Uid, out var uid) ? uid : null, validity, ct).ConfigureAwait(false);
+                        moves.Add(new MoveRecord(newId, reference.FolderId));
+                        touched.Add(newId);
+                    }
                 }
-                catch (MailKit.Net.Imap.ImapCommandException)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // Keywords are a hint; the move itself is what matters.
+                    Report(account, ex, undo ? "Couldn't undo the move" : "Couldn't move the message" + (batch.Length > 1 ? "s" : string.Empty));
                 }
+
+                done += batch.Length;
+                progress?.Report(total == 0 ? 1 : (double)done / total);
             }
+        }
 
-            var moved = await ImapOperations.MoveAsync(client, reference.FolderPath, reference.Uid, destination.Path, ct).ConfigureAwait(false);
-            if (moved.NewUid is null && reference.MessageIdHeader is { } mid)
-            {
-                var found = await ImapOperations.FindByMessageIdAsync(client, destination.Path, mid, ct).ConfigureAwait(false);
-                if (found is { } f) moved = new MoveResult(f.Uid, f.UidValidity);
-            }
+        if (moves.Count > 0 || undo) Raise(MailDataChangeKind.Moved, touched);
+        return moves;
+    }
 
-            return moved;
-        }, ct).ConfigureAwait(false);
-
-        if (result.NewUid is { } uid && destination.Synchronize)
+    /// <summary>Updates the cache after a server-side move and returns the message's new id.</summary>
+    private async Task<Guid> RecordMoveAsync(StoredAccount account, StoredMessageRef reference, StoredFolder destination, uint? newUid, uint uidValidity, CancellationToken ct)
+    {
+        if (newUid is { } uid && destination.Synchronize)
         {
-            var newId = MessageIdentity.ForImapMessage(account.Account.Id, destination.Path, result.DestinationUidValidity, uid);
-            await _cache.MoveCachedMessageAsync(reference.Id, newId, destination.Id, result.DestinationUidValidity, uid, ct).ConfigureAwait(false);
+            var newId = MessageIdentity.ForImapMessage(account.Account.Id, destination.Path, uidValidity, uid);
+            await _cache.MoveCachedMessageAsync(reference.Id, newId, destination.Id, uidValidity, uid, ct).ConfigureAwait(false);
+            _hidden.TryRemove(reference.Id, out _);
             return newId;
         }
 
         // Moved somewhere that isn't cached (e.g. Gmail's All Mail) or the new UID is unknown: drop the cached copy.
         // Undo can still find it by Message-ID through a temporary reference.
         await _cache.DeleteMessageAsync(reference.Id, ct).ConfigureAwait(false);
-        if (result.NewUid is { } hiddenUid)
-        {
-            return RememberHidden(account, reference, destination, result.DestinationUidValidity, hiddenUid);
-        }
-
-        return reference.Id;
+        return newUid is { } hiddenUid ? RememberHidden(account, reference, destination, uidValidity, hiddenUid) : reference.Id;
     }
 
     /// <summary>
@@ -870,9 +930,11 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         {
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
             var result = new Dictionary<string, IReadOnlySet<Guid>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var term in terms.Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var key in terms.Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                result[term] = await _cache.SearchBodyTextAsync(term, cancellationToken).ConfigureAwait(false);
+                // The FTS5 index covers subjects, people, downloaded text and attachment names of cached mail.
+                var fts = SearchIndexQuery.For(SearchIndexQuery.FromKey(key));
+                result[key] = fts is null ? new HashSet<Guid>() : await _cache.SearchIndexAsync(fts, ct: cancellationToken).ConfigureAwait(false);
             }
 
             return result;

@@ -99,6 +99,12 @@ public sealed class AppSettings
     // Spam
     public double SpamThreshold { get; set; } = 5.0;
     public bool TreatHighScoresAsJunk { get; set; } = true;
+
+    /// <summary>Learn from messages marked Junk / Not junk (local only).</summary>
+    public bool LocalSpamLearning { get; set; } = true;
+
+    /// <summary>List Inbox messages the local filter is very sure about under Junk (view only; nothing is moved).</summary>
+    public bool LocalFilterShowsJunk { get; set; }
     public List<SenderRule> SenderRules { get; set; } = [];
 
     /// <summary>
@@ -130,6 +136,9 @@ public sealed class AppSettings
 
     /// <summary>The signature each account starts new messages with (missing = none).</summary>
     public Dictionary<Guid, Guid> DefaultSignatureIds { get; set; } = [];
+
+    /// <summary>The starter smart folders have been created (so deleting them is respected).</summary>
+    public bool SmartFoldersSeeded { get; set; }
 
     /// <summary>The old per-account signatures have been copied into the library.</summary>
     public bool SignaturesMigrated { get; set; }

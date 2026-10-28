@@ -6,8 +6,11 @@ namespace SidePhase.Mail.Core.Services;
 /// <summary>One parsed search term: an operator (e.g. <c>from</c>) and its value, or free text.</summary>
 public sealed record SearchTerm(string? Operator, string Value)
 {
-    /// <summary>Free text (or <c>body:</c>) that can also match the text of downloaded messages.</summary>
-    public bool MatchesText => Operator is null or "body";
+    /// <summary>Free text, <c>body:</c> or <c>filename:</c>: also looked up in the local search index.</summary>
+    public bool MatchesText => Operator is null or "body" or "filename";
+
+    /// <summary>Key used for <see cref="SearchContext.BodyMatches"/>: the value for free text, otherwise "op:value".</summary>
+    public string IndexKey => Operator is null ? Value : $"{Operator}:{Value}";
 }
 
 /// <summary>Extra information a search can use beyond the message summaries.</summary>
@@ -20,14 +23,26 @@ public sealed record SearchContext
 
     /// <summary>Messages the mail server reported as matching the whole query.</summary>
     public IReadOnlySet<Guid> ServerMatches { get; init; } = new HashSet<Guid>();
+
+    /// <summary>Account display names and addresses, for <c>account:</c>.</summary>
+    public IReadOnlyDictionary<Guid, string> AccountNames { get; init; } = new Dictionary<Guid, string>();
+
+    /// <summary>Folder names, for <c>folder:</c>.</summary>
+    public IReadOnlyDictionary<Guid, string> FolderNames { get; init; } = new Dictionary<Guid, string>();
+
+    /// <summary>Local categories of each message (by message id), for <c>category:</c>.</summary>
+    public Func<MessageSummary, IReadOnlyCollection<string>>? CategoriesOf { get; init; }
 }
 
 /// <summary>
 /// Local search over cached messages. Terms are combined with AND. Operators:
 /// <c>from:</c>, <c>to:</c>, <c>subject:</c>, <c>body:</c>, <c>has:attachment</c>, <c>is:unread</c>, <c>is:read</c>,
 /// <c>is:starred</c>, <c>is:pinned</c>, <c>after:</c>, <c>before:</c>, <c>on:</c> (dates such as 2026-10-27),
-/// <c>newer_than:</c> / <c>older_than:</c> (e.g. 7d, 2w, 3m, 1y). Quotes group words: <c>"quarterly report"</c>.
-/// Free text also matches the text of messages already downloaded to this PC.
+/// <c>newer_than:</c> / <c>older_than:</c> (e.g. 7d, 2w, 3m, 1y), <c>account:</c> (name or address), <c>in:</c>
+/// (inbox, sent, archive, drafts, junk, trash), <c>folder:</c> (name), <c>larger:</c> / <c>smaller:</c> (e.g. 5mb,
+/// 200kb), <c>filename:</c>, <c>filetype:</c> (pdf, image, ...), <c>category:</c>, <c>is:followup</c>.
+/// Quotes group words: <c>"quarterly report"</c>. Free text also matches the text of messages already downloaded to
+/// this PC (through the local search index).
 /// </summary>
 public static class MessageSearch
 {
@@ -56,7 +71,8 @@ public static class MessageSearch
             if (colon > 0 && colon < token.Length - 1)
             {
                 var op = token[..colon].ToLowerInvariant();
-                if (op is "from" or "to" or "subject" or "body" or "has" or "is" or "after" or "before" or "on" or "newer_than" or "older_than")
+                if (op is "from" or "to" or "subject" or "body" or "has" or "is" or "after" or "before" or "on" or "newer_than" or "older_than"
+                    or "account" or "in" or "folder" or "larger" or "smaller" or "filename" or "filetype" or "category")
                 {
                     return new SearchTerm(op, token[(colon + 1)..]);
                 }
@@ -65,9 +81,9 @@ public static class MessageSearch
             return new SearchTerm(null, token);
         }).ToList();
 
-    /// <summary>The words that should also be looked up in downloaded message text.</summary>
+    /// <summary>The terms to look up in the local search index, as <see cref="SearchTerm.IndexKey"/>s.</summary>
     public static IReadOnlyList<string> TextTerms(string? query) =>
-        Parse(query).Where(t => t.MatchesText).Select(t => t.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        Parse(query).Where(t => t.MatchesText).Select(t => t.IndexKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     internal static IReadOnlyList<string> Tokenize(string? query)
     {
@@ -116,9 +132,26 @@ public static class MessageSearch
     private static Func<MessageSummary, bool> CompileLocalTerm(SearchTerm term, SearchContext context)
     {
         var value = term.Value;
-        var body = context.BodyMatches.TryGetValue(value, out var ids) ? ids : null;
+        var body = context.BodyMatches.TryGetValue(term.IndexKey, out var ids) ? ids : null;
         switch (term.Operator)
         {
+            case "account":
+                return m => context.AccountNames.TryGetValue(m.AccountId, out var name) && Contains(name, value);
+            case "in" when FolderKindFor(value) is { } kind:
+                return m => m.FolderKind == kind;
+            case "folder":
+                return m => context.FolderNames.TryGetValue(m.FolderId, out var folder) && Contains(folder, value);
+            case "larger" when TryParseSize(value, out var min):
+                return m => m.Size >= min;
+            case "smaller" when TryParseSize(value, out var max):
+                return m => m.Size > 0 && m.Size < max;
+            case "filename":
+                return m => m.Attachments.Any(a => Contains(a.FileName, value)) || body?.Contains(m.Id) == true;
+            case "filetype":
+                return m => m.Attachments.Any(a => AttachmentTypes.Matches(a, value));
+            case "category":
+                return m => m.Categories.Any(c => c.Equals(value, StringComparison.CurrentCultureIgnoreCase))
+                            || context.CategoriesOf?.Invoke(m).Any(c => c.Equals(value, StringComparison.CurrentCultureIgnoreCase)) == true;
             case "from":
                 return m => Contains(m.From.DisplayName, value) || Contains(m.From.Address, value);
             case "to":
@@ -136,6 +169,8 @@ public static class MessageSearch
                     case "read": return m => m.IsRead;
                     case "starred" or "favourite" or "favorite": return m => m.IsStarred;
                     case "pinned": return m => m.IsPinned;
+                    case "followup" or "follow-up": return m => m.FollowUpAt is not null;
+                    case "snoozed": return m => m.IsSnoozed;
                 }
 
                 break;
@@ -172,6 +207,38 @@ public static class MessageSearch
         }
 
         return false;
+    }
+
+    private static FolderKind? FolderKindFor(string value) => value.ToLowerInvariant() switch
+    {
+        "inbox" => FolderKind.Inbox,
+        "sent" => FolderKind.Sent,
+        "archive" or "archived" => FolderKind.Archive,
+        "drafts" or "draft" => FolderKind.Drafts,
+        "junk" or "spam" => FolderKind.Junk,
+        "trash" or "deleted" => FolderKind.Trash,
+        _ => null,
+    };
+
+    /// <summary>Parses sizes such as 5mb, 200kb, 1.5m, 1000 (bytes).</summary>
+    public static bool TryParseSize(string value, out long bytes)
+    {
+        bytes = 0;
+        var v = value.Trim().ToLowerInvariant();
+        long multiplier = 1;
+        foreach (var (suffix, factor) in new[] { ("gb", 1L << 30), ("g", 1L << 30), ("mb", 1L << 20), ("m", 1L << 20), ("kb", 1L << 10), ("k", 1L << 10), ("b", 1L) })
+        {
+            if (v.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                multiplier = factor;
+                v = v[..^suffix.Length];
+                break;
+            }
+        }
+
+        if (!double.TryParse(v, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var n) || n <= 0) return false;
+        bytes = (long)(n * multiplier);
+        return true;
     }
 
     /// <summary>Parses ages such as 3d, 2w, 6m, 1y.</summary>

@@ -54,6 +54,7 @@ public sealed record StoredMessage
     public long Size { get; init; }
     public string? InReplyTo { get; init; }
     public IReadOnlyList<string> References { get; init; } = [];
+    public IReadOnlyList<AttachmentInfo> Attachments { get; init; } = [];
 }
 
 /// <summary>Where a cached message lives on the server.</summary>
