@@ -267,3 +267,34 @@ public class RecipientTokenTests
             SidePhase.Mail.Core.Composition.RecipientParser.ReplaceLastToken("\"Smith, Bob\" <bob@example.test>, al", alice));
     }
 }
+
+public sealed class DraftRecoveryTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "sp-recovery-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
+    }
+
+    [Fact]
+    public async Task Copies_survive_a_restart_until_deleted_and_damaged_copies_are_skipped()
+    {
+        var store = new FileDraftRecoveryStore(new AppDataPaths(_dir));
+        var session = Guid.NewGuid();
+        var draft = new DraftMessage { AccountId = Guid.NewGuid(), Subject = "Half written", TextBody = "Dear Bob,", To = [new EmailAddress(null, "bob@example.test")] };
+
+        await store.SaveAsync(session, draft);
+        await store.SaveAsync(session, draft with { TextBody = "Dear Bob, more" });
+        File.WriteAllText(Path.Combine(_dir, "Recovery", Guid.NewGuid().ToString("N") + ".json"), "{ not json");
+
+        var reopened = new FileDraftRecoveryStore(new AppDataPaths(_dir));
+        var recovered = Assert.Single(await reopened.ListAsync());
+        Assert.Equal(session, recovered.SessionId);
+        Assert.Equal("Dear Bob, more", recovered.Draft.TextBody);
+        Assert.Equal("bob@example.test", recovered.Draft.To[0].Address);
+
+        await reopened.DeleteAsync(session);
+        Assert.Empty(await reopened.ListAsync());
+    }
+}

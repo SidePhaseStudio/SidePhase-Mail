@@ -147,6 +147,40 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
     }
 
+    public async Task SaveAttachmentAsync(Guid messageId, int attachmentIndex, Stream destination, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var (reference, account) = await ResolveAsync(messageId, cancellationToken).ConfigureAwait(false);
+        if (reference is null || account is null) throw new InvalidOperationException("This message is no longer available.");
+
+        // The raw message goes to a private temporary file that is deleted as soon as it's closed, then the
+        // attachment is decoded from disk. Neither the message nor the attachment is held in memory.
+        var temp = Path.Combine(Path.GetTempPath(), "sidephase-" + Guid.NewGuid().ToString("N") + ".eml");
+        try
+        {
+            await using var raw = new FileStream(temp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            var download = progress is null ? null : new Progress<double>(p => progress.Report(p * 0.9));
+            await _imap.RunAsync(account, async c =>
+            {
+                raw.SetLength(0); // a retry after a dropped connection starts again
+                await ImapOperations.DownloadMessageAsync(c, reference.FolderPath, reference.Uid, raw, download, cancellationToken).ConfigureAwait(false);
+                return true;
+            }, cancellationToken).ConfigureAwait(false);
+
+            raw.Position = 0;
+            await Task.Run(() =>
+            {
+                var parser = new MimeKit.MimeParser(raw, persistent: true);
+                using var message = parser.ParseMessage(cancellationToken);
+                MessageBodyExtractor.WriteAttachmentTo(message, attachmentIndex, destination, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
+            progress?.Report(1.0);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not ArgumentOutOfRangeException)
+        {
+            throw new InvalidOperationException(MailErrorTranslator.Describe(ex, account.Settings.Imap.Host).Message, ex);
+        }
+    }
+
     // ------------------------------------------------------------------ flags (optimistic, reverted on failure)
 
     public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) =>

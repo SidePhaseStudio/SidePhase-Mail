@@ -343,6 +343,11 @@
           VerticalScrollBarVisibility="Disabled"
           VerticalScrollMode="Disabled"
           Visibility="{x:Bind ViewModel.HasAttachments, Mode=OneWay}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+        <StackPanel VerticalAlignment="Center" Spacing="4" Visibility="{x:Bind ViewModel.HasSeveralAttachments, Mode=OneWay}">
+          <TextBlock FontSize="11" Foreground="{ThemeResource SpTextTertiaryBrush}" Text="{x:Bind ViewModel.AttachmentsSummary, Mode=OneWay}" />
+          <Button Click="OnSaveAllClick" Content="Save all…" Style="{StaticResource SpSecondaryButtonStyle}" ToolTipService.ToolTip="Save every attachment into a folder (existing files are never overwritten)" />
+        </StackPanel>
         <ItemsRepeater ItemsSource="{x:Bind ViewModel.Attachments}">
           <ItemsRepeater.Layout>
             <StackLayout Orientation="Horizontal" Spacing="8" />
@@ -359,7 +364,14 @@
                   BorderBrush="{ThemeResource SpStrokeBrush}"
                   Command="{x:Bind OpenCommand}"
                   CornerRadius="8"
-                  ToolTipService.ToolTip="{x:Bind FileName}">
+                  ToolTipService.ToolTip="{x:Bind Tooltip}">
+                <Button.ContextFlyout>
+                  <MenuFlyout>
+                    <MenuFlyoutItem Command="{x:Bind PreviewCommand}" IsEnabled="{x:Bind CanPreview}" Text="Preview" />
+                    <MenuFlyoutItem Command="{x:Bind SaveCommand}" Text="Save as…" />
+                    <MenuFlyoutItem Command="{x:Bind SaveAllCommand}" Text="Save all attachments…" />
+                  </MenuFlyout>
+                </Button.ContextFlyout>
                 <Grid ColumnSpacing="10">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -377,6 +389,7 @@
             </DataTemplate>
           </ItemsRepeater.ItemTemplate>
         </ItemsRepeater>
+        </StackPanel>
       </ScrollViewer>
 
       <!-- Body: a faint, rounded card so HTML and plain-text messages sit naturally inside the glass panel -->

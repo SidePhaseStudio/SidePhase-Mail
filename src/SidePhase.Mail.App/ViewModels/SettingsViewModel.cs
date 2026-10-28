@@ -45,7 +45,36 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
         _settings = settings;
         _reauthenticate = reauthenticate;
         _remove = remove;
-        Signature = settings.Current.Signatures.TryGetValue(account.Id, out var s) ? s : string.Empty;
+    }
+
+    /// <summary>"None" followed by the signature library, for the default-signature picker.</summary>
+    public IReadOnlyList<string> SignatureOptions =>
+        ["None", .. _settings.Current.SignatureLibrary.Select(s => s.Name)];
+
+    public int DefaultSignatureIndex
+    {
+        get
+        {
+            var current = _settings.Current.DefaultSignatureFor(Account.Id);
+            return current is null ? 0 : _settings.Current.SignatureLibrary.FindIndex(s => s.Id == current.Id) + 1;
+        }
+        set
+        {
+            if (value < 0 || value == DefaultSignatureIndex) return;
+            _settings.Update(s =>
+            {
+                if (value == 0 || value > s.SignatureLibrary.Count) s.DefaultSignatureIds.Remove(Account.Id);
+                else s.DefaultSignatureIds[Account.Id] = s.SignatureLibrary[value - 1].Id;
+            });
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Call after the signature library changes so the picker shows the new names.</summary>
+    public void RefreshSignatures()
+    {
+        OnPropertyChanged(nameof(SignatureOptions));
+        OnPropertyChanged(nameof(DefaultSignatureIndex));
     }
 
     [RelayCommand]
@@ -68,9 +97,6 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
 
     public bool CanRemove => !Account.IsDemo;
 
-    [ObservableProperty]
-    public partial string Signature { get; set; }
-
     public bool NotificationsEnabled
     {
         get => !_settings.Current.MutedNotificationAccounts.Contains(Account.Id);
@@ -86,12 +112,52 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
         }
     }
 
-    partial void OnSignatureChanged(string value) =>
-        _settings.Update(s =>
+}
+
+/// <summary>One signature in the library, edited in place.</summary>
+public sealed partial class SignatureItemViewModel(Guid id, ISettingsService settings, Action<SignatureItemViewModel> deleted, Action renamed) : ObservableObject
+{
+    public Guid Id { get; } = id;
+
+    private SignatureDefinition? Definition => settings.Current.SignatureLibrary.FirstOrDefault(s => s.Id == Id);
+
+    public string Name
+    {
+        get => Definition?.Name ?? string.Empty;
+        set
         {
-            if (string.IsNullOrWhiteSpace(value)) s.Signatures.Remove(Account.Id);
-            else s.Signatures[Account.Id] = value;
+            if (value == Name) return;
+            settings.Update(s =>
+            {
+                if (s.SignatureLibrary.FirstOrDefault(x => x.Id == Id) is { } d) d.Name = value;
+            });
+            renamed();
+        }
+    }
+
+    public string Text
+    {
+        get => Definition?.Text ?? string.Empty;
+        set
+        {
+            if (value == Text) return;
+            settings.Update(s =>
+            {
+                if (s.SignatureLibrary.FirstOrDefault(x => x.Id == Id) is { } d) d.Text = value;
+            });
+        }
+    }
+
+    [RelayCommand]
+    private void Delete()
+    {
+        settings.Update(s =>
+        {
+            s.SignatureLibrary.RemoveAll(x => x.Id == Id);
+            foreach (var account in s.DefaultSignatureIds.Where(p => p.Value == Id).Select(p => p.Key).ToList()) s.DefaultSignatureIds.Remove(account);
         });
+        deleted(this);
+    }
 }
 
 /// <summary>Settings page. Every property writes straight through to <see cref="ISettingsService"/>.</summary>
@@ -156,6 +222,25 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<AccentOptionViewModel> AccentOptions { get; }
     public ObservableCollection<AccountSettingsViewModel> Accounts { get; } = [];
+    public ObservableCollection<SignatureItemViewModel> Signatures { get; } = [];
+
+    [RelayCommand]
+    private void AddSignature()
+    {
+        var signature = new SignatureDefinition { Name = $"Signature {_settings.Current.SignatureLibrary.Count + 1}" };
+        _settings.Update(s => s.SignatureLibrary.Add(signature));
+        Signatures.Add(CreateSignatureItem(signature.Id));
+        foreach (var account in Accounts) account.RefreshSignatures();
+    }
+
+    private SignatureItemViewModel CreateSignatureItem(Guid id) => new(id, _settings, item =>
+    {
+        Signatures.Remove(item);
+        foreach (var account in Accounts) account.RefreshSignatures();
+    }, () =>
+    {
+        foreach (var account in Accounts) account.RefreshSignatures();
+    });
     public ObservableCollection<SenderRuleItemViewModel> TrustedSenders { get; } = [];
     public ObservableCollection<SenderRuleItemViewModel> BlockedSenders { get; } = [];
     public ObservableCollection<SenderRuleItemViewModel> BlockedDomains { get; } = [];
@@ -449,6 +534,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             Accounts.Add(new AccountSettingsViewModel(account, _settings, ReauthenticateAccountAsync, RemoveAccountAsync));
         }
+
+        Signatures.Clear();
+        foreach (var signature in _settings.Current.SignatureLibrary) Signatures.Add(CreateSignatureItem(signature.Id));
 
         OnPropertyChanged(string.Empty);
     }

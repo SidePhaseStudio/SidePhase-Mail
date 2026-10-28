@@ -131,6 +131,42 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
     }
 
     [MailServerFact]
+    public async Task Large_attachments_are_streamed_to_disk_intact()
+    {
+        var content = new byte[3 * 1024 * 1024 + 123];
+        new Random(42).NextBytes(content);
+        using (var imap = await TestMailServer.Connector().ConnectImapAsync(TestMailServer.Imap, new MailCredential(TestMailServer.User1.User, TestMailServer.User1.Password, null)))
+        {
+            var m = new MimeKit.MimeMessage();
+            m.From.Add(new MimeKit.MailboxAddress("Sender", "sender@example.test"));
+            m.Subject = "Big attachment";
+            var builder = new MimeKit.BodyBuilder { TextBody = "See attached." };
+            builder.Attachments.Add("data.bin", content);
+            m.Body = builder.ToMessageBody();
+            await Infrastructure.Mail.ImapOperations.AppendAsync(imap, "INBOX", m, MailKit.MessageFlags.None, CancellationToken.None);
+            await imap.DisconnectAsync(true);
+        }
+
+        await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        await _app.Mail.SyncAsync();
+        var message = (await _app.Mail.GetMessagesAsync()).Single(m => m.Subject == "Big attachment");
+
+        var reports = new List<double>();
+        using var saved = new MemoryStream();
+        await _app.Mail.SaveAttachmentAsync(message.Id, 0, saved, new SyncProgress(reports.Add));
+
+        Assert.Equal(content, saved.ToArray());
+        Assert.Equal(1.0, reports[^1]);
+        Assert.True(reports.Count > 2, "progress is reported while downloading");
+        Assert.False(message.IsRead || (await _app.Mail.GetMessageAsync(message.Id))!.IsRead, "saving an attachment doesn't mark the message as read");
+    }
+
+    private sealed class SyncProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
+    }
+
+    [MailServerFact]
     public async Task Search_finds_downloaded_text_and_older_mail_on_the_server()
     {
         var word = "zebra" + Guid.NewGuid().ToString("N")[..8];

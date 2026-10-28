@@ -110,3 +110,49 @@ public sealed class SettingsTests : IDisposable
         Assert.Single(settings.SenderRules);
     }
 }
+
+public class SignatureMigrationTests
+{
+    [Fact]
+    public void Old_per_account_signatures_become_library_entries_and_defaults()
+    {
+        var work = Guid.NewGuid();
+        var home = Guid.NewGuid();
+        var settings = new AppSettings { SignaturesMigrated = false };
+        settings.Signatures[work] = "Regards,\nAlex (work)";
+        settings.Signatures[home] = "Cheers, Alex";
+
+        settings.Normalize();
+
+        Assert.True(settings.SignaturesMigrated);
+        Assert.Equal(2, settings.SignatureLibrary.Count);
+        Assert.Equal("Regards,\nAlex (work)", settings.DefaultSignatureFor(work)!.Text);
+        Assert.Equal("Cheers, Alex", settings.DefaultSignatureFor(home)!.Text);
+        Assert.Equal(2, settings.Signatures.Count); // the originals are kept
+
+        // Running again (every start-up) doesn't duplicate anything, and removed defaults stay removed.
+        settings.DefaultSignatureIds.Remove(home);
+        settings.Normalize();
+        Assert.Equal(2, settings.SignatureLibrary.Count);
+        Assert.Null(settings.DefaultSignatureFor(home));
+    }
+
+    [Fact]
+    public void Defaults_pointing_at_deleted_signatures_are_dropped_and_clones_are_independent()
+    {
+        var account = Guid.NewGuid();
+        var settings = new AppSettings { SignaturesMigrated = true };
+        var signature = new SignatureDefinition { Name = "  ", Text = "Hi" };
+        settings.SignatureLibrary.Add(signature);
+        settings.DefaultSignatureIds[account] = signature.Id;
+        settings.DefaultSignatureIds[Guid.NewGuid()] = Guid.NewGuid();
+
+        settings.Normalize();
+        Assert.Single(settings.DefaultSignatureIds);
+        Assert.Equal("Signature", settings.SignatureLibrary[0].Name);
+
+        var copy = settings.Clone();
+        copy.SignatureLibrary[0].Text = "Changed";
+        Assert.Equal("Hi", settings.SignatureLibrary[0].Text);
+    }
+}

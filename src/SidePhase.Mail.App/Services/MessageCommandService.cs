@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Composition;
+using SidePhase.Mail.Core.Formatting;
 using SidePhase.Mail.Core.Models;
 using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Core.Services;
@@ -198,7 +199,8 @@ public sealed class MessageCommandService(
     }
 
     /// <summary>
-    /// Saves an attachment where the user chooses. Attachments are never opened or run by SidePhase Mail.
+    /// Saves an attachment where the user chooses, streaming it to disk with progress. Attachments are never opened or
+    /// run by SidePhase Mail; files that could run code are only saved after a clear warning.
     /// </summary>
     public async Task SaveAttachmentAsync(MessageSummary message, int index, AttachmentInfo attachment)
     {
@@ -208,28 +210,239 @@ public sealed class MessageCommandService(
             return;
         }
 
+        if (!await ConfirmDangerousAsync([attachment])) return;
+
+        string path;
         try
         {
             var picker = new Windows.Storage.Pickers.FileSavePicker
             {
                 SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
-                SuggestedFileName = SafeFileName(attachment.FileName),
+                SuggestedFileName = AttachmentSafety.SafeFileName(attachment.FileName),
             };
             var extension = Path.GetExtension(picker.SuggestedFileName);
             picker.FileTypeChoices.Add(string.IsNullOrEmpty(extension) ? "File" : extension.TrimStart('.').ToUpperInvariant() + " file", [string.IsNullOrEmpty(extension) ? "." : extension]);
-            if (App.Main is { } window) WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+            InitializePicker(picker);
 
             var file = await picker.PickSaveFileAsync();
             if (file is null) return;
-
-            toasts.Show($"Downloading \"{attachment.FileName}\"…");
-            var content = await mail.GetAttachmentContentAsync(message.Id, index);
-            await File.WriteAllBytesAsync(file.Path, content);
-            toasts.Show($"Saved \"{file.Name}\".", ToastKind.Success);
+            path = file.Path;
         }
         catch (Exception ex)
         {
+            toasts.Show($"Couldn't choose where to save \"{attachment.FileName}\": {ex.Message}", ToastKind.Error);
+            return;
+        }
+
+        if (await DownloadToAsync(message, index, attachment, path, overwrite: true))
+        {
+            toasts.Show($"Saved \"{Path.GetFileName(path)}\".", ToastKind.Success);
+        }
+    }
+
+    /// <summary>Saves every attachment into a chosen folder. Existing files are never overwritten: names get " (2)" etc.</summary>
+    public async Task SaveAllAttachmentsAsync(MessageSummary message, IReadOnlyList<AttachmentInfo> attachments)
+    {
+        if (attachments.Count == 0) return;
+        if (mail.IsDemo)
+        {
+            toasts.Show("These are demonstration attachments, so there are no files to save.");
+            return;
+        }
+
+        if (!await ConfirmDangerousAsync(attachments)) return;
+
+        string folder;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads };
+            picker.FileTypeFilter.Add("*");
+            InitializePicker(picker);
+            var chosen = await picker.PickSingleFolderAsync();
+            if (chosen is null) return;
+            folder = chosen.Path;
+        }
+        catch (Exception ex)
+        {
+            toasts.Show("Couldn't choose a folder: " + ex.Message, ToastKind.Error);
+            return;
+        }
+
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var saved = 0;
+        for (var i = 0; i < attachments.Count; i++)
+        {
+            var name = AttachmentSafety.UniqueName(
+                AttachmentSafety.SafeFileName(attachments[i].FileName),
+                n => used.Contains(n) || File.Exists(Path.Combine(folder, n)));
+            used.Add(name);
+            if (await DownloadToAsync(message, i, attachments[i], Path.Combine(folder, name), overwrite: false)) saved++;
+        }
+
+        toasts.Show(
+            saved == attachments.Count ? $"Saved {saved} attachments to {Path.GetFileName(folder)}." : $"Saved {saved} of {attachments.Count} attachments.",
+            saved == attachments.Count ? ToastKind.Success : ToastKind.Warning);
+    }
+
+    /// <summary>Previewable types: ordinary images and plain text. Never scripts, SVG (which can contain code) or HTML.</summary>
+    public static bool CanPreview(AttachmentInfo attachment) =>
+        (attachment.ContentType.ToLowerInvariant() is "image/png" or "image/jpeg" or "image/jpg" or "image/gif" or "image/bmp" or "image/webp"
+            && attachment.SizeBytes <= MaxImagePreviewBytes)
+        || (attachment.ContentType.Equals("text/plain", StringComparison.OrdinalIgnoreCase) && attachment.SizeBytes <= MaxTextPreviewBytes);
+
+    private const long MaxImagePreviewBytes = 20L * 1024 * 1024;
+    private const long MaxTextPreviewBytes = 1024 * 1024;
+
+    /// <summary>Shows an image or text attachment inside the app. Nothing is written to disk or run.</summary>
+    public async Task PreviewAttachmentAsync(MessageSummary message, int index, AttachmentInfo attachment)
+    {
+        if (mail.IsDemo)
+        {
+            toasts.Show($"\"{attachment.FileName}\" is demonstration content, so there's nothing to preview.");
+            return;
+        }
+
+        if (!CanPreview(attachment))
+        {
+            await SaveAttachmentAsync(message, index, attachment);
+            return;
+        }
+
+        try
+        {
+            var isText = attachment.ContentType.Equals("text/plain", StringComparison.OrdinalIgnoreCase);
+            using var buffer = new LimitedMemoryStream(isText ? MaxTextPreviewBytes : MaxImagePreviewBytes);
+            await mail.SaveAttachmentAsync(message.Id, index, buffer);
+            buffer.Position = 0;
+
+            UIElement content;
+            if (isText)
+            {
+                using var reader = new StreamReader(buffer, detectEncodingFromByteOrderMarks: true);
+                content = new TextBlock
+                {
+                    Text = await reader.ReadToEndAsync(),
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                    FontSize = 12,
+                    IsTextSelectionEnabled = true,
+                    TextWrapping = TextWrapping.Wrap,
+                };
+            }
+            else
+            {
+                var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+                await bitmap.SetSourceAsync(buffer.AsRandomAccessStream());
+                content = new Image { Source = bitmap, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, MaxHeight = 640 };
+            }
+
+            var dialog = new ContentDialog
+            {
+                Title = attachment.FileName,
+                Content = new ScrollViewer { Content = content, MaxHeight = 660, MinWidth = 420, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto },
+                PrimaryButtonText = "Save…",
+                CloseButtonText = "Close",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialogs.ShowAsync(dialog) == ContentDialogResult.Primary) await SaveAttachmentAsync(message, index, attachment);
+        }
+        catch (Exception ex)
+        {
+            toasts.Show($"Couldn't preview \"{attachment.FileName}\": {ex.Message}", ToastKind.Error);
+        }
+    }
+
+    /// <summary>Warns before saving files that could run code. Returns false if the user backs out.</summary>
+    private async Task<bool> ConfirmDangerousAsync(IReadOnlyList<AttachmentInfo> attachments)
+    {
+        var risky = attachments.Where(a => AttachmentSafety.IsDangerous(a.FileName)).ToList();
+        if (risky.Count == 0) return true;
+
+        var disguised = risky.Any(a => AttachmentSafety.HasMisleadingName(a.FileName));
+        var names = string.Join(", ", risky.Take(4).Select(a => $"\"{a.FileName}\""));
+        var message = $"{names} can run programs, scripts or macros on your PC."
+            + (disguised ? " The name is made to look like a harmless document, which is a common trick in harmful email." : string.Empty)
+            + " Only open it if you were expecting it from someone you trust. SidePhase Mail won't open it for you.";
+        return await dialogs.ConfirmAsync("This file could harm your PC", message, "Save anyway");
+    }
+
+    /// <summary>Streams one attachment to <paramref name="path"/>, showing progress for large files. Removes a partial file on failure.</summary>
+    private async Task<bool> DownloadToAsync(MessageSummary message, int index, AttachmentInfo attachment, string path, bool overwrite)
+    {
+        var lastReport = DateTimeOffset.MinValue;
+        var progress = new Progress<double>(p =>
+        {
+            if (attachment.SizeBytes < 2 * 1024 * 1024 || DateTimeOffset.UtcNow - lastReport < TimeSpan.FromSeconds(1)) return;
+            lastReport = DateTimeOffset.UtcNow;
+            toasts.Show($"Downloading \"{attachment.FileName}\"… {p:P0}");
+        });
+
+        var created = false;
+        try
+        {
+            if (attachment.SizeBytes >= 2 * 1024 * 1024) toasts.Show($"Downloading \"{attachment.FileName}\"…");
+            await using var file = new FileStream(path, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            created = true;
+            await mail.SaveAttachmentAsync(message.Id, index, file, progress);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (created) TryDelete(path);
             toasts.Show($"Couldn't save \"{attachment.FileName}\": {ex.Message}", ToastKind.Error);
+            return false;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void InitializePicker(object picker)
+    {
+        if (App.Main is { } window) WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+    }
+
+    /// <summary>A memory buffer that refuses to grow past a limit (for previews of untrusted content).</summary>
+    private sealed class LimitedMemoryStream(long limit) : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (Length + count > limit) throw new InvalidOperationException("The attachment is too large to preview.");
+            base.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            if (Length + buffer.Length > limit) throw new InvalidOperationException("The attachment is too large to preview.");
+            base.Write(buffer);
+        }
+
+        public override void WriteByte(byte value)
+        {
+            if (Length + 1 > limit) throw new InvalidOperationException("The attachment is too large to preview.");
+            base.WriteByte(value);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            Write(buffer, offset, count);
+            return Task.CompletedTask;
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Write(buffer.Span);
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -270,11 +483,5 @@ public sealed class MessageCommandService(
         {
             await Windows.System.Launcher.LaunchUriAsync(link);
         }
-    }
-
-    private static string SafeFileName(string name)
-    {
-        var cleaned = string.Concat(Path.GetFileName(name).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim().TrimEnd('.');
-        return cleaned.Length == 0 ? "attachment" : cleaned;
     }
 }

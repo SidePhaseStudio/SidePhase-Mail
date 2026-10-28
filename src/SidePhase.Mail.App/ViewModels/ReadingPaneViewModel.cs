@@ -85,6 +85,8 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [ObservableProperty] public partial string AccountColor { get; set; }
     [ObservableProperty] public partial string FolderName { get; set; }
     [ObservableProperty] public partial bool HasAttachments { get; set; }
+    [ObservableProperty] public partial bool HasSeveralAttachments { get; set; }
+    [ObservableProperty] public partial string AttachmentsSummary { get; set; } = string.Empty;
     [ObservableProperty] public partial bool ShowRemoteContentBanner { get; set; }
     [ObservableProperty] public partial bool ShowSpamBanner { get; set; }
     [ObservableProperty] public partial bool ShowFollowUpBanner { get; set; }
@@ -139,6 +141,8 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         Content = null;
         Attachments.Clear();
         HasAttachments = message.HasAttachments;
+        HasSeveralAttachments = false;
+        AttachmentsSummary = string.Empty;
         ShowRemoteContentBanner = false;
         IsLoading = true;
 
@@ -148,13 +152,25 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             if (cts.IsCancellationRequested) return;
             _body = body;
             var index = 0;
-            foreach (var attachment in body?.Attachments ?? [])
+            var all = body?.Attachments ?? [];
+            foreach (var attachment in all)
             {
                 var attachmentIndex = index++;
-                Attachments.Add(new AttachmentItemViewModel(attachment, a => _ = _commands.SaveAttachmentAsync(message, attachmentIndex, a)));
+                Attachments.Add(new AttachmentItemViewModel(
+                    attachment,
+                    a => _commands.PreviewAttachmentAsync(message, attachmentIndex, a),
+                    a => _commands.SaveAttachmentAsync(message, attachmentIndex, a),
+                    () => _commands.SaveAllAttachmentsAsync(message, all)));
             }
 
             HasAttachments = Attachments.Count > 0;
+            HasSeveralAttachments = Attachments.Count > 1;
+            AttachmentsSummary = Attachments.Count switch
+            {
+                0 => string.Empty,
+                1 => $"1 attachment · {FileSizeFormatter.Format(all.Sum(a => a.SizeBytes))}",
+                var n => $"{n} attachments · {FileSizeFormatter.Format(all.Sum(a => a.SizeBytes))}",
+            };
             RenderBody();
         }
         catch (OperationCanceledException)

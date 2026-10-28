@@ -61,6 +61,9 @@ public sealed class MailDataSourceRouter : IMailDataSource
 
     public Task<byte[]> GetAttachmentContentAsync(Guid messageId, int attachmentIndex, CancellationToken cancellationToken = default) => Active.GetAttachmentContentAsync(messageId, attachmentIndex, cancellationToken);
 
+    public Task SaveAttachmentAsync(Guid messageId, int attachmentIndex, Stream destination, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+        Active.SaveAttachmentAsync(messageId, attachmentIndex, destination, progress, cancellationToken);
+
     public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) => Active.SetReadAsync(messageIds, isRead, cancellationToken);
 
     public Task SetStarredAsync(IReadOnlyCollection<Guid> messageIds, bool isStarred, CancellationToken cancellationToken = default) => Active.SetStarredAsync(messageIds, isStarred, cancellationToken);

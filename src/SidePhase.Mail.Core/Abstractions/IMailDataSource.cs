@@ -72,6 +72,12 @@ public interface IMailDataSource
     /// <summary>Downloads the content of one attachment (index into <see cref="MessageBody.Attachments"/>).</summary>
     Task<byte[]> GetAttachmentContentAsync(Guid messageId, int attachmentIndex, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Writes one attachment's decoded content to <paramref name="destination"/> without holding the whole message or
+    /// attachment in memory. Progress runs from 0 to 1.
+    /// </summary>
+    Task SaveAttachmentAsync(Guid messageId, int attachmentIndex, Stream destination, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
+
     Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default);
 
     Task SetStarredAsync(IReadOnlyCollection<Guid> messageIds, bool isStarred, CancellationToken cancellationToken = default);

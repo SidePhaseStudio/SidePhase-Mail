@@ -186,13 +186,12 @@
                   </Expander.Header>
                   <StackPanel Spacing="12">
                     <ToggleSwitch Header="Desktop notifications for this account" IsOn="{x:Bind NotificationsEnabled, Mode=TwoWay}" OffContent="Off" OnContent="On" />
-                    <TextBlock FontSize="13" Text="Signature" />
-                    <TextBox
-                        MinHeight="88"
-                        AcceptsReturn="True"
-                        PlaceholderText="Added to the end of new messages from this account"
-                        Text="{x:Bind Signature, Mode=TwoWay}"
-                        TextWrapping="Wrap" />
+                    <ComboBox
+                        MinWidth="220"
+                        Header="Default signature"
+                        ItemsSource="{x:Bind SignatureOptions, Mode=OneWay}"
+                        SelectedIndex="{x:Bind DefaultSignatureIndex, Mode=TwoWay}" />
+                    <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Edit signatures under Mail › Signatures. You can switch signature in any message." TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <Button Command="{x:Bind ReauthenticateCommand}" Content="Sign in again" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
                       <Button Command="{x:Bind RemoveCommand}" Content="Remove account" IsEnabled="{x:Bind CanRemove}" Style="{StaticResource SpSecondaryButtonStyle}" />
@@ -262,6 +261,48 @@
           <controls:SettingsCard Glyph="&#xE70D;" Header="Collapse the pinned section">
             <ToggleSwitch IsOn="{x:Bind ViewModel.PinnedSectionCollapsed, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
+
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Signatures" />
+          <ItemsRepeater ItemsSource="{x:Bind ViewModel.Signatures}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="6" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+              <DataTemplate x:DataType="vm:SignatureItemViewModel">
+                <Border Style="{StaticResource SpCardStyle}">
+                  <Grid ColumnSpacing="10" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBox AutomationProperties.Name="Signature name" PlaceholderText="Name, e.g. Work" Text="{x:Bind Name, Mode=TwoWay}" />
+                    <Button
+                        Grid.Column="1"
+                        AutomationProperties.Name="Delete signature"
+                        Command="{x:Bind DeleteCommand}"
+                        Style="{StaticResource SpQuickActionButtonStyle}"
+                        ToolTipService.ToolTip="Delete signature">
+                      <FontIcon FontSize="12" Glyph="&#xE74D;" />
+                    </Button>
+                    <TextBox
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        MinHeight="72"
+                        AcceptsReturn="True"
+                        AutomationProperties.Name="Signature text"
+                        PlaceholderText="Added to the end of new messages"
+                        Text="{x:Bind Text, Mode=TwoWay}"
+                        TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+          </ItemsRepeater>
+          <Button Margin="0,2,0,0" Command="{x:Bind ViewModel.AddSignatureCommand}" Content="Add signature" Style="{StaticResource SpSecondaryButtonStyle}" />
 
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Writing" />
           <controls:SettingsCard Glyph="&#xE70F;" Header="Default message format">

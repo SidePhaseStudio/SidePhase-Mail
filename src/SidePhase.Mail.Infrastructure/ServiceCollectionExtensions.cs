@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SidePhase.Mail.Core.Abstractions;
+using SidePhase.Mail.Core.Composition;
 using SidePhase.Mail.Core.Contacts;
 using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Infrastructure.Accounts;
@@ -58,6 +59,9 @@ public static class ServiceCollectionExtensions
         // Address book and recent recipients (this PC only).
         services.AddSingleton<IContactStore, SqliteContactStore>();
         services.AddSingleton<ContactService>();
+
+        // Crash recovery for messages being written.
+        services.AddSingleton<IDraftRecoveryStore, FileDraftRecoveryStore>();
         return services;
     }
 }

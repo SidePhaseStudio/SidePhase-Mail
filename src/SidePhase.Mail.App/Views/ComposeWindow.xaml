@@ -177,8 +177,24 @@
         <Button AutomationProperties.Name="Underline" Click="OnUnderlineClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Underline (Ctrl+U)">
           <FontIcon FontSize="14" Glyph="&#xE8DC;" />
         </Button>
+        <Button AutomationProperties.Name="Strikethrough" Click="OnStrikethroughClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Strikethrough">
+          <FontIcon FontSize="14" Glyph="&#xEDE0;" />
+        </Button>
+        <Rectangle Style="{StaticResource SpVerticalDividerStyle}" />
         <Button AutomationProperties.Name="Bulleted list" Click="OnBulletsClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Bulleted list">
           <FontIcon FontSize="14" Glyph="&#xE8FD;" />
+        </Button>
+        <Button AutomationProperties.Name="Numbered list" Click="OnNumberedListClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Numbered list">
+          <TextBlock FontSize="12" FontWeight="SemiBold" Text="1." />
+        </Button>
+        <Button AutomationProperties.Name="Insert link" Click="OnLinkClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Insert link (Ctrl+K)">
+          <FontIcon FontSize="14" Glyph="&#xE71B;" />
+          <Button.KeyboardAccelerators>
+            <KeyboardAccelerator Key="K" Modifiers="Control" />
+          </Button.KeyboardAccelerators>
+        </Button>
+        <Button AutomationProperties.Name="Clear formatting" Click="OnClearFormattingClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Clear formatting">
+          <FontIcon FontSize="14" Glyph="&#xE894;" />
         </Button>
         <Rectangle Style="{StaticResource SpVerticalDividerStyle}" />
       </StackPanel>
@@ -189,6 +205,16 @@
             <TextBlock Text="Attach" />
           </StackPanel>
         </Button>
+        <ComboBox
+            MinWidth="150"
+            VerticalAlignment="Center"
+            AutomationProperties.Name="Signature"
+            Background="Transparent"
+            BorderThickness="0"
+            ItemsSource="{x:Bind ViewModel.SignatureNames}"
+            SelectedIndex="{x:Bind ViewModel.SelectedSignatureIndex, Mode=TwoWay}"
+            ToolTipService.ToolTip="Signature"
+            Visibility="{x:Bind ViewModel.HasSignatures}" />
       </StackPanel>
       <ToggleSwitch
           Grid.Column="2"

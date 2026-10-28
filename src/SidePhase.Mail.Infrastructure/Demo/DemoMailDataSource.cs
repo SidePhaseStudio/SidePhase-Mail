@@ -77,6 +77,9 @@ public sealed class DemoMailDataSource : IMailDataSource
     public Task<byte[]> GetAttachmentContentAsync(Guid messageId, int attachmentIndex, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Demonstration attachments have no file content.");
 
+    public Task SaveAttachmentAsync(Guid messageId, int attachmentIndex, Stream destination, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Demonstration attachments have no file content.");
+
     public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) =>
         UpdateFlags(messageIds, m => m with { IsRead = isRead });
 

@@ -150,6 +150,7 @@ public class JunkRuleAndNotificationTests
         public Task<MessageSummary?> GetMessageAsync(Guid id, CancellationToken c = default) => _inner.GetMessageAsync(id, c);
         public Task<MessageBody?> GetMessageBodyAsync(Guid id, CancellationToken c = default) => _inner.GetMessageBodyAsync(id, c);
         public Task<byte[]> GetAttachmentContentAsync(Guid id, int i, CancellationToken c = default) => _inner.GetAttachmentContentAsync(id, i, c);
+        public Task SaveAttachmentAsync(Guid id, int i, Stream d, IProgress<double>? p = null, CancellationToken c = default) => _inner.SaveAttachmentAsync(id, i, d, p, c);
         public Task SetReadAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetReadAsync(ids, v, c);
         public Task SetStarredAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetStarredAsync(ids, v, c);
         public Task SetPinnedAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetPinnedAsync(ids, v, c);
