@@ -646,15 +646,15 @@
             <Button Command="{x:Bind ViewModel.OpenDataFolderCommand}" Content="Open" Style="{StaticResource SpSecondaryButtonStyle}" />
           </controls:SettingsCard>
 
-          <TextBlock Margin="2,18,0,4" Style="{StaticResource SpSectionHeaderTextStyle}" Text="Sponsored content" />
+          <TextBlock Margin="2,18,0,4" Style="{StaticResource SpSectionHeaderTextStyle}" Text="Promotions" />
           <controls:SettingsCard
-              Description="SidePhase Mail is planned to stay free with small, clearly labelled sponsored cards at the bottom of the sidebar and in the empty reading pane - never inside your email, and never using your messages, contacts or address. No real advertising is shown yet. Turn this on to preview the placements with built-in test cards (nothing is downloaded)."
+              Description="SidePhase Mail is planned to stay free with one clearly labelled SidePhase Studio promotion in a banner at the bottom of the window - never inside your inbox or your email, and never using your messages, contacts or address. No promotion is running yet, so the banner stays hidden. Turn this on to preview the placement with a built-in test banner (nothing is downloaded)."
               Glyph="&#xE789;"
-              Header="Preview sponsored cards (test content)">
-            <ToggleSwitch IsOn="{x:Bind ViewModel.PreviewSponsoredCards, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+              Header="Preview the promotion banner (test content)">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.PreviewPromotionBanner, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
           <controls:SettingsCard
-              Description="For testing the planned ad-free upgrade: hides every sponsored card as if it were owned. There's nothing to buy yet."
+              Description="For testing the planned ad-free upgrade: hides the promotion banner as if it were owned. There's nothing to buy yet."
               Glyph="&#xE734;"
               Header="Simulate the ad-free upgrade">
             <ToggleSwitch IsOn="{x:Bind ViewModel.SimulateAdFree, Mode=TwoWay}" OffContent="Off" OnContent="On" />

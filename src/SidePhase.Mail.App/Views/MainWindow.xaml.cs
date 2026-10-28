@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window
             SelectScope(_mailList.Scope);
         };
         RootGrid.Loaded += OnRootLoaded;
+        RootGrid.SizeChanged += (_, e) => Footer.UpdateAvailableSpace(e.NewSize.Height);
         Closed += (_, _) =>
         {
             App.GetService<DesktopNotificationService>().Dispose();

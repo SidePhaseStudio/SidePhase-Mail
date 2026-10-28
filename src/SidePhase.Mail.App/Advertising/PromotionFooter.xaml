@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one promotion placement: a banner (about 728 x 90) centred in the main window's footer, in the Dark Glass card
+  style. Always labelled "Promotion" (plus "Test content" for the preview banner). No pop-ups, animation, autoplay or
+  remote images. The whole footer collapses when there's no promotion. Never inside the inbox or an email.
+-->
+<UserControl
+    x:Class="SidePhase.Mail.App.Advertising.PromotionFooter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Visibility="Collapsed">
+
+  <Border
+      x:Name="Banner"
+      MaxWidth="746"
+      Margin="8,0,8,8"
+      Padding="8"
+      HorizontalAlignment="Center"
+      AutomationProperties.LandmarkType="Custom"
+      AutomationProperties.LocalizedLandmarkType="Promotion"
+      AutomationProperties.Name="Promotion"
+      Style="{StaticResource SpCardStyle}">
+    <Grid Height="90" MaxWidth="728">
+      <!-- Image banner (bundled image only) -->
+      <Button
+          x:Name="ImageButton"
+          Padding="0"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Stretch"
+          Background="Transparent"
+          BorderThickness="0"
+          Click="OnActionClick"
+          CornerRadius="{StaticResource SpCornerMedium}"
+          Visibility="Collapsed">
+        <Image x:Name="BannerImage" Stretch="Uniform" />
+      </Button>
+
+      <!-- Text banner -->
+      <Grid x:Name="TextLayout" Padding="12,8,96,8" ColumnSpacing="16">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel VerticalAlignment="Center" Spacing="2">
+          <TextBlock x:Name="AdvertiserText" Opacity="0.75" Style="{StaticResource SpCaptionTextStyle}" TextTrimming="CharacterEllipsis" />
+          <TextBlock x:Name="HeadlineText" FontWeight="SemiBold" MaxLines="1" Style="{StaticResource SpBodyTextStyle}" TextTrimming="CharacterEllipsis" />
+          <TextBlock x:Name="BodyText" MaxLines="1" Style="{StaticResource SpCaptionTextStyle}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <Button
+            x:Name="ActionButton"
+            Grid.Column="1"
+            VerticalAlignment="Bottom"
+            Click="OnActionClick"
+            Style="{StaticResource SpSecondaryButtonStyle}" />
+      </Grid>
+
+      <!-- Label and controls, top right (over the image too) -->
+      <StackPanel
+          Margin="0,2,2,0"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Top"
+          Orientation="Horizontal"
+          Spacing="2">
+        <Border Style="{StaticResource SpPillStyle}">
+          <TextBlock x:Name="LabelText" Style="{StaticResource SpPillTextStyle}" Text="Promotion" />
+        </Border>
+        <Button AutomationProperties.Name="Why am I seeing this?" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Why am I seeing this?">
+          <FontIcon FontSize="12" Glyph="&#xE946;" />
+          <Button.Flyout>
+            <Flyout Placement="Top">
+              <StackPanel MaxWidth="320" Spacing="8">
+                <TextBlock FontWeight="SemiBold" Style="{StaticResource SpBodyTextStyle}" Text="About promotions" />
+                <TextBlock Style="{StaticResource SpSecondaryTextStyle}" TextWrapping="Wrap"
+                           Text="This space shows SidePhase Studio promotions that help keep SidePhase Mail free. They're the same for everyone and never use your email, contacts, address or anything about you. Nothing is tracked, and they never appear inside your messages." />
+                <TextBlock x:Name="TestExplanation" Style="{StaticResource SpSecondaryTextStyle}" TextWrapping="Wrap" Visibility="Collapsed"
+                           Text="This banner is test content showing the placement. It isn't a real promotion." />
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap"
+                           Text="An ad-free upgrade is planned. Promotion settings are in Settings → About." />
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <Button AutomationProperties.Name="Hide promotions" Click="OnHideClick" Style="{StaticResource SpIconButtonStyle}" ToolTipService.ToolTip="Hide promotions until SidePhase Mail restarts">
+          <FontIcon FontSize="10" Glyph="&#xE711;" />
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

@@ -340,7 +340,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ads = ads;
         _ads.Changed += (_, _) => ui.Post(() =>
         {
-            OnPropertyChanged(nameof(PreviewSponsoredCards));
+            OnPropertyChanged(nameof(PreviewPromotionBanner));
             OnPropertyChanged(nameof(SimulateAdFree));
         });
         _mailRules = mailRules;
@@ -845,16 +845,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    // ---------------------------------------------------------------- Sponsored content
+    // ---------------------------------------------------------------- Promotions
 
-    /// <summary>Shows the built-in test cards in the sponsored placements (nothing is downloaded or reported).</summary>
-    public bool PreviewSponsoredCards
+    /// <summary>Shows the built-in test banner in the footer (nothing is downloaded or reported). Off: approved bundled promotions only.</summary>
+    public bool PreviewPromotionBanner
     {
         get => _ads.Settings.Mode == global::SidePhase.Mail.Advertising.AdvertisingMode.Demo;
         set
         {
-            if (value == PreviewSponsoredCards) return;
-            _ads.Update(a => a.Mode = value ? global::SidePhase.Mail.Advertising.AdvertisingMode.Demo : global::SidePhase.Mail.Advertising.AdvertisingMode.Off);
+            if (value == PreviewPromotionBanner) return;
+            _ads.Update(a => a.Mode = value ? global::SidePhase.Mail.Advertising.AdvertisingMode.Demo : global::SidePhase.Mail.Advertising.AdvertisingMode.House);
         }
     }
 

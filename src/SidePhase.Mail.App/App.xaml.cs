@@ -296,14 +296,16 @@ public partial class App : Application
         services.AddSidePhaseMailCore();
         services.AddSidePhaseMailInfrastructure(paths);
 
-        // Sponsored cards: a separate module (SidePhase.Mail.Advertising) that is given no mail data. Off unless the user
-        // previews the test cards; production advertising is disabled in code until approved (docs/ADVERTISING.md).
+        // The footer promotion: a separate module (SidePhase.Mail.Advertising) that is given no mail data. Shows only approved
+        // SidePhase Studio promotions bundled with the app (none yet, so the footer stays collapsed); the separate Ads API
+        // is used only if explicitly configured (docs/ADVERTISING.md).
         services.AddSingleton(_ =>
         {
             var store = new global::SidePhase.Mail.Advertising.AdvertisingSettingsStore(paths.Root);
             global::SidePhase.Mail.Advertising.AdService? ads = null;
             var entitlement = new global::SidePhase.Mail.Advertising.LocalAdEntitlement(() => ads?.Settings ?? store.Load());
-            ads = new global::SidePhase.Mail.Advertising.AdService(store, entitlement, AppIdentity.Version, System.Globalization.CultureInfo.CurrentUICulture.Name);
+            ads = new global::SidePhase.Mail.Advertising.AdService(store, entitlement, AppIdentity.Version, System.Globalization.CultureInfo.CurrentUICulture.Name,
+                promotionsFile: Path.Combine(AppContext.BaseDirectory, "Assets", "Promotions", "promotions.json"));
             return ads;
         });
 
