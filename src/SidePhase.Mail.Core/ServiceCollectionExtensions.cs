@@ -15,7 +15,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISenderRulesService, SenderRulesService>();
         services.AddSingleton<JunkPolicy>();
         services.AddSingleton<NotificationPolicy>();
-        services.AddSingleton<SendTheBuggerBackService>();
         services.AddSingleton<AutoJunkService>();
         return services;
     }

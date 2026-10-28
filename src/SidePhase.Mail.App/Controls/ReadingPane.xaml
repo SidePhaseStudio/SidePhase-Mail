@@ -33,7 +33,7 @@
       <TextBlock
           HorizontalAlignment="Center"
           Style="{StaticResource SpSecondaryTextStyle}"
-          Text="Tip: right-click any message to pin it to the top, star it, or send the bugger back."
+          Text="Tip: right-click any message to pin it to the top, star it, or move it to Junk."
           TextAlignment="Center" />
     </StackPanel>
 
@@ -131,12 +131,6 @@
                   <MenuFlyoutItem Command="{x:Bind ViewModel.ToggleJunkCommand}" Text="{x:Bind ViewModel.JunkLabel, Mode=OneWay}">
                     <MenuFlyoutItem.Icon>
                       <FontIcon Glyph="{x:Bind ViewModel.JunkGlyph, Mode=OneWay}" />
-                    </MenuFlyoutItem.Icon>
-                  </MenuFlyoutItem>
-                  <MenuFlyoutSeparator />
-                  <MenuFlyoutItem Command="{x:Bind ViewModel.SendTheBuggerBackCommand}" Text="Send the Bugger Back!">
-                    <MenuFlyoutItem.Icon>
-                      <FontIcon Glyph="&#xE8F8;" />
                     </MenuFlyoutItem.Icon>
                   </MenuFlyoutItem>
                 </MenuFlyout>

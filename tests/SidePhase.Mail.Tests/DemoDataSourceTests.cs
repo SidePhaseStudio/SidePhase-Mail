@@ -158,43 +158,6 @@ public class DemoDataSourceTests
         Assert.Equal(before, (await _source.GetMessagesAsync()).Count);
     }
 
-    [Fact]
-    public async Task Send_the_bugger_back_blocks_moves_and_undoes()
-    {
-        var settings = new SettingsService(new InMemorySettingsStore());
-        var rules = new SenderRulesService(settings, _clock);
-        var service = new SendTheBuggerBackService(_source, rules, _clock);
-        var message = (await _source.GetMessagesAsync()).First(m => m.FolderKind == FolderKind.Inbox && m.From.Domain == "lumen-design.example");
-
-        var result = await service.ExecuteAsync(message, new SendTheBuggerBackOptions(BlockDomain: true));
-
-        Assert.True(result.DomainBlocked);
-        Assert.True(rules.IsBlocked(message.From));
-        Assert.True(rules.IsBlocked(new EmailAddress(null, "anyone@lumen-design.example")));
-        Assert.Equal(FolderKind.Junk, (await _source.GetMessageAsync(message.Id))!.FolderKind);
-
-        await service.UndoAsync(result);
-
-        Assert.False(rules.IsBlocked(message.From));
-        Assert.Empty(rules.Rules);
-        Assert.Equal(FolderKind.Inbox, (await _source.GetMessageAsync(message.Id))!.FolderKind);
-    }
-
-    [Fact]
-    public async Task Send_the_bugger_back_never_blocks_shared_provider_domains()
-    {
-        var settings = new SettingsService(new InMemorySettingsStore());
-        var rules = new SenderRulesService(settings, _clock);
-        var service = new SendTheBuggerBackService(_source, rules, _clock);
-        var message = Samples.Message("Someone <someone@gmail.com>");
-
-        Assert.False(SendTheBuggerBackService.CanBlockDomain(message.From));
-        var result = await service.ExecuteAsync(message, new SendTheBuggerBackOptions(BlockDomain: true));
-        Assert.False(result.DomainBlocked);
-        Assert.DoesNotContain(rules.Rules, r => r.Kind == SenderRuleKind.BlockedDomain);
-        Assert.True(rules.IsBlocked(message.From));
-    }
-
     private sealed class SyncProgress(List<double> values) : IProgress<double>
     {
         public void Report(double value) => values.Add(value);

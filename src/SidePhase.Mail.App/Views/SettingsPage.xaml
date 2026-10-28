@@ -311,10 +311,7 @@
           <controls:SettingsCard Description="Show a short notice when new messages are filtered into Junk." Glyph="&#xEA8F;" Header="Tell me when mail is filtered">
             <ToggleSwitch IsOn="{x:Bind ViewModel.NotifyWhenFiltered, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
-          <controls:SettingsCard Description="Pre-tick &quot;block the whole domain&quot; (never offered for shared providers such as gmail.com)." Glyph="&#xE8F8;" Header="Send the Bugger Back! blocks the domain by default">
-            <ToggleSwitch IsOn="{x:Bind ViewModel.BuggerBackBlocksDomain, Mode=TwoWay}" OffContent="Off" OnContent="On" />
-          </controls:SettingsCard>
-          <TextBlock Margin="2,4,0,0" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Right-click a message for Move to Junk, Not junk and Send the Bugger Back!. Moving mail in or out of Junk also tells your server's spam filter (where supported)." />
+          <TextBlock Margin="2,4,0,0" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Right-click a message for Move to Junk and Not junk. Moving mail in or out of Junk also tells your server's spam filter (where supported)." />
 
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Senders" />
           <TextBlock Margin="2,0,0,4" Foreground="{ThemeResource SpDangerBrush}" Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.RuleError, Mode=OneWay}" Visibility="{x:Bind h:X.VisibleIfText(ViewModel.RuleError), Mode=OneWay}" />

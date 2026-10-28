@@ -330,9 +330,6 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         : _commands.MoveToJunkAsync(Message);
 
     [RelayCommand]
-    private Task SendTheBuggerBackAsync() => Message is null ? Task.CompletedTask : _commands.SendTheBuggerBackAsync(Message);
-
-    [RelayCommand]
     private void ShowRemoteContent()
     {
         if (Message is null) return;
