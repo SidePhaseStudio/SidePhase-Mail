@@ -110,14 +110,7 @@ public partial class App : Application
         var notifications = GetService<DesktopNotificationService>();
         notifications.Initialize();
         GetService<NewMailCoordinator>().Start();
-        if (DesktopNotificationService.MessageFromLaunch() is { } launchMessage)
-        {
-            Main.DispatcherQueue.TryEnqueue(async () =>
-            {
-                await Task.Delay(1500); // let the first list load
-                await Main.OpenMessageAsync(launchMessage);
-            });
-        }
+        // (A launch from a notification click opens its message through HandleActivation above.)
 
         // Messages held for Undo Send or scheduled for later are sent from here while the app runs. Anything left
         // "sending" by a crash is marked uncertain (never resent automatically).
@@ -186,6 +179,28 @@ public partial class App : Application
         {
             Shutdown.Cancel();
             watcher.Dispose();
+        };
+
+        // Back online: sync now, send what was waiting for a connection, and file any Sent copies still pending.
+        GetService<ConnectivityService>().Changed += (_, online) =>
+        {
+            StartupDiagnostics.Trace("network", online ? "connected" : "offline");
+            if (!online || GetService<ISettingsService>().Current.DataMode != DataMode.Live) return;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await GetService<OutboxService>().ConnectionRestoredAsync(Shutdown.Token);
+                    var live = GetService<LiveMailDataSource>();
+                    await live.SyncAsync(Shutdown.Token);
+                    await live.FilePendingSentCopiesAsync(Shutdown.Token);
+                    await live.UploadLocalDraftsAsync(Shutdown.Token);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    StartupDiagnostics.Log("resuming after reconnecting", ex);
+                }
+            });
         };
 
         // Real accounts sync in the background (only while real accounts, not the demo, are shown).
@@ -265,6 +280,13 @@ public partial class App : Application
     {
         try
         {
+            // A notification click that started a second process (handed over here) opens its message.
+            if (DesktopNotificationService.MessageFromActivation(args) is { } messageId)
+            {
+                if (Main is { } window) _ = window.OpenMessageAsync(messageId);
+                return;
+            }
+
             var link = args.Kind switch
             {
                 ExtendedActivationKind.Protocol when args.Data is Windows.ApplicationModel.Activation.IProtocolActivatedEventArgs protocol => protocol.Uri.OriginalString,
@@ -320,6 +342,7 @@ public partial class App : Application
         services.AddSingleton<NewMailCoordinator>();
         services.AddSingleton<TimedEventsWatcher>();
         services.AddSingleton<SmartFolderEditor>();
+        services.AddSingleton<ConnectivityService>();
         services.AddSingleton<RuleEditor>();
 
         // View models

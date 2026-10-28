@@ -57,6 +57,9 @@ public sealed partial class MainWindow : Window
             BuildNavigation();
             SelectScope(_mailList.Scope);
         };
+        var connectivity = App.GetService<ConnectivityService>();
+        OfflineBar.IsOpen = !connectivity.IsOnline;
+        connectivity.Changed += (_, online) => DispatcherQueue.TryEnqueue(() => OfflineBar.IsOpen = !online);
         RootGrid.Loaded += OnRootLoaded;
         RootGrid.SizeChanged += (_, e) => Footer.UpdateAvailableSpace(e.NewSize.Height);
         Closed += (_, _) =>
@@ -478,7 +481,9 @@ public sealed partial class MainWindow : Window
                     break;
                 default:
                     var moves = await App.GetService<IMailDataSource>().MoveToAsync(messages.Select(m => m.Id).ToList(), Core.Models.FolderKind.Inbox);
-                    App.GetService<ToastService>().ShowWithUndo(moves.Count == 1 ? "Moved to Inbox" : $"Moved {moves.Count} messages to Inbox", () => App.GetService<IMailDataSource>().RestoreAsync(moves));
+                    // Nothing moved: the server's error is already showing; don't cover it with a success notice.
+                    if (moves.Count > 0)
+                        App.GetService<ToastService>().ShowWithUndo(moves.Count == 1 ? "Moved to Inbox" : $"Moved {moves.Count} messages to Inbox", () => App.GetService<IMailDataSource>().RestoreAsync(moves));
                     break;
             }
         };

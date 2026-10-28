@@ -102,7 +102,7 @@ public class DemoDataSourceTests
     public async Task Permanent_delete_only_applies_to_trash()
     {
         var inbox = (await _source.GetMessagesAsync()).First(m => m.FolderKind == FolderKind.Inbox);
-        await _source.DeletePermanentlyAsync([inbox.Id]);
+        Assert.Equal(0, await _source.DeletePermanentlyAsync([inbox.Id])); // only Trash can be emptied
         Assert.NotNull(await _source.GetMessageAsync(inbox.Id));
 
         await _source.MoveToAsync([inbox.Id], FolderKind.Trash);

@@ -235,6 +235,36 @@ public class OutboxTests
     }
 
     [Fact]
+    public async Task Being_offline_never_fails_a_queued_message_and_reconnecting_sends_it_once()
+    {
+        var item = await QueueIn(TimeSpan.FromSeconds(1));
+        for (var i = 0; i < 12; i++) _transport.Outcomes.Enqueue(SendOutcome.NotConnected);
+
+        // Two hours offline: tried repeatedly with growing gaps (never more than 10 minutes), never Failed.
+        var end = _clock.Now + TimeSpan.FromHours(2);
+        var tries = 0;
+        while (_clock.Now < end && tries < 12)
+        {
+            _clock.Now = (await _store.GetAsync(item.Id))!.SendAt;
+            tries += await _outbox.ProcessDueAsync();
+            var waiting = (await _store.GetAsync(item.Id))!;
+            Assert.Equal(OutboxState.Queued, waiting.State);
+            Assert.Equal(0, waiting.Attempts); // connection failures aren't failed attempts
+            Assert.InRange(waiting.SendAt - _clock.Now, TimeSpan.FromSeconds(1), OutboxService.MaxConnectionRetryDelay);
+            Assert.Contains("Waiting for a connection", waiting.LastError);
+        }
+
+        // Back online: the next check would be minutes away, but reconnecting sends it now, once.
+        _transport.Outcomes.Clear();
+        var sentBefore = _transport.Sent.Count;
+        await _outbox.ConnectionRestoredAsync();
+        Assert.Equal(1, await _outbox.ProcessDueAsync());
+        Assert.Equal(OutboxState.Accepted, (await _store.GetAsync(item.Id))!.State);
+        Assert.Equal(sentBefore + 1, _transport.Sent.Count);
+        Assert.Equal(0, await _outbox.ProcessDueAsync());
+    }
+
+    [Fact]
     public async Task Temporary_failures_retry_with_backoff_then_fail()
     {
         var item = await QueueIn(TimeSpan.FromSeconds(1));

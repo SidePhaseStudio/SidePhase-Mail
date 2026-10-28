@@ -313,7 +313,8 @@ public sealed partial class MailListViewModel : ObservableObject
         // Opening a conversation expands it, like Gmail.
         if (value is { IsConversation: true, IsExpanded: false, ConversationKey: { } key } && _expanded.Add(key)) QueueRefresh();
 
-        if (value is { IsUnread: true } && _settings.Current.MarkAsReadOnOpen)
+        // Offline, marking as read could only fail and flip back; it happens next time the message is opened online.
+        if (value is { IsUnread: true } && _settings.Current.MarkAsReadOnOpen && (_mail.IsDemo || App.GetService<Services.ConnectivityService>().IsOnline))
         {
             _ = _commands.SetReadAsync(value.IsConversation ? value.ConversationMessages : [value.Summary], true);
         }

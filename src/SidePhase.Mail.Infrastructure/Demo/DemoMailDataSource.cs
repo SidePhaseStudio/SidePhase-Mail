@@ -195,7 +195,7 @@ public sealed class DemoMailDataSource : IMailDataSource
         return Task.CompletedTask;
     }
 
-    public Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default)
+    public Task<int> DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default)
     {
         var removed = new List<Guid>();
         lock (_gate)
@@ -213,7 +213,7 @@ public sealed class DemoMailDataSource : IMailDataSource
         }
 
         Raise(MailDataChangeKind.Removed, removed);
-        return Task.CompletedTask;
+        return Task.FromResult(removed.Count);
     }
 
     public Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default)

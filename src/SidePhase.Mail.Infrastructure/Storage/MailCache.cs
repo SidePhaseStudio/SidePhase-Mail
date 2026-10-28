@@ -824,6 +824,26 @@ public sealed class MailCache(MailDatabase database)
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Drafts kept only on this PC (saved while the server couldn't be reached), not changed for at least
+    /// <paramref name="quietFor"/>, so they can be uploaded to the account's Drafts folder.
+    /// </summary>
+    public async Task<IReadOnlyList<DraftMessage>> GetLocalOnlyDraftsAsync(TimeSpan quietFor, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT json FROM drafts WHERE id NOT IN (SELECT id FROM messages) AND updated_at <= $before ORDER BY updated_at";
+        cmd.Parameters.AddWithValue("$before", DateTimeOffset.UtcNow.Add(-quietFor).ToUnixTimeSeconds());
+        var result = new List<DraftMessage>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            if (JsonSerializer.Deserialize<DraftMessage>(r.GetString(0), Json) is { } draft) result.Add(draft);
+        }
+
+        return result;
+    }
+
     public async Task<DraftMessage?> GetDraftAsync(Guid draftId, CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);

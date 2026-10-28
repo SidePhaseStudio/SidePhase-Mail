@@ -25,6 +25,9 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15)];
 
     private readonly SemaphoreSlim _processing = new(1, 1);
+
+    // Items waiting because the server couldn't be reached, and how often in a row (for the back-off).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _connectionFailures = new();
     private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
 
     /// <summary>Raised after any item changes (may be raised on a background thread).</summary>
@@ -233,6 +236,16 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
                         LastError = result.Message + " Trying again shortly.",
                     },
                     SendOutcome.Uncertain => sending with { State = OutboxState.Uncertain, UpdatedAt = finished, LastError = result.Message },
+                    // Nothing reached the server: keep it queued (not a failed attempt), check again soon, and send it as
+                    // soon as the connection is back (Wake() on reconnect). Never sent twice: nothing was sent yet.
+                    SendOutcome.NotConnected => sending with
+                    {
+                        State = OutboxState.Queued,
+                        Attempts = item.Attempts,
+                        SendAt = finished + ConnectionRetryDelay(_connectionFailures.AddOrUpdate(item.Id, 1, (_, n) => n + 1)),
+                        UpdatedAt = finished,
+                        LastError = "Waiting for a connection to the mail server. It will be sent when you're back online. (" + result.Message + ")",
+                    },
                     _ => sending with { State = OutboxState.Failed, UpdatedAt = finished, LastError = result.Message },
                 };
 
@@ -253,6 +266,7 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
                     }
                 }
 
+                if (result.Outcome != SendOutcome.NotConnected) _connectionFailures.TryRemove(item.Id, out _);
                 OnChanged();
                 if (next.State is OutboxState.Accepted or OutboxState.Failed or OutboxState.Uncertain) AttemptFinished?.Invoke(this, next);
             }
@@ -264,6 +278,19 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
             _processing.Release();
         }
     }
+
+    /// <summary>
+    /// How long to wait before trying an item again after the server couldn't be reached: grows with the number of
+    /// connection failures already recorded, up to <see cref="MaxConnectionRetryDelay"/>.
+    /// </summary>
+    internal static TimeSpan ConnectionRetryDelay(int failures)
+    {
+        var seconds = Math.Min(MaxConnectionRetryDelay.TotalSeconds, 15 * Math.Pow(2, Math.Min(failures, 10)));
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    /// <summary>Longest gap between connection checks while the mail server is unreachable.</summary>
+    public static readonly TimeSpan MaxConnectionRetryDelay = TimeSpan.FromMinutes(10);
 
     /// <summary>When the next queued item is due, if any.</summary>
     public async Task<DateTimeOffset?> NextDueAsync(CancellationToken ct = default)
@@ -313,6 +340,23 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
     }
 
     public void Wake() => _wake.Release();
+
+    /// <summary>
+    /// The network is back: messages that were waiting for a connection are tried straight away instead of at their
+    /// next scheduled check. (Each is still sent at most once: only items still Queued are touched.)
+    /// </summary>
+    public async Task ConnectionRestoredAsync(CancellationToken ct = default)
+    {
+        var now = clock.Now;
+        foreach (var id in _connectionFailures.Keys.ToList())
+        {
+            var item = await store.GetAsync(id, ct).ConfigureAwait(false);
+            if (item is not { State: OutboxState.Queued } || item.SendAt <= now) continue;
+            await store.TryTransitionAsync(id, OutboxState.Queued, item with { SendAt = now, UpdatedAt = now }, ct).ConfigureAwait(false);
+        }
+
+        Wake();
+    }
 
     private Task<bool> UpdateQueuedAsync(Guid id, Func<OutboxItem, OutboxItem> change, CancellationToken ct) =>
         TransitionAsync(id, OutboxState.Queued, change, wake: true, ct);

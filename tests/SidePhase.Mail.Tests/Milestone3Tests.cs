@@ -164,7 +164,7 @@ public class JunkRuleAndNotificationTests
         public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset n, CancellationToken c = default) => _inner.TakeDueFollowUpsAsync(n, c);
         public Task<IReadOnlyList<Core.Abstractions.MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> ids, FolderKind t, CancellationToken c = default) => _inner.MoveToAsync(ids, t, c);
         public Task RestoreAsync(IReadOnlyCollection<Core.Abstractions.MoveRecord> m, CancellationToken c = default) => _inner.RestoreAsync(m, c);
-        public Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> ids, CancellationToken c = default) => _inner.DeletePermanentlyAsync(ids, c);
+        public Task<int> DeletePermanentlyAsync(IReadOnlyCollection<Guid> ids, CancellationToken c = default) => _inner.DeletePermanentlyAsync(ids, c);
         public Task<Guid> SaveDraftAsync(DraftMessage d, CancellationToken c = default) => _inner.SaveDraftAsync(d, c);
         public Task<DraftMessage?> GetDraftAsync(Guid id, CancellationToken c = default) => _inner.GetDraftAsync(id, c);
         public Task<Core.Abstractions.SendResult> SendAsync(DraftMessage d, IProgress<double>? p = null, CancellationToken c = default) => _inner.SendAsync(d, p, c);

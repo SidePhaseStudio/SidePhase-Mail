@@ -146,7 +146,7 @@ public class OAuthOutageTests
 
         Assert.True(ex.IsTransient);
         Assert.False(SidePhase.Mail.Infrastructure.Mail.MailErrorTranslator.Describe(ex).RequiresSignIn);
-        Assert.Equal(SidePhase.Mail.Core.Scheduling.SendOutcome.TemporaryFailure, SidePhase.Mail.Infrastructure.Mail.SmtpSender.Classify(ex, dataStarted: false));
+        Assert.Equal(SidePhase.Mail.Core.Scheduling.SendOutcome.NotConnected, SidePhase.Mail.Infrastructure.Mail.SmtpSender.Classify(ex, dataStarted: false));
     }
 
     [Fact]

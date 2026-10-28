@@ -79,7 +79,23 @@
 
 
       <!-- Pages float on the glass as rounded translucent panels (see SpPanelStyle); no hard frame border. -->
-      <Frame x:Name="ContentFrame" Margin="0,0,8,8" />
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <!-- Shown only while Windows reports no internet connection. -->
+        <InfoBar
+            x:Name="OfflineBar"
+            Margin="0,0,8,8"
+            AutomationProperties.LiveSetting="Polite"
+            IsClosable="False"
+            IsOpen="False"
+            Message="Cached mail is still available. Drafts are saved on this PC and messages you send wait in the Outbox until you're back online."
+            Severity="Warning"
+            Title="You're offline" />
+        <Frame x:Name="ContentFrame" Grid.Row="1" Margin="0,0,8,8" />
+      </Grid>
     </NavigationView>
 
     <!-- ============================ Footer promotion ============================ -->

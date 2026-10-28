@@ -138,6 +138,29 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
     }
 
     [MailServerFact]
+    public async Task A_draft_saved_offline_is_uploaded_once_when_back_online()
+    {
+        var alice = await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        var subject = "Offline draft " + Guid.NewGuid().ToString("N")[..6];
+        // What SaveDraftAsync leaves when the server can't be reached: a local copy only.
+        var localId = Guid.NewGuid();
+        await _app.Cache.SaveDraftAsync(localId, new DraftMessage { AccountId = alice.Id, Subject = subject, TextBody = "written on a train" });
+
+        await _app.Live.UploadLocalDraftsAsync(CancellationToken.None, quietFor: TimeSpan.Zero);
+        await _app.Live.UploadLocalDraftsAsync(CancellationToken.None, quietFor: TimeSpan.Zero); // nothing left to upload
+
+        var onServer = await WaitForAsync(_app.Mail, m => m.Subject == subject && m.FolderKind == FolderKind.Drafts);
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == subject && m.FolderKind == FolderKind.Drafts);
+        Assert.Null(await _app.Cache.GetDraftAsync(localId));
+
+        // The compose window still holding the local id keeps updating the same server draft (no second copy).
+        await _app.Live.SaveDraftAsync(new DraftMessage { DraftId = localId, AccountId = alice.Id, Subject = subject, TextBody = "edited later" });
+        await _app.Mail.SyncAsync();
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == subject && m.FolderKind == FolderKind.Drafts);
+        Assert.NotEqual(onServer.Id, localId);
+    }
+
+    [MailServerFact]
     public async Task A_sent_copy_left_by_a_crash_is_filed_once_on_the_next_start()
     {
         var alice = await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));

@@ -519,7 +519,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     private readonly ConcurrentDictionary<Guid, StoredMessageRef> _hidden = new();
 
-    public async Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default)
+    public async Task<int> DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default)
     {
         var removed = new List<Guid>();
         foreach (var id in messageIds)
@@ -539,15 +539,22 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
 
         Raise(MailDataChangeKind.Removed, removed);
+        return removed.Count;
     }
 
     // ------------------------------------------------------------------ drafts
 
-    public async Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default)
+    public Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default) =>
+        SaveDraftCoreAsync(draft, reportFailure: true, cancellationToken);
+
+    private async Task<Guid> SaveDraftCoreAsync(DraftMessage draft, bool reportFailure, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(draft);
         var account = (await GetStoredAccountsAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(a => a.Account.Id == draft.AccountId)
             ?? throw new InvalidOperationException("Choose an account for this draft.");
+
+        // A draft first saved offline and uploaded since: keep updating the uploaded copy rather than adding another.
+        if (draft.DraftId is { } earlier && _uploadedDrafts.TryGetValue(earlier, out var uploaded)) draft = draft with { DraftId = uploaded };
 
         // Always keep a local copy first, so nothing typed is lost if the server is unreachable.
         var localId = draft.DraftId ?? Guid.NewGuid();
@@ -608,14 +615,44 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Report(account, ex, "The draft was saved on this computer but couldn't be saved to the server");
+            if (reportFailure) Report(account, ex, "The draft was saved on this computer but couldn't be saved to the server");
         }
 
         return localId;
     }
 
+    // Local draft id → server draft id, for drafts saved offline and uploaded later in this session.
+    private readonly ConcurrentDictionary<Guid, Guid> _uploadedDrafts = new();
+
+    /// <summary>How long a local-only draft must be left alone before it's uploaded (so a window still editing it isn't raced).</summary>
+    public static readonly TimeSpan DraftUploadQuietPeriod = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Uploads drafts that could only be saved on this PC (the server was unreachable) to their account's Drafts
+    /// folder, so they appear in Drafts and in other mail apps. Each is uploaded once; a failure leaves it for next time.
+    /// </summary>
+    public async Task UploadLocalDraftsAsync(CancellationToken ct, TimeSpan? quietFor = null)
+    {
+        if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()) return;
+        var drafts = await _cache.GetLocalOnlyDraftsAsync(quietFor ?? DraftUploadQuietPeriod, ct).ConfigureAwait(false);
+        if (drafts.Count == 0) return;
+        var accounts = (await GetStoredAccountsAsync(ct).ConfigureAwait(false)).Select(a => a.Account.Id).ToHashSet();
+        foreach (var draft in drafts)
+        {
+            if (draft.DraftId is not { } localId || !accounts.Contains(draft.AccountId) || _uploadedDrafts.ContainsKey(localId)) continue;
+            // Quietly: while still offline this simply tries again next time.
+            var savedAs = await SaveDraftCoreAsync(draft, reportFailure: false, ct).ConfigureAwait(false);
+            if (savedAs != localId)
+            {
+                _uploadedDrafts[localId] = savedAs;
+                Trace($"a draft saved offline was uploaded to Drafts");
+            }
+        }
+    }
+
     public async Task<DraftMessage?> GetDraftAsync(Guid draftId, CancellationToken cancellationToken = default)
     {
+        if (_uploadedDrafts.TryGetValue(draftId, out var uploaded)) draftId = uploaded;
         if (await _cache.GetDraftAsync(draftId, cancellationToken).ConfigureAwait(false) is { } local) return local;
 
         // A draft written in another app: rebuild an editable copy from the server message.
@@ -688,7 +725,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !tracker.DataStarted)
             {
-                return new SendResult(false, "Sending was cancelled. The message was not sent.") { Outcome = SendOutcome.TemporaryFailure };
+                return new SendResult(false, "Sending was cancelled. The message was not sent.") { Outcome = SendOutcome.NotConnected };
             }
             catch (Exception ex)
             {
@@ -758,7 +795,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     }
 
     /// <summary>Files Sent copies left over from a previous session (the app closed before they were filed).</summary>
-    internal async Task FilePendingSentCopiesAsync(CancellationToken ct)
+    public async Task FilePendingSentCopiesAsync(CancellationToken ct)
     {
         if (_pendingSentCopies is null) return;
         var pending = _pendingSentCopies.List();
@@ -819,9 +856,10 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 }
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Tidying up drafts or marking the original as answered is cosmetic; the message was sent.
+            // The message was sent. A draft left behind in Drafts could be sent again by mistake, so say so.
+            if (draft.DraftId is not null) Report(account, ex, "The message was sent, but its draft couldn't be removed from Drafts (delete it there so it isn't sent twice)");
         }
 
         await SyncAccountKindsAsync(account, [FolderKind.Sent, FolderKind.Drafts]).ConfigureAwait(false);
@@ -1012,6 +1050,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                     }
 
                     if (first) await FilePendingSentCopiesAsync(_shutdown.Token).ConfigureAwait(false);
+                    if (accounts.Count > 0) await UploadLocalDraftsAsync(_shutdown.Token).ConfigureAwait(false);
                     first = false;
                     await Task.Delay(TimeSpan.FromSeconds(30), _shutdown.Token).ConfigureAwait(false);
                 }

@@ -50,11 +50,12 @@ public static class SmtpSender
         // The server answered: not accepted. 4xx is worth retrying later, 5xx needs the user.
         SmtpCommandException command => (int)command.StatusCode is >= 400 and < 500 ? SendOutcome.TemporaryFailure : SendOutcome.Rejected,
         // A provider outage while refreshing the sign-in says nothing about the message: try again later.
-        OAuthException { IsTransient: true } => SendOutcome.TemporaryFailure,
+        OAuthException { IsTransient: true } => SendOutcome.NotConnected,
         AuthenticationException or SslHandshakeException or OAuthException => SendOutcome.Rejected,
         InvalidOperationException or IOException when !IsTransport(exception) => SendOutcome.Rejected, // e.g. missing attachment
         _ when dataStarted => SendOutcome.Uncertain,
-        _ when IsTransport(exception) => SendOutcome.TemporaryFailure,
+        // Couldn't talk to the server at all (offline, DNS, refused, dropped before the message data): nothing was sent.
+        _ when IsTransport(exception) => SendOutcome.NotConnected,
         _ => SendOutcome.Rejected,
     };
 

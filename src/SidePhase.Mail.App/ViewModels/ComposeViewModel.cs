@@ -218,6 +218,7 @@ public sealed partial class ComposeViewModel : ObservableObject
     {
         using var timer = new PeriodicTimer(RecoveryInterval);
         var lastServerSave = _clock.Now;
+        var reported = false;
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
@@ -225,37 +226,44 @@ public sealed partial class ComposeViewModel : ObservableObject
                 if (IsSending) continue;
                 var version = _changeVersion;
 
-                if (version != _recoveredVersion && BuildDraft(out _, requireRecipients: false) is { } copy)
+                // A failure (disk, network) is reported once and retried on the next tick: autosave never stops.
+                try
                 {
-                    await _recovery.SaveAsync(SessionId, copy with { DraftId = _draftId }, ct);
-                    _recoveredVersion = version;
-                }
-
-                if (IsDirty && version != _serverSavedVersion && _clock.Now - lastServerSave >= DraftAutosaveInterval && HasContent())
-                {
-                    lastServerSave = _clock.Now;
-                    if (BuildDraft(out _, requireRecipients: false) is { } draft)
+                    if (version != _recoveredVersion && BuildDraft(out _, requireRecipients: false) is { } copy)
                     {
-                        _draftId = await _mail.SaveDraftAsync(draft, ct);
-                        _serverSavedVersion = version;
-                        if (_changeVersion == version) IsDirty = false;
-                        SetStatus($"Draft saved automatically at {DateTime.Now.ToString("t", CultureInfo.CurrentCulture)}", error: false);
+                        await _recovery.SaveAsync(SessionId, copy with { DraftId = _draftId }, ct);
+                        _recoveredVersion = version;
                     }
+
+                    if (IsDirty && version != _serverSavedVersion && _clock.Now - lastServerSave >= DraftAutosaveInterval && HasContent())
+                    {
+                        lastServerSave = _clock.Now;
+                        if (BuildDraft(out _, requireRecipients: false) is { } draft)
+                        {
+                            _draftId = await _mail.SaveDraftAsync(draft, ct);
+                            _serverSavedVersion = version;
+                            if (_changeVersion == version) IsDirty = false;
+                            SetStatus($"Draft saved automatically at {DateTime.Now.ToString("t", CultureInfo.CurrentCulture)}", error: false);
+                        }
+                    }
+
+                    reported = false;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    if (!reported) SetStatus("Couldn't save the draft automatically (" + ex.Message + "). Trying again shortly.", error: true);
+                    reported = true;
                 }
             }
         }
         catch (OperationCanceledException)
         {
         }
-        catch (Exception ex)
-        {
-            // Autosave must never interrupt writing; the manual Save draft button still works.
-            SetStatus("Automatic saving stopped: " + ex.Message, error: true);
-        }
     }
 
     private bool HasContent() =>
-        !string.IsNullOrWhiteSpace(To) || !string.IsNullOrWhiteSpace(Subject) || Attachments.Count > 0
+        !string.IsNullOrWhiteSpace(To) || !string.IsNullOrWhiteSpace(Cc) || !string.IsNullOrWhiteSpace(Bcc)
+        || !string.IsNullOrWhiteSpace(Subject) || Attachments.Count > 0
         || (BodyProvider?.Invoke().Text.Trim().Length ?? 0) > Signature.Trim().Length;
 
     /// <summary>Called when the window closes normally: the crash-recovery copy is no longer needed.</summary>
@@ -271,7 +279,17 @@ public sealed partial class ComposeViewModel : ObservableObject
     partial void OnSubjectChanged(string value) => IsDirty = true;
 
     [RelayCommand]
-    private void ToggleCcBcc() => ShowCcBcc = !ShowCcBcc;
+    private void ToggleCcBcc()
+    {
+        // Never hide addresses that will be sent.
+        if (ShowCcBcc && (!string.IsNullOrWhiteSpace(Cc) || !string.IsNullOrWhiteSpace(Bcc)))
+        {
+            SetStatus("Cc and Bcc stay visible while they contain addresses.", error: false);
+            return;
+        }
+
+        ShowCcBcc = !ShowCcBcc;
+    }
 
     public void AddFiles(IEnumerable<(string Path, string Name, long Size, string ContentType)> files)
     {

@@ -57,6 +57,8 @@ public static class MailErrorTranslator
 
     private static string DescribeSocket(SocketException e, string where) => e.SocketErrorCode switch
     {
+        SocketError.HostNotFound or SocketError.NoData when !System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable() =>
+            "You appear to be offline. SidePhase Mail will try again when you're connected.",
         SocketError.HostNotFound or SocketError.NoData => $"Couldn't find {where}. Check the server name and your internet connection.",
         SocketError.ConnectionRefused => $"{Capitalise(where)} refused the connection. Check the port number.",
         SocketError.TimedOut => $"{Capitalise(where)} didn't respond. Check the server name, port and your connection.",

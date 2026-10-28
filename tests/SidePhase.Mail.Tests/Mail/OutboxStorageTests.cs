@@ -84,9 +84,9 @@ public sealed class OutboxStorageTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, SendOutcome.TemporaryFailure)]
+    [InlineData(false, SendOutcome.NotConnected)]
     [InlineData(true, SendOutcome.Uncertain)]
-    public void Broken_connections_are_temporary_before_data_and_uncertain_after(bool dataStarted, SendOutcome expected)
+    public void Broken_connections_are_not_connected_before_data_and_uncertain_after(bool dataStarted, SendOutcome expected)
     {
         Assert.Equal(expected, SmtpSender.Classify(new IOException("reset", new SocketException()), dataStarted));
         Assert.Equal(expected, SmtpSender.Classify(new SocketException((int)SocketError.ConnectionReset), dataStarted));
