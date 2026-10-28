@@ -2,6 +2,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using SidePhase.Mail.App.Helpers;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.App.ViewModels;
