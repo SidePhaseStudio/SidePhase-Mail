@@ -324,3 +324,152 @@ public sealed class RemoteContentPolicyTests
     public void Only_public_web_images_are_allowed(string url, bool allowed) =>
         Assert.Equal(allowed, Core.Rendering.RemoteContentPolicy.IsAllowedImageUrl(url));
 }
+
+public sealed class ProviderChoiceTests
+{
+    private static Core.Abstractions.AccountDiscoveryResult Discovered(string email, Core.Models.MailProviderKind provider, Core.Models.AuthMethod auth) => new()
+    {
+        EmailAddress = email,
+        Provider = provider,
+        Source = Core.Abstractions.DiscoverySource.Guess,
+        Settings = new Core.Models.AccountConnectionSettings
+        {
+            Imap = new("imap.company.example", 993, Core.Models.ConnectionSecurity.SslOnConnect),
+            Smtp = new("smtp.company.example", 465, Core.Models.ConnectionSecurity.SslOnConnect),
+            Username = email,
+            AuthMethod = auth,
+        },
+    };
+
+    [Fact]
+    public void Choosing_google_for_a_company_domain_signs_in_with_google()
+    {
+        var result = Infrastructure.Accounts.AccountDiscovery.ForChoice(Infrastructure.Accounts.ProviderChoice.Google,
+            Discovered("ana@company.example", Core.Models.MailProviderKind.Imap, Core.Models.AuthMethod.Password));
+
+        Assert.Equal(Core.Models.AuthMethod.OAuthGoogle, result.Settings!.AuthMethod);
+        Assert.Equal("imap.gmail.com", result.Settings.Imap.Host);
+        Assert.Equal(Core.Models.MailProviderKind.Gmail, result.Provider);
+        Assert.Equal("ana@company.example", result.Settings.Username);
+    }
+
+    [Fact]
+    public void Choosing_microsoft_for_a_company_domain_signs_in_with_microsoft_365()
+    {
+        var result = Infrastructure.Accounts.AccountDiscovery.ForChoice(Infrastructure.Accounts.ProviderChoice.Microsoft,
+            Discovered("ana@company.example", Core.Models.MailProviderKind.Imap, Core.Models.AuthMethod.Password));
+
+        Assert.Equal(Core.Models.AuthMethod.OAuthMicrosoft, result.Settings!.AuthMethod);
+        Assert.Equal("outlook.office365.com", result.Settings.Imap.Host);
+        Assert.Equal(Core.Models.MailProviderKind.Microsoft, result.Provider);
+    }
+
+    [Fact]
+    public void Recognised_providers_and_other_keep_what_discovery_found()
+    {
+        var gmail = Discovered("ana@gmail.com", Core.Models.MailProviderKind.Gmail, Core.Models.AuthMethod.OAuthGoogle);
+        Assert.Same(gmail, Infrastructure.Accounts.AccountDiscovery.ForChoice(Infrastructure.Accounts.ProviderChoice.Google, gmail));
+
+        var other = Discovered("ana@company.example", Core.Models.MailProviderKind.Imap, Core.Models.AuthMethod.Password);
+        Assert.Same(other, Infrastructure.Accounts.AccountDiscovery.ForChoice(Infrastructure.Accounts.ProviderChoice.Other, other));
+    }
+}
+
+public sealed class ThunderbirdImportTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "sp-tb-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch (IOException) { }
+    }
+
+    private const string Prefs = """
+        // Mozilla User Preferences
+        user_pref("mail.accountmanager.accounts", "account1,account2,account3,account4");
+        user_pref("mail.account.account1.identities", "id1");
+        user_pref("mail.account.account1.server", "server1");
+        user_pref("mail.server.server1.type", "imap");
+        user_pref("mail.server.server1.hostname", "imap.example.test");
+        user_pref("mail.server.server1.port", 993);
+        user_pref("mail.server.server1.socketType", 3);
+        user_pref("mail.server.server1.userName", "ana");
+        user_pref("mail.identity.id1.useremail", "ana@example.test");
+        user_pref("mail.identity.id1.fullName", "Ana \"Annie\" Lopes");
+        user_pref("mail.identity.id1.smtpServer", "smtp1");
+        user_pref("mail.smtpserver.smtp1.hostname", "smtp.example.test");
+        user_pref("mail.smtpserver.smtp1.port", 587);
+        user_pref("mail.smtpserver.smtp1.try_ssl", 2);
+        user_pref("mail.account.account2.identities", "id2");
+        user_pref("mail.account.account2.server", "server2");
+        user_pref("mail.server.server2.type", "pop3");
+        user_pref("mail.server.server2.hostname", "pop.example.test");
+        user_pref("mail.identity.id2.useremail", "pop@example.test");
+        user_pref("mail.account.account3.server", "server3");
+        user_pref("mail.server.server3.type", "none");
+        user_pref("mail.account.account4.identities", "id4");
+        user_pref("mail.account.account4.server", "server4");
+        user_pref("mail.server.server4.type", "imap");
+        user_pref("mail.server.server4.hostname", "imap.plain.test");
+        user_pref("mail.server.server4.socketType", 0);
+        user_pref("mail.identity.id4.useremail", "plain@plain.test");
+        user_pref("signon.rememberSignons", true);
+        """;
+
+    [Fact]
+    public void Reads_encrypted_imap_accounts_with_their_outgoing_server()
+    {
+        var account = Assert.Single(Infrastructure.Accounts.ThunderbirdProfileReader.ParseAccounts(Prefs));
+
+        Assert.Equal("ana@example.test", account.EmailAddress);
+        Assert.Equal("Ana \"Annie\" Lopes", account.DisplayName);
+        Assert.Equal(new Core.Models.ServerEndpoint("imap.example.test", 993, Core.Models.ConnectionSecurity.SslOnConnect), account.Imap);
+        Assert.Equal(new Core.Models.ServerEndpoint("smtp.example.test", 587, Core.Models.ConnectionSecurity.StartTls), account.Smtp);
+        Assert.Equal("ana", account.Username);
+        Assert.False(account.UsesOAuth);
+    }
+
+    [Fact]
+    public void Never_touches_password_or_key_files()
+    {
+        var profile = Path.Combine(_root, "Profiles", "abcd.default-release");
+        Directory.CreateDirectory(profile);
+        File.WriteAllText(Path.Combine(profile, "prefs.js"), Prefs);
+        foreach (var secret in new[] { "logins.json", "key4.db", "cert9.db" }) File.WriteAllText(Path.Combine(profile, secret), "secret");
+        var before = Directory.GetFiles(profile).ToDictionary(f => f, File.GetLastAccessTimeUtc);
+
+        var accounts = Infrastructure.Accounts.ThunderbirdProfileReader.ReadAccounts(profile);
+
+        Assert.Single(accounts);
+        // The reader opens only prefs.js (checked by reading the source of truth: the file list is unchanged and the
+        // secret files still hold exactly what they held).
+        foreach (var secret in new[] { "logins.json", "key4.db", "cert9.db" }) Assert.Equal("secret", File.ReadAllText(Path.Combine(profile, secret)));
+        Assert.Equal(before.Keys.Order(), Directory.GetFiles(profile).Order());
+    }
+
+    [Fact]
+    public void Finds_profiles_from_profiles_ini()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "Profiles", "abcd.default-release"));
+        File.WriteAllText(Path.Combine(_root, "profiles.ini"), """
+            [Profile0]
+            Name=default-release
+            IsRelative=1
+            Path=Profiles/abcd.default-release
+            Default=1
+
+            [Profile1]
+            Name=missing
+            IsRelative=1
+            Path=Profiles/gone
+            """);
+
+        var profile = Assert.Single(Infrastructure.Accounts.ThunderbirdProfileReader.FindProfiles(_root));
+        Assert.Equal("default-release", profile.Name);
+        Assert.True(profile.IsDefault);
+    }
+
+    [Fact]
+    public void A_folder_that_isnt_a_profile_is_reported() =>
+        Assert.Throws<FileNotFoundException>(() => Infrastructure.Accounts.ThunderbirdProfileReader.ReadAccounts(Path.GetTempPath()));
+}

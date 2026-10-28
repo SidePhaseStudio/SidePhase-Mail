@@ -64,7 +64,7 @@ public sealed class LoopbackRedirectListener : IDisposable
 
             var ok = !values.ContainsKey("error");
             await RespondAsync(stream, 200, ok
-                ? "You're signed in. You can close this tab and return to SidePhase Mail."
+                ? "Sign-in received. You can close this tab and return to SidePhase Mail to finish."
                 : "Sign-in was cancelled or failed. You can close this tab and return to SidePhase Mail.", cancellationToken).ConfigureAwait(false);
             return values;
         }
