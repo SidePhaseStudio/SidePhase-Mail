@@ -371,6 +371,28 @@ public sealed class MailCacheTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Categories_follow_the_message_and_appear_on_summaries()
+    {
+        var inbox = Folder("INBOX", FolderKind.Inbox);
+        var archive = Folder("Archive", FolderKind.Archive);
+        await _cache.UpsertFolderAsync(inbox);
+        await _cache.UpsertFolderAsync(archive);
+        var m = Message(inbox, 1, 1, "<c@x>");
+        await _cache.UpsertMessagesAsync([m]);
+        await _cache.SetCategoryAsync(_account, m.IdentityKey, "Bills", add: true);
+        await _cache.SetCategoryAsync(_account, m.IdentityKey, "Home", add: true);
+        await _cache.SetCategoryAsync(_account, m.IdentityKey, "bills", add: true); // same category, any case
+        Assert.Equal(["Bills", "Home"], (await _cache.GetSummaryAsync(m.Id))!.Categories.Order());
+
+        var moved = MessageIdentity.ForImapMessage(_account, "Archive", 1, 9);
+        await _cache.MoveCachedMessageAsync(m.Id, moved, archive.Id, 1, 9);
+        Assert.Equal(2, (await _cache.GetSummaryAsync(moved))!.Categories.Count);
+
+        await _cache.SetCategoryAsync(_account, m.IdentityKey, "Home", add: false);
+        Assert.Equal(["Bills"], (await _cache.GetSummaryAsync(moved))!.Categories);
+    }
+
+    [Fact]
     public async Task Smart_folder_definitions_persist()
     {
         var store = new SqliteSmartFolderStore(_cache);

@@ -198,7 +198,8 @@ public sealed class MailCache(MailDatabase database)
         SELECT m.id, m.account_id, m.folder_id, f.kind, m.message_id_header, m.from_name, m.from_address, m.to_json, m.cc_json,
                m.subject, m.preview, m.date, m.is_read, m.is_starred, m.has_attachments, m.spam_json,
                p.pinned_at, CASE WHEN ls.identity_key IS NULL THEN 0 ELSE 1 END,
-               sz.until_utc, rm.due_utc, m.in_reply_to, m.references_json, m.size
+               sz.until_utc, rm.due_utc, m.in_reply_to, m.references_json, m.size,
+               (SELECT group_concat(mc.category, char(31)) FROM message_categories mc WHERE mc.account_id = m.account_id AND mc.identity_key = m.identity_key)
         FROM messages m
         JOIN folders f ON f.id = m.folder_id
         LEFT JOIN pins p ON p.account_id = m.account_id AND p.identity_key = m.identity_key
@@ -275,6 +276,7 @@ public sealed class MailCache(MailDatabase database)
                 References = ReadReferences(r.IsDBNull(20) ? null : r.GetString(20), r.IsDBNull(21) ? null : r.GetString(21)),
                 Size = r.GetInt64(22),
                 Attachments = attachments.TryGetValue(r.GetString(0), out var list) ? list : [],
+                Categories = r.IsDBNull(23) ? [] : r.GetString(23).Split('\u001f', StringSplitOptions.RemoveEmptyEntries),
             });
         }
 
@@ -538,6 +540,8 @@ public sealed class MailCache(MailDatabase database)
                 FROM messages WHERE id = $old;
                 INSERT OR IGNORE INTO bodies (message_id, html, text, attachments_json, bcc_json, cached_at)
                 SELECT $new, html, text, attachments_json, bcc_json, cached_at FROM bodies WHERE message_id = $old;
+                INSERT OR IGNORE INTO message_attachments (message_id, position, file_name, content_type, size)
+                SELECT $new, position, file_name, content_type, size FROM message_attachments WHERE message_id = $old;
                 DELETE FROM messages WHERE id = $old;
                 """;
             cmd.Parameters.AddWithValue("$new", newId.ToString());
@@ -632,6 +636,21 @@ public sealed class MailCache(MailDatabase database)
         cmd.Parameters.AddWithValue("$c", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         if (body.Attachments.Count > 0) await InsertAttachmentsAsync(c, null, body.MessageId, body.Attachments, ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------ categories
+
+    public async Task SetCategoryAsync(Guid accountId, string identityKey, string category, bool add, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = add
+            ? "INSERT OR IGNORE INTO message_categories (account_id, identity_key, category) VALUES ($a, $k, $c)"
+            : "DELETE FROM message_categories WHERE account_id = $a AND identity_key = $k AND category = $c";
+        cmd.Parameters.AddWithValue("$a", accountId.ToString());
+        cmd.Parameters.AddWithValue("$k", identityKey);
+        cmd.Parameters.AddWithValue("$c", category);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------ pins & local stars

@@ -149,6 +149,33 @@ public sealed class DemoMailDataSource : IMailDataSource
         return Task.FromResult<IReadOnlyList<MoveRecord>>(moves);
     }
 
+    public Task<IReadOnlyList<MoveRecord>> MoveToFolderAsync(IReadOnlyCollection<Guid> messageIds, Guid folderId, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var moves = new List<MoveRecord>();
+        lock (_gate)
+        {
+            var folder = _folders.FirstOrDefault(f => f.Id == folderId);
+            foreach (var id in messageIds)
+            {
+                if (folder is null || !_messages.TryGetValue(id, out var m) || m.AccountId != folder.AccountId || m.FolderId == folder.Id) continue;
+                moves.Add(new MoveRecord(id, m.FolderId));
+                _messages[id] = m with { FolderId = folder.Id, FolderKind = folder.Kind };
+            }
+        }
+
+        progress?.Report(1);
+        Raise(MailDataChangeKind.Moved, moves.Select(m => m.MessageId).ToArray());
+        return Task.FromResult<IReadOnlyList<MoveRecord>>(moves);
+    }
+
+    public Task SetCategoryAsync(IReadOnlyCollection<Guid> messageIds, string category, bool add, CancellationToken cancellationToken = default) =>
+        UpdateFlags(messageIds, m => m with
+        {
+            Categories = add
+                ? m.Categories.Contains(category, StringComparer.CurrentCultureIgnoreCase) ? m.Categories : [.. m.Categories, category]
+                : m.Categories.Where(c => !c.Equals(category, StringComparison.CurrentCultureIgnoreCase)).ToList(),
+        });
+
     public Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default)
     {
         var restored = new List<Guid>();

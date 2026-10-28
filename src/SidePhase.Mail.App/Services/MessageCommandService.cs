@@ -178,6 +178,50 @@ public sealed class MessageCommandService(
 
     public string Describe(DateTimeOffset when) => QuickTimes.Describe(when, clock.Now, TimeZoneInfo.Local);
 
+    /// <summary>Edits a message's local categories (comma-separated). Categories stay on this PC.</summary>
+    public async Task EditCategoriesAsync(MessageSummary message)
+    {
+        var box = new TextBox
+        {
+            Header = "Categories",
+            Text = string.Join(", ", message.Categories),
+            PlaceholderText = "e.g. Bills, Family",
+            MinWidth = 320,
+        };
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(box);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Separate categories with commas. Find them later with category:name in search or a smart folder. They're kept on this PC.",
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 340,
+            Opacity = 0.75,
+        });
+        var dialog = new ContentDialog
+        {
+            Title = "Edit categories",
+            Content = panel,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialogs.ShowAsync(dialog) != ContentDialogResult.Primary) return;
+
+        var wanted = box.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(c => c.Length > 40 ? c[..40] : c)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        foreach (var removed in message.Categories.Where(c => !wanted.Contains(c, StringComparer.CurrentCultureIgnoreCase)))
+        {
+            await mail.SetCategoryAsync([message.Id], removed, add: false);
+        }
+
+        foreach (var added in wanted.Where(c => !message.Categories.Contains(c, StringComparer.CurrentCultureIgnoreCase)))
+        {
+            await mail.SetCategoryAsync([message.Id], added, add: true);
+        }
+    }
+
     public async Task ReplyAsync(MessageSummary message, ComposeMode mode)
     {
         var accounts = await mail.GetAccountsAsync();

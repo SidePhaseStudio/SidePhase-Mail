@@ -44,6 +44,9 @@ public sealed record MessageSummary
     /// </summary>
     public IReadOnlyList<AttachmentInfo> Attachments { get; init; } = [];
 
+    /// <summary>Local categories (labels) added by you or your rules. Kept on this PC.</summary>
+    public IReadOnlyList<string> Categories { get; init; } = [];
+
     /// <summary>When a snoozed message returns to its folder. Null when not snoozed (local to this PC).</summary>
     public DateTimeOffset? SnoozedUntil { get; init; }
 

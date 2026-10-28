@@ -80,6 +80,11 @@
             <FontIcon Glyph="&#xE72E;" />
           </SelectorBarItem.Icon>
         </SelectorBarItem>
+        <SelectorBarItem Tag="rules" Text="Rules">
+          <SelectorBarItem.Icon>
+            <FontIcon Glyph="&#xE8B7;" />
+          </SelectorBarItem.Icon>
+        </SelectorBarItem>
         <SelectorBarItem Tag="shortcuts" Text="Shortcuts">
           <SelectorBarItem.Icon>
             <FontIcon Glyph="&#xE765;" />
@@ -553,6 +558,46 @@
           <controls:SettingsCard Description="{x:Bind ViewModel.CredentialSummary}" Glyph="&#xE8D7;" Header="Stored sign-ins">
             <TextBlock VerticalAlignment="Center" Style="{StaticResource SpCaptionTextStyle}" Text="Passwords are never stored for Google or Microsoft." />
           </controls:SettingsCard>
+        </StackPanel>
+
+        <!-- ============================ Rules ============================ -->
+        <StackPanel x:Name="RulesSection" Spacing="4" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Mail rules" />
+          <TextBlock Margin="2,0,0,6" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Rules act on new mail in your Inbox: move it, mark it read, add it to favourites, give it a category or keep it quiet. Each rule handles a message only once, rules never delete anything, and they run on this PC while SidePhase Mail is open." />
+          <ItemsRepeater ItemsSource="{x:Bind ViewModel.Rules}">
+            <ItemsRepeater.Layout>
+              <StackLayout Spacing="6" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+              <DataTemplate x:DataType="vm:RuleItemViewModel">
+                <Border Style="{StaticResource SpCardStyle}">
+                  <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                      <TextBlock FontSize="14" Text="{x:Bind Name}" />
+                      <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind Description}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" MinWidth="0" VerticalAlignment="Center" IsOn="{x:Bind Enabled, Mode=TwoWay}" OffContent="" OnContent="" ToolTipService.ToolTip="Turn this rule on or off" />
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="2">
+                      <Button Command="{x:Bind RunNowCommand}" Content="Run now…" Style="{StaticResource SpSubtleButtonStyle}" />
+                      <Button AutomationProperties.Name="Edit rule" Command="{x:Bind EditCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Edit">
+                        <FontIcon FontSize="13" Glyph="&#xE70F;" />
+                      </Button>
+                      <Button AutomationProperties.Name="Delete rule" Command="{x:Bind DeleteCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Delete">
+                        <FontIcon FontSize="13" Glyph="&#xE74D;" />
+                      </Button>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+          </ItemsRepeater>
+          <TextBlock Margin="2,4,0,4" Style="{StaticResource SpCaptionTextStyle}" Text="No rules yet." Visibility="{x:Bind ViewModel.HasNoRules, Mode=OneWay}" />
+          <Button Margin="0,2,0,0" Command="{x:Bind ViewModel.AddRuleCommand}" Content="New rule…" Style="{StaticResource SpSecondaryButtonStyle}" />
         </StackPanel>
 
         <!-- ============================ Shortcuts ============================ -->

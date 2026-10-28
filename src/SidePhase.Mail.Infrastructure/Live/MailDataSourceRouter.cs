@@ -80,6 +80,12 @@ public sealed class MailDataSourceRouter : IMailDataSource
 
     public Task<IReadOnlyList<MoveRecord>> MoveToAsync(IReadOnlyCollection<Guid> messageIds, FolderKind target, CancellationToken cancellationToken = default) => Active.MoveToAsync(messageIds, target, cancellationToken);
 
+    public Task<IReadOnlyList<MoveRecord>> MoveToFolderAsync(IReadOnlyCollection<Guid> messageIds, Guid folderId, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+        Active.MoveToFolderAsync(messageIds, folderId, progress, cancellationToken);
+
+    public Task SetCategoryAsync(IReadOnlyCollection<Guid> messageIds, string category, bool add, CancellationToken cancellationToken = default) =>
+        Active.SetCategoryAsync(messageIds, category, add, cancellationToken);
+
     public Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default) => Active.RestoreAsync(moves, cancellationToken);
 
     public Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default) => Active.DeletePermanentlyAsync(messageIds, cancellationToken);

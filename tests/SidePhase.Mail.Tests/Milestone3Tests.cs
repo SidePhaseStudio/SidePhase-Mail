@@ -157,6 +157,8 @@ public class JunkRuleAndNotificationTests
         public Task SetStarredAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetStarredAsync(ids, v, c);
         public Task SetPinnedAsync(IReadOnlyCollection<Guid> ids, bool v, CancellationToken c = default) => _inner.SetPinnedAsync(ids, v, c);
         public Task SetSnoozeAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset? u, CancellationToken c = default) => _inner.SetSnoozeAsync(ids, u, c);
+        public Task<IReadOnlyList<Core.Abstractions.MoveRecord>> MoveToFolderAsync(IReadOnlyCollection<Guid> ids, Guid f, IProgress<double>? p = null, CancellationToken c = default) => _inner.MoveToFolderAsync(ids, f, p, c);
+        public Task SetCategoryAsync(IReadOnlyCollection<Guid> ids, string cat, bool add, CancellationToken c = default) => _inner.SetCategoryAsync(ids, cat, add, c);
         public Task<IReadOnlyList<MessageSummary>> ReleaseExpiredSnoozesAsync(DateTimeOffset n, CancellationToken c = default) => _inner.ReleaseExpiredSnoozesAsync(n, c);
         public Task SetFollowUpAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset? d, CancellationToken c = default) => _inner.SetFollowUpAsync(ids, d, c);
         public Task<IReadOnlyList<MessageSummary>> TakeDueFollowUpsAsync(DateTimeOffset n, CancellationToken c = default) => _inner.TakeDueFollowUpsAsync(n, c);

@@ -66,6 +66,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISmartFolderStore, SqliteSmartFolderStore>();
         services.AddSingleton<SmartFolderService>();
 
+        // Mail rules (run on new mail, once per message per rule).
+        services.AddSingleton<IMailRuleStore, SqliteMailRuleStore>();
+        services.AddSingleton<MailRuleService>();
+
         // Local spam learning (from messages the user marks; never leaves this PC).
         services.AddSingleton<ISpamLearningStore, SqliteSpamLearningStore>();
         services.AddSingleton<LocalSpamFilter>();

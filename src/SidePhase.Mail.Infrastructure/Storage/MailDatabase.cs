@@ -266,7 +266,7 @@ public sealed class MailDatabase
         -- Which rule has already acted on which message (by identity, so moving a message doesn't re-run rules).
         CREATE TABLE rule_applications (
             rule_id      TEXT NOT NULL,
-            account_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            account_id   TEXT NOT NULL,
             identity_key TEXT NOT NULL,
             applied_at   INTEGER NOT NULL,
             PRIMARY KEY (rule_id, account_id, identity_key)

@@ -108,6 +108,9 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public bool IsInJunk { get; private set; }
     public bool HasPreview => !IsCompact && Preview.Length > 0;
 
+    public string CategoriesText { get; private set; } = string.Empty;
+    public bool HasCategories => CategoriesText.Length > 0;
+
     public bool IsSnoozed { get; private set; }
     public bool IsNotSnoozed => !IsSnoozed;
     public bool HasFollowUp { get; private set; }
@@ -181,6 +184,7 @@ public sealed partial class MessageItemViewModel : ObservableObject
         Subject = m.DisplaySubject;
         Preview = m.Preview;
         DateText = DateDisplayFormatter.ForList(m.Date, context.Now);
+        CategoriesText = string.Join(" · ", m.Categories);
         IsSnoozed = m.SnoozedUntil is not null;
         SnoozeTooltip = m.SnoozedUntil is { } until ? "Snoozed until " + QuickTimes.Describe(until, context.Now, TimeZoneInfo.Local) : string.Empty;
         if (m.SnoozedUntil is { } back) DateText = QuickTimes.Describe(back, context.Now, TimeZoneInfo.Local);
@@ -257,4 +261,7 @@ public sealed partial class MessageItemViewModel : ObservableObject
     /// <param name="choice">A <see cref="QuickTime"/> name, "Custom" or "Clear".</param>
     [RelayCommand]
     private Task FollowUpAsync(string choice) => _commands.FollowUpAsync(Summary, choice);
+
+    [RelayCommand]
+    private Task EditCategoriesAsync() => _commands.EditCategoriesAsync(Summary);
 }

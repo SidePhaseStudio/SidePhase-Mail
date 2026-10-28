@@ -150,7 +150,8 @@ public static class MessageSearch
             case "filetype":
                 return m => m.Attachments.Any(a => AttachmentTypes.Matches(a, value));
             case "category":
-                return m => context.CategoriesOf?.Invoke(m).Any(c => c.Equals(value, StringComparison.CurrentCultureIgnoreCase)) == true;
+                return m => m.Categories.Any(c => c.Equals(value, StringComparison.CurrentCultureIgnoreCase))
+                            || context.CategoriesOf?.Invoke(m).Any(c => c.Equals(value, StringComparison.CurrentCultureIgnoreCase)) == true;
             case "from":
                 return m => Contains(m.From.DisplayName, value) || Contains(m.From.Address, value);
             case "to":

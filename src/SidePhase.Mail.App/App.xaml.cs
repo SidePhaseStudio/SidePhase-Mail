@@ -163,6 +163,7 @@ public partial class App : Application
         services.AddSingleton<NewMailCoordinator>();
         services.AddSingleton<TimedEventsWatcher>();
         services.AddSingleton<SmartFolderEditor>();
+        services.AddSingleton<RuleEditor>();
 
         // View models
         services.AddSingleton<ShellViewModel>();

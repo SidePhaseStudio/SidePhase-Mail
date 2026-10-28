@@ -86,6 +86,11 @@
               Text="Mark follow-up done"
               Visibility="{x:Bind Item.HasFollowUp, Mode=OneWay}" />
         </MenuFlyoutSubItem>
+        <MenuFlyoutItem Command="{x:Bind Item.EditCategoriesCommand, Mode=OneWay}" Text="Edit categories…">
+          <MenuFlyoutItem.Icon>
+            <FontIcon Glyph="&#xE8EC;" />
+          </MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
         <MenuFlyoutSeparator />
         <MenuFlyoutItem Command="{x:Bind Item.ArchiveCommand, Mode=OneWay}" Text="Archive">
           <MenuFlyoutItem.Icon>
@@ -337,8 +342,22 @@
             Text="{x:Bind Item.Subject, Mode=OneWay}"
             TextTrimming="CharacterEllipsis" />
 
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
         <Border
-            Grid.Column="2"
+            Padding="6,0,6,1"
+            VerticalAlignment="Center"
+            Background="{ThemeResource SpBadgeBrush}"
+            CornerRadius="4"
+            Visibility="{x:Bind Item.HasCategories, Mode=OneWay}">
+          <TextBlock
+              MaxWidth="120"
+              FontSize="11"
+              FontWeight="SemiBold"
+              Foreground="{ThemeResource SpBadgeTextBrush}"
+              Text="{x:Bind Item.CategoriesText, Mode=OneWay}"
+              TextTrimming="CharacterEllipsis" />
+        </Border>
+        <Border
             Padding="6,0,6,1"
             VerticalAlignment="Center"
             Background="{ThemeResource SpWarningTintBrush}"
@@ -350,6 +369,7 @@
               Foreground="{ThemeResource SpWarningBrush}"
               Text="{x:Bind Item.SpamTag, Mode=OneWay}" />
         </Border>
+        </StackPanel>
 
         <Button
             Grid.Column="4"
