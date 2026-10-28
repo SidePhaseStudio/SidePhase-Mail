@@ -473,3 +473,17 @@ public sealed class ThunderbirdImportTests : IDisposable
     public void A_folder_that_isnt_a_profile_is_reported() =>
         Assert.Throws<FileNotFoundException>(() => Infrastructure.Accounts.ThunderbirdProfileReader.ReadAccounts(Path.GetTempPath()));
 }
+
+public sealed class LogRedactionAdditionsTests
+{
+    [Theory]
+    [InlineData("C: A1 AUTHENTICATE PLAIN AGFsaWNlAHNlY3JldA==")]
+    [InlineData("AUTH LOGIN c2VjcmV0cGFzc3dvcmQ=")]
+    public void Sasl_payloads_are_redacted(string line)
+    {
+        var redacted = Core.Formatting.LogRedactor.Redact(line);
+        Assert.Contains("[redacted]", redacted);
+        Assert.DoesNotContain("AGFsaWNlAHNlY3JldA", redacted);
+        Assert.DoesNotContain("c2VjcmV0cGFzc3dvcmQ", redacted);
+    }
+}

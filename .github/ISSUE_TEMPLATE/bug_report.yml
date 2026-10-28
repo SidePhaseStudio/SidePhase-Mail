@@ -1,0 +1,70 @@
+name: Bug report
+description: Something in SidePhase Mail doesn't work as expected.
+labels: [bug, beta]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing SidePhase Mail. **Please don't include message contents, subjects, passwords, tokens or
+        other people's email addresses.** For security problems, use *Report a vulnerability* in the Security tab
+        instead of a public issue.
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Settings → About shows the version, build and channel (e.g. "Version 0.6.0-beta.1 · build 3f2a9c1d2e4b · beta", "Installed package (beta)").
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: e.g. Windows 11 24H2 x64
+    validations:
+      required: true
+  - type: dropdown
+    id: account
+    attributes:
+      label: Account type
+      options:
+        - Gmail (app password)
+        - Gmail (Sign in with Google)
+        - Outlook.com / Hotmail
+        - Microsoft 365 (work or school)
+        - Other IMAP/SMTP provider
+        - Demonstration mailbox
+        - Not related to an account
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      description: Steps to reproduce, as precisely as you can.
+      placeholder: |
+        1. Wrote a message to myself
+        2. Pressed Send
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: repeat
+    attributes:
+      label: Does it happen again?
+      options: [Every time, Sometimes, Only once so far]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: |
+        Settings → About → Data folder → Open → Logs. Paste the relevant lines from app.log or errors.log (they're designed
+        to contain no message contents or passwords, and addresses appear as ***@domain), but please check before posting.
+      render: text

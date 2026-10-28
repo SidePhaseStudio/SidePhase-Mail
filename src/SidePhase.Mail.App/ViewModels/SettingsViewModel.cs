@@ -824,19 +824,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Where this install keeps its data (shown so beta testers can find logs; nothing is uploaded).</summary>
     public string DataFolderText => _paths.Root;
 
-    [RelayCommand]
-    private async Task OpenDataFolderAsync()
-    {
-        try
-        {
-            await Windows.System.Launcher.LaunchFolderPathAsync(_paths.Root);
-        }
-        catch (Exception ex)
-        {
-            _toasts.Show("Couldn't open the folder: " + ex.Message, ToastKind.Error);
-        }
-    }
-
     /// <summary>Opens the open-source licence notices shipped with the app (a plain text file).</summary>
     [RelayCommand]
     private async Task OpenLicencesAsync()

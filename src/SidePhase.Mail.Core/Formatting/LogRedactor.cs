@@ -12,12 +12,17 @@ public static partial class LogRedactor
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
         var result = BearerRegex().Replace(text, "$1[redacted]");
+        result = SaslRegex().Replace(result, "$1[redacted]");
         result = SecretParameterRegex().Replace(result, "$1=[redacted]");
         result = JsonSecretRegex().Replace(result, "\"$1\":\"[redacted]\"");
         result = JwtRegex().Replace(result, "[redacted-token]");
         result = EmailRegex().Replace(result, m => "***@" + m.Groups[1].Value);
         return result;
     }
+
+    // SASL exchanges as they appear in protocol traces or server replies: "AUTHENTICATE PLAIN <base64>", "AUTH LOGIN <base64>".
+    [GeneratedRegex(@"(\b(?:AUTHENTICATE|AUTH)\s+(?:PLAIN|LOGIN|XOAUTH2|OAUTHBEARER|CRAM-MD5|SCRAM-SHA-\d+(?:-PLUS)?|NTLM)\s+)[A-Za-z0-9+/=]{4,}", RegexOptions.IgnoreCase)]
+    private static partial Regex SaslRegex();
 
     [GeneratedRegex(@"(\b(?:Bearer|Basic|XOAUTH2)\s+)[A-Za-z0-9\-._~+/=]{8,}", RegexOptions.IgnoreCase)]
     private static partial Regex BearerRegex();

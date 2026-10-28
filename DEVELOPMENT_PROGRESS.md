@@ -2,7 +2,7 @@
 
 Legend: ✅ implemented · 🧪 implemented and covered by automated tests · 🔌 tested end-to-end against a real IMAP/SMTP server (CI) · ❔ implemented, not yet verified · 🟡 partial · ⏳ planned
 
-Automated tests: `tests/SidePhase.Mail.Tests` (~350 xUnit tests). Unit tests run on Windows and Linux; the
+Automated tests: `tests/SidePhase.Mail.Tests` (~470 xUnit tests). Unit tests run on Windows and Linux; the
 integration tests run in CI against a throwaway Dovecot/Postfix server (`scripts/ci/setup-test-mail-server.sh`), never real accounts.
 UI behaviour is verified manually on Windows; there are no automated UI tests yet.
 
@@ -121,6 +121,29 @@ were extended rather than duplicated. UI items compile and pass the CI smoke tes
 | Performance | ✅ | List filtering, search, conversation grouping and sorting run off the UI thread; incremental FTS; batched IMAP moves; attachment details back-filled a few hundred per folder per sync. |
 | Database migration | 🧪 | Schema 3 only adds tables, indexes and triggers; tested from a schema-2 database with cached mail (indexed on upgrade, accounts untouched). |
 
+## Milestone 6 — Stabilisation, packaging and beta preparation
+
+Started with an audit of the mail engine, storage, accounts, OAuth and security; the results and the honest feature
+status are in [RELEASE_READINESS.md](RELEASE_READINESS.md).
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Data safety | 🧪 / 🔌 | Single instance; UIDVALIDITY checks before every server change; durable Sent copies; stable Message-IDs per outbox item; drafts never replaced by a copy that lost attachments; recovery copies removed once a message is handed over. |
+| Database | 🧪 | Migrations once per process with an exclusive re-check; backup before upgrades (3 kept); newer/damaged databases explained, set aside only with consent; atomic clear. |
+| Settings and secrets | 🧪 | Durable writes, last-good backup, damaged files kept, unreadable files never overwritten; secrets flushed and read without blocking. |
+| OAuth robustness | 🧪 | Outages are temporary; revoked sign-ins stop retrying; SMTP token refresh; account swap on re-auth refused. Still **never tested against Google/Microsoft**. |
+| Crash logging | 🧪 / ❔ | Version/channel/OS, redacted inner exceptions, SASL redaction, send trail for "sent but not delivered" reports. |
+| MSIX packaging | 🧪 (CI install test) | Identity placeholders, tiles, mailto:, notification activation, Windows App Runtime dependency; installs, starts and uninstalls cleanly in CI. Portable build kept. |
+| Portable → installed data | 🧪 (unit + CI on Windows) | One-time copy into LocalState, all or nothing, never overwriting or touching the original. |
+| Release pipeline | ✅ | Versioned portable + MSIX artifacts with the commit; manual beta workflow drafting a pre-release only after all tests pass; signing only with a configured certificate. |
+| Updates | ✅ | Store-managed or App Installer (signed betas); no custom updater. |
+| Account setup | 🧪 / ❔ | Google/Microsoft choice works for company domains; Thunderbird server-settings import (beta, consent, never passwords). |
+| Security fixes | 🧪 | Attachment-name tricks, Mark of the Web, safe downloads, rule sender matching, sanitiser reassembly, DNS prefetch, private-address images, cookies. See docs/SECURITY_REVIEW.md. |
+| Performance | 🧪 | 20,000-message benchmark: load 0.5 s, search ~55 ms, grouping 0.2 s; no changes needed. |
+| Sponsored content (demo only) | 🧪 / ❔ | Separate module, off by default, test cards only, production disabled in code; sidebar and empty reading pane only. |
+| About / metadata / licences | ❔ | Version, build, channel, data folder, report link, generated third-party notices. |
+| Beta docs | ✅ | RELEASE_READINESS.md, docs/BETA_TESTING.md, PRIVACY.md (draft), docs/PACKAGING.md, docs/ADVERTISING.md, bug report template. |
+
 ## Future
 
 Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side scheduled send where providers offer it.
@@ -128,6 +151,9 @@ Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side schedule
 ## Known limitations
 
 * **Google and Microsoft sign-in are unverified** until tested with real app registrations; Gmail works today with an app password.
+* **Open report: messages shown as sent but not arriving and not in Sent** on a real account (not reproduced against
+  the test server; see RELEASE_READINESS.md → Known issues and the send log in docs/BETA_TESTING.md).
+* MSIX identity, publisher and artwork are placeholders; beta packages are unsigned.
 * Parts of the Windows UI marked ❔ compile and pass the CI smoke test but haven't been checked by hand yet.
 * Server search downloads at most 200 matches per folder.
 * First sync downloads the newest 500 messages per folder; older mail isn't back-filled yet. Gmail's All Mail is used as the
