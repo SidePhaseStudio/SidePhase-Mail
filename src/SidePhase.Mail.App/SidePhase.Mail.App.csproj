@@ -62,6 +62,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Manifest Include="$(ApplicationManifest)" />
+    <!-- Open-source notices, opened from Settings > About (regenerate with scripts/release/update_third_party_notices.py). -->
+    <Content Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -73,6 +77,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SidePhase.Mail.Core\SidePhase.Mail.Core.csproj" />
     <ProjectReference Include="..\SidePhase.Mail.Infrastructure\SidePhase.Mail.Infrastructure.csproj" />
+    <ProjectReference Include="..\SidePhase.Mail.Advertising\SidePhase.Mail.Advertising.csproj" />
   </ItemGroup>
 
 </Project>

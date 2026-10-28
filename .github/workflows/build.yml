@@ -149,6 +149,8 @@ jobs:
             "Microsoft.WinUI.dll",
             "Microsoft.Web.WebView2.Core.dll",
             "SidePhaseMail.pri",
+            "SidePhase.Mail.Advertising.dll",
+            "THIRD-PARTY-NOTICES.txt",
             "Assets/AppIcon.ico"
           )
           $missing = $required | Where-Object { -not (Test-Path (Join-Path $out $_)) }
@@ -289,7 +291,7 @@ jobs:
           if ($identity.ProcessorArchitecture -ne 'x64') { $problems += "not an x64 package" }
           if (-not ($deps -match 'Microsoft.WindowsAppRuntime')) { $problems += "no Windows App Runtime dependency" }
           if (-not ($manifest.OuterXml -match 'windows.protocol')) { $problems += "mailto: registration missing" }
-          foreach ($file in 'SidePhaseMail.exe', 'SidePhaseMail.dll', 'SidePhase.Mail.Core.dll', 'SidePhase.Mail.Infrastructure.dll', 'resources.pri') {
+          foreach ($file in 'SidePhaseMail.exe', 'SidePhaseMail.dll', 'SidePhase.Mail.Core.dll', 'SidePhase.Mail.Infrastructure.dll', 'SidePhase.Mail.Advertising.dll', 'THIRD-PARTY-NOTICES.txt', 'resources.pri') {
             if (-not ($names -contains $file)) { $problems += "missing $file" }
           }
           if (-not ($names -match '^Assets/Package/Square44x44Logo')) { $problems += "missing package images" }
