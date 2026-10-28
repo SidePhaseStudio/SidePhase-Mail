@@ -43,7 +43,6 @@ To build it yourself see **[BUILD.md](BUILD.md)**.
 | **Compose** | Separate glass window: From, To/Cc/Bcc, subject, rich text (bold/italic/underline/bullets) or plain text, signatures, attachments with drag-and-drop, draft saving and send progress. |
 | **Pinned & Favourites** | Pin to Top / Unpin, star / unstar, across all accounts — independent of each other. |
 | **SpamAssassin** | Parses `X-Spam-Status`, `X-Spam-Flag`, `X-Spam-Score`, `X-Spam-Level`; configurable threshold; local junk filtering that never deletes anything; trusted senders, blocked senders and blocked domains. |
-| **Send the Bugger Back!** | Right-click any message: blocks the sender (optionally the whole domain — never for shared providers like gmail.com), moves it to Junk and silences it. Fully undoable. Nothing is ever sent to the sender. |
 | **Settings** | Appearance, Accounts (signatures, sync interval), Mail (pins, spam, sender lists), Privacy (remote images, local data), About. |
 
 ## Architecture

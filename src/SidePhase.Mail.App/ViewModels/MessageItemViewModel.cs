@@ -156,9 +156,6 @@ public sealed partial class MessageItemViewModel : ObservableObject
     private Task ToggleJunkAsync() => IsInJunk ? _commands.NotJunkAsync(Summary) : _commands.MoveToJunkAsync(Summary);
 
     [RelayCommand]
-    private Task SendTheBuggerBackAsync() => _commands.SendTheBuggerBackAsync(Summary);
-
-    [RelayCommand]
     private Task ReplyAsync() => _commands.ReplyAsync(Summary, ComposeMode.Reply);
 
     [RelayCommand]

@@ -90,7 +90,6 @@ public sealed class AppSettings
     // Spam
     public double SpamThreshold { get; set; } = 5.0;
     public bool TreatHighScoresAsJunk { get; set; } = true;
-    public bool BuggerBackBlocksDomainByDefault { get; set; }
     public List<SenderRule> SenderRules { get; set; } = [];
 
     /// <summary>

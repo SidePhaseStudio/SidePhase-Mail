@@ -265,12 +265,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         set => Set(s => s.TreatHighScoresAsJunk = value, S.TreatHighScoresAsJunk != value);
     }
 
-    public bool BuggerBackBlocksDomain
-    {
-        get => S.BuggerBackBlocksDomainByDefault;
-        set => Set(s => s.BuggerBackBlocksDomainByDefault = value, S.BuggerBackBlocksDomainByDefault != value);
-    }
-
     public bool MoveBlockedMailToServerJunk
     {
         get => S.MoveBlockedMailToServerJunk;

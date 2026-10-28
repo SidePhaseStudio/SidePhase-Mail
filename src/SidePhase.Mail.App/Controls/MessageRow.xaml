@@ -70,12 +70,6 @@
             <FontIcon Glyph="&#xE74D;" />
           </MenuFlyoutItem.Icon>
         </MenuFlyoutItem>
-        <MenuFlyoutSeparator />
-        <MenuFlyoutItem Command="{x:Bind Item.SendTheBuggerBackCommand, Mode=OneWay}" Text="Send the Bugger Back!">
-          <MenuFlyoutItem.Icon>
-            <FontIcon Glyph="&#xE8F8;" />
-          </MenuFlyoutItem.Icon>
-        </MenuFlyoutItem>
       </MenuFlyout>
     </Grid.ContextFlyout>
 

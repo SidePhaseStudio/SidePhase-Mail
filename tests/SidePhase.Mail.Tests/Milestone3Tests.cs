@@ -137,34 +137,6 @@ public class JunkRuleAndNotificationTests
         Assert.False(policy.ShouldNotify(Samples.Message(folder: FolderKind.Junk)));
     }
 
-    [Fact]
-    public async Task Bugger_back_options_are_respected_and_undo_restores_trust()
-    {
-        var (settings, rules) = Services();
-        var demo = new DemoMailDataSource(_clock, TimeSpan.Zero);
-        var service = new SendTheBuggerBackService(demo, rules, _clock);
-        var message = (await demo.GetMessagesAsync()).First(m => m.FolderKind == FolderKind.Inbox);
-        rules.AddRule(SenderRuleKind.TrustedSender, message.From.Address);
-
-        // This message only: no rules, just moved to Junk.
-        var once = await service.ExecuteAsync(message, new SendTheBuggerBackOptions(ApplyToFuture: false));
-        Assert.Empty(once.AddedRules);
-        Assert.True(rules.IsTrusted(message.From));
-        Assert.Equal(FolderKind.Junk, (await demo.GetMessageAsync(message.Id))!.FolderKind);
-        await service.UndoAsync(once);
-        Assert.Equal(FolderKind.Inbox, (await demo.GetMessageAsync(message.Id))!.FolderKind);
-
-        // Block without moving: trust is replaced by a block, and undo puts the trust back.
-        var block = await service.ExecuteAsync(message, new SendTheBuggerBackOptions(MoveToJunk: false));
-        Assert.True(rules.IsBlocked(message.From));
-        Assert.False(rules.IsTrusted(message.From));
-        Assert.Empty(block.Moves);
-        Assert.Equal(FolderKind.Inbox, (await demo.GetMessageAsync(message.Id))!.FolderKind);
-        await service.UndoAsync(block);
-        Assert.False(rules.IsBlocked(message.From));
-        Assert.True(rules.IsTrusted(message.From));
-    }
-
     /// <summary>Minimal non-demo source for policy tests (no real server).</summary>
     private sealed class LiveLikeSource : Core.Abstractions.IMailDataSource
     {
