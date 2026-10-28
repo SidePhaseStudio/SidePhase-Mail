@@ -38,6 +38,12 @@ public sealed record MessageSummary
     /// <summary>Size of the whole message on the server in bytes (0 if unknown).</summary>
     public long Size { get; init; }
 
+    /// <summary>
+    /// Names, types and sizes of the attachments, from the server's description of the message (nothing is
+    /// downloaded to learn them). May be empty for older cached mail until its details are fetched.
+    /// </summary>
+    public IReadOnlyList<AttachmentInfo> Attachments { get; init; } = [];
+
     /// <summary>When a snoozed message returns to its folder. Null when not snoozed (local to this PC).</summary>
     public DateTimeOffset? SnoozedUntil { get; init; }
 

@@ -149,6 +149,7 @@
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <AutoSuggestBox
@@ -158,10 +159,94 @@
             PlaceholderText="Search mail"
             QueryIcon="Find"
             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-            ToolTipService.ToolTip="Search (Ctrl+F or Ctrl+E). Try from:, to:, subject:, body:, is:unread, is:pinned, has:attachment, after:2026-01-31, before:, newer_than:7d" />
+            ToolTipService.ToolTip="Search (Ctrl+F or Ctrl+E). Try from:, to:, subject:, body:, account:, in:sent, is:unread, is:pinned, has:attachment, filename:, filetype:pdf, larger:5mb, after:2026-01-31, newer_than:7d" />
+
+        <!-- Advanced search: a compact form that writes the same operators into the search box. -->
+        <Button
+            x:Name="AdvancedSearchButton"
+            Grid.Column="1"
+            AutomationProperties.Name="Advanced search"
+            Style="{StaticResource SpIconButtonStyle}"
+            ToolTipService.ToolTip="Advanced search">
+          <FontIcon FontSize="15" Glyph="&#xE721;" />
+          <Button.Flyout>
+            <Flyout x:Name="AdvancedSearchFlyout" Opening="OnAdvancedSearchOpening" Placement="BottomEdgeAlignedRight">
+              <Flyout.FlyoutPresenterStyle>
+                <Style TargetType="FlyoutPresenter">
+                  <Setter Property="MaxWidth" Value="460" />
+                  <Setter Property="Padding" Value="18,14" />
+                  <Setter Property="CornerRadius" Value="10" />
+                </Style>
+              </Flyout.FlyoutPresenterStyle>
+              <StackPanel Width="400" Spacing="10">
+                <TextBlock Style="{StaticResource SpSubtitleTextStyle}" Text="Advanced search" />
+                <TextBox x:Name="AdvWords" Header="Has the words" />
+                <Grid ColumnSpacing="10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox x:Name="AdvFrom" Header="From" IsSpellCheckEnabled="False" />
+                  <TextBox x:Name="AdvTo" Grid.Column="1" Header="To" IsSpellCheckEnabled="False" />
+                </Grid>
+                <TextBox x:Name="AdvSubject" Header="Subject" />
+                <TextBox x:Name="AdvBody" Header="Message text" PlaceholderText="Words in downloaded messages" />
+                <Grid ColumnSpacing="10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <ComboBox x:Name="AdvAccount" HorizontalAlignment="Stretch" Header="Account" />
+                  <ComboBox x:Name="AdvIn" Grid.Column="1" HorizontalAlignment="Stretch" Header="Folder" SelectedIndex="0">
+                    <ComboBoxItem Content="Any folder" Tag="" />
+                    <ComboBoxItem Content="Inbox" Tag="inbox" />
+                    <ComboBoxItem Content="Sent" Tag="sent" />
+                    <ComboBoxItem Content="Archive" Tag="archive" />
+                    <ComboBoxItem Content="Drafts" Tag="drafts" />
+                    <ComboBoxItem Content="Junk" Tag="junk" />
+                    <ComboBoxItem Content="Trash" Tag="trash" />
+                  </ComboBox>
+                </Grid>
+                <Grid ColumnSpacing="10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <CalendarDatePicker x:Name="AdvAfter" HorizontalAlignment="Stretch" Header="After" PlaceholderText="Any date" />
+                  <CalendarDatePicker x:Name="AdvBefore" Grid.Column="1" HorizontalAlignment="Stretch" Header="Before" PlaceholderText="Any date" />
+                </Grid>
+                <Grid ColumnSpacing="10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <CheckBox x:Name="AdvAttachment" Content="Has attachments" />
+                  <CheckBox x:Name="AdvUnread" Grid.Column="1" Content="Unread" />
+                </Grid>
+                <Grid ColumnSpacing="10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <CheckBox x:Name="AdvFavourite" Content="Favourites" />
+                  <CheckBox x:Name="AdvPinned" Grid.Column="1" Content="Pinned" />
+                </Grid>
+                <RadioButtons x:Name="AdvWhere" Header="Search in" MaxColumns="2" SelectedIndex="0">
+                  <x:String>This view</x:String>
+                  <x:String>All mail</x:String>
+                </RadioButtons>
+                <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Searches mail stored on this PC. Use Search on server afterwards to include older mail that hasn't been downloaded." TextWrapping="Wrap" />
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                  <Button Click="OnAdvancedSearchClear" Content="Clear" Style="{StaticResource SpSubtleButtonStyle}" />
+                  <Button Click="OnAdvancedSearchGo" Content="Search" Style="{StaticResource SpPrimaryButtonStyle}" />
+                </StackPanel>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
 
         <Button
-            Grid.Column="1"
+            Grid.Column="2"
             AutomationProperties.Name="Filter"
             Style="{StaticResource SpIconButtonStyle}"
             ToolTipService.ToolTip="Filter">
@@ -187,7 +272,7 @@
         </Button>
 
         <Button
-            Grid.Column="2"
+            Grid.Column="3"
             AutomationProperties.Name="Sort"
             Style="{StaticResource SpIconButtonStyle}"
             ToolTipService.ToolTip="{x:Bind ViewModel.SortLabel, Mode=OneWay}">
@@ -228,6 +313,11 @@
               FontSize="12"
               ToolTipService.ToolTip="Also search mail on the server, including older messages that aren't stored on this PC"
               Visibility="{x:Bind h:X.Collapsed(ViewModel.HasServerResults), Mode=OneWay}" />
+          <HyperlinkButton
+              Padding="4,0"
+              Command="{x:Bind ViewModel.ToggleSearchAllMailCommand}"
+              Content="{x:Bind ViewModel.SearchScopeToggleText, Mode=OneWay}"
+              FontSize="12" />
         </StackPanel>
         <StackPanel Margin="20,0,0,4" Orientation="Horizontal" Spacing="6" Visibility="{x:Bind ViewModel.HasActiveFilter, Mode=OneWay}">
           <Button Padding="10,3,8,4" Command="{x:Bind ViewModel.ClearFilterCommand}" CornerRadius="12" Background="{ThemeResource SpBadgeBrush}" BorderThickness="0" ToolTipService.ToolTip="Clear filter">

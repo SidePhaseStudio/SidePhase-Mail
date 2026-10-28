@@ -210,21 +210,41 @@ public sealed class MailCache(MailDatabase database)
     public async Task<IReadOnlyList<MessageSummary>> GetSummariesAsync(CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        var attachments = await ReadAttachmentDetailsAsync(c, null, ct).ConfigureAwait(false);
         await using var cmd = c.CreateCommand();
         cmd.CommandText = SummarySelect + " ORDER BY m.date DESC";
-        return await ReadSummariesAsync(cmd, ct).ConfigureAwait(false);
+        return await ReadSummariesAsync(cmd, attachments, ct).ConfigureAwait(false);
     }
 
     public async Task<MessageSummary?> GetSummaryAsync(Guid messageId, CancellationToken ct = default)
     {
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        var attachments = await ReadAttachmentDetailsAsync(c, messageId, ct).ConfigureAwait(false);
         await using var cmd = c.CreateCommand();
         cmd.CommandText = SummarySelect + " WHERE m.id = $id";
         cmd.Parameters.AddWithValue("$id", messageId.ToString());
-        return (await ReadSummariesAsync(cmd, ct).ConfigureAwait(false)).FirstOrDefault();
+        return (await ReadSummariesAsync(cmd, attachments, ct).ConfigureAwait(false)).FirstOrDefault();
     }
 
-    private static async Task<IReadOnlyList<MessageSummary>> ReadSummariesAsync(SqliteCommand cmd, CancellationToken ct)
+    private static async Task<Dictionary<string, List<AttachmentInfo>>> ReadAttachmentDetailsAsync(SqliteConnection c, Guid? messageId, CancellationToken ct)
+    {
+        var result = new Dictionary<string, List<AttachmentInfo>>();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT message_id, file_name, content_type, size FROM message_attachments"
+            + (messageId is null ? string.Empty : " WHERE message_id = $id") + " ORDER BY message_id, position";
+        if (messageId is { } id) cmd.Parameters.AddWithValue("$id", id.ToString());
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var key = r.GetString(0);
+            if (!result.TryGetValue(key, out var list)) result[key] = list = [];
+            list.Add(new AttachmentInfo(r.GetString(1), r.GetString(2), r.GetInt64(3)));
+        }
+
+        return result;
+    }
+
+    private static async Task<IReadOnlyList<MessageSummary>> ReadSummariesAsync(SqliteCommand cmd, Dictionary<string, List<AttachmentInfo>> attachments, CancellationToken ct)
     {
         var result = new List<MessageSummary>();
         await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -254,6 +274,7 @@ public sealed class MailCache(MailDatabase database)
                 FollowUpAt = r.IsDBNull(19) ? null : DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(19)),
                 References = ReadReferences(r.IsDBNull(20) ? null : r.GetString(20), r.IsDBNull(21) ? null : r.GetString(21)),
                 Size = r.GetInt64(22),
+                Attachments = attachments.TryGetValue(r.GetString(0), out var list) ? list : [],
             });
         }
 
@@ -367,9 +388,88 @@ public sealed class MailCache(MailDatabase database)
             p["$irt"].Value = (object?)m.InReplyTo ?? DBNull.Value;
             p["$refs"].Value = m.References.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(m.References, Json);
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            if (m.Attachments.Count > 0) await InsertAttachmentsAsync(c, tx, m.Id, m.Attachments, ct).ConfigureAwait(false);
         }
 
         await tx.CommitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Records attachment names/types/sizes once per message (later calls for the same message are ignored).</summary>
+    private static async Task InsertAttachmentsAsync(SqliteConnection c, SqliteTransaction? tx, Guid messageId, IReadOnlyList<AttachmentInfo> attachments, CancellationToken ct)
+    {
+        await using (var check = c.CreateCommand())
+        {
+            check.Transaction = tx;
+            check.CommandText = "SELECT 1 FROM message_attachments WHERE message_id = $id LIMIT 1";
+            check.Parameters.AddWithValue("$id", messageId.ToString());
+            if (await check.ExecuteScalarAsync(ct).ConfigureAwait(false) is not null) return;
+        }
+
+        await using var cmd = c.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "INSERT OR IGNORE INTO message_attachments (message_id, position, file_name, content_type, size) VALUES ($id, $pos, $name, $type, $size)";
+        var pid = cmd.Parameters.Add("$id", SqliteType.Text);
+        var ppos = cmd.Parameters.Add("$pos", SqliteType.Integer);
+        var pname = cmd.Parameters.Add("$name", SqliteType.Text);
+        var ptype = cmd.Parameters.Add("$type", SqliteType.Text);
+        var psize = cmd.Parameters.Add("$size", SqliteType.Integer);
+        for (var i = 0; i < attachments.Count; i++)
+        {
+            pid.Value = messageId.ToString();
+            ppos.Value = i;
+            pname.Value = attachments[i].FileName;
+            ptype.Value = attachments[i].ContentType;
+            psize.Value = attachments[i].SizeBytes;
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Stores attachment details fetched later for already-cached messages.</summary>
+    public async Task SaveAttachmentDetailsAsync(Guid messageId, IReadOnlyList<AttachmentInfo> attachments, CancellationToken ct = default)
+    {
+        if (attachments.Count == 0) return;
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await InsertAttachmentsAsync(c, null, messageId, attachments, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>UIDs in a folder whose messages have attachments but no recorded details yet (older cached mail).</summary>
+    public async Task<IReadOnlyList<(Guid Id, uint Uid)>> GetMessagesMissingAttachmentDetailsAsync(Guid folderId, uint uidValidity, int limit, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT m.id, m.uid FROM messages m
+            WHERE m.folder_id = $f AND m.uid_validity = $v AND m.has_attachments = 1
+              AND NOT EXISTS (SELECT 1 FROM message_attachments a WHERE a.message_id = m.id)
+            ORDER BY m.uid DESC LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$f", folderId.ToString());
+        cmd.Parameters.AddWithValue("$v", (long)uidValidity);
+        cmd.Parameters.AddWithValue("$limit", limit);
+        var result = new List<(Guid, uint)>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false)) result.Add((Guid.Parse(r.GetString(0)), (uint)r.GetInt64(1)));
+        return result;
+    }
+
+    /// <summary>
+    /// Runs an FTS5 query over the local search index (subject, sender, recipients, downloaded text, attachment
+    /// names). Only messages cached on this PC are indexed.
+    /// </summary>
+    public async Task<IReadOnlySet<Guid>> SearchIndexAsync(string ftsQuery, int limit = 20000, CancellationToken ct = default)
+    {
+        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT fm.message_id FROM message_fts f JOIN fts_map fm ON fm.fts_rowid = f.rowid
+            WHERE message_fts MATCH $q LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$q", ftsQuery);
+        cmd.Parameters.AddWithValue("$limit", limit);
+        var result = new HashSet<Guid>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false)) result.Add(Guid.Parse(r.GetString(0)));
+        return result;
     }
 
     /// <summary>Updates read/starred flags reported by the server for already-cached UIDs.</summary>
@@ -531,20 +631,7 @@ public sealed class MailCache(MailDatabase database)
         cmd.Parameters.AddWithValue("$b", body.Bcc.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(body.Bcc, Json));
         cmd.Parameters.AddWithValue("$c", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-    }
-
-    /// <summary>Ids of messages whose downloaded text contains <paramref name="term"/> (case-insensitive for ASCII).</summary>
-    public async Task<IReadOnlySet<Guid>> SearchBodyTextAsync(string term, CancellationToken ct = default)
-    {
-        await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
-        await using var cmd = c.CreateCommand();
-        cmd.CommandText = @"SELECT message_id FROM bodies WHERE text LIKE $p ESCAPE '\' LIMIT 10000";
-        var escaped = term.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
-        cmd.Parameters.AddWithValue("$p", "%" + escaped + "%");
-        var result = new HashSet<Guid>();
-        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        while (await r.ReadAsync(ct).ConfigureAwait(false)) result.Add(Guid.Parse(r.GetString(0)));
-        return result;
+        if (body.Attachments.Count > 0) await InsertAttachmentsAsync(c, null, body.MessageId, body.Attachments, ct).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------ pins & local stars

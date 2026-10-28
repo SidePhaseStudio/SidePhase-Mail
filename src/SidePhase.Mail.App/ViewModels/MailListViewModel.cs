@@ -65,7 +65,11 @@ public sealed partial class MailListViewModel : ObservableObject
         SyncStatus = string.Empty;
         SearchStatus = string.Empty;
 
-        _mail.DataChanged += (_, _) => QueueRefresh();
+        _mail.DataChanged += (_, e) =>
+        {
+            if (e.Kind == MailDataChangeKind.Reset) _folderNames = new Dictionary<Guid, string>();
+            QueueRefresh();
+        };
         Reading.ThreadMessageRequested += async (_, id) => await OpenInConversationAsync(id);
         _rules.RulesChanged += (_, _) => QueueRefresh();
         _settings.SettingsChanged += (_, _) => QueueRefresh();
@@ -115,6 +119,31 @@ public sealed partial class MailListViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchServerCommand))]
     public partial bool IsSearchActive { get; set; }
+
+    /// <summary>Search every account and folder instead of only the open view.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SearchScopeToggleText))]
+    public partial bool SearchAllMail { get; set; }
+
+    public string SearchScopeToggleText => SearchAllMail ? "Only this view" : "Search all mail";
+
+    /// <summary>Account names for the advanced search form.</summary>
+    public IReadOnlyList<string> AccountNames { get; private set; } = [];
+
+    private IReadOnlyDictionary<Guid, string> _folderNames = new Dictionary<Guid, string>();
+
+    [RelayCommand]
+    private void ToggleSearchAllMail() => SearchAllMail = !SearchAllMail;
+
+    partial void OnSearchAllMailChanged(bool value)
+    {
+        SearchStatus = SearchStatusText();
+        _ = RefreshAsync();
+    }
+
+    private string SearchStatusText() => !IsSearchActive
+        ? string.Empty
+        : SearchAllMail ? "Searching all mail stored on this PC" : "Searching this view on this PC";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchServerCommand))]
@@ -210,7 +239,7 @@ public sealed partial class MailListViewModel : ObservableObject
         _serverMatches = new HashSet<Guid>();
         HasServerResults = false;
         IsSearchActive = !string.IsNullOrWhiteSpace(value);
-        SearchStatus = IsSearchActive ? "Searching messages stored on this PC" : string.Empty;
+        SearchStatus = SearchStatusText();
 
         _searchDelay?.Cancel();
         _searchDelay = new CancellationTokenSource();
@@ -254,7 +283,7 @@ public sealed partial class MailListViewModel : ObservableObject
             if (version != _searchVersion) return;
             _serverMatches = result.MessageIds;
             HasServerResults = result.Supported;
-            SearchStatus = result.Supported ? "Results from this PC and the server · " + result.Message : result.Message;
+            SearchStatus = result.Supported ? "This PC and the server · " + result.Message : result.Message;
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -383,7 +412,25 @@ public sealed partial class MailListViewModel : ObservableObject
             : null;
 
         var settings = _settings.Current;
-        var inScope = all.Where(m => MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk)).ToList();
+        if (_folderNames.Count == 0 || accounts.Count != AccountNames.Count)
+        {
+            var folders = new Dictionary<Guid, string>();
+            foreach (var account in accounts)
+            {
+                foreach (var folder in await _mail.GetFoldersAsync(account.Id)) folders[folder.Id] = folder.Name;
+            }
+
+            _folderNames = folders;
+            AccountNames = accounts.Select(a => a.DisplayName).ToList();
+        }
+
+        // "All mail" searches every account and folder; Junk and Trash only when asked for with in:.
+        var searchEverywhere = IsSearchActive && SearchAllMail;
+        var asksForJunkOrTrash = searchEverywhere && MessageSearch.Parse(SearchText).Any(t => t.Operator == "in");
+        var inScope = all.Where(m => searchEverywhere
+                ? !m.IsSnoozed && (asksForJunkOrTrash || m.FolderKind is not (FolderKind.Junk or FolderKind.Trash))
+                : MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk))
+            .ToList();
 
         // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
         // Trash, Junk, drafts and snoozed messages only take part when they're what is being viewed.
@@ -395,7 +442,13 @@ public sealed partial class MailListViewModel : ObservableObject
         var sections = MessageListBuilder.Build(inScope, new MessageListOptions
         {
             SearchText = SearchText,
-            Search = new SearchContext { BodyMatches = _bodyMatches, ServerMatches = _serverMatches },
+            Search = new SearchContext
+            {
+                BodyMatches = _bodyMatches,
+                ServerMatches = _serverMatches,
+                AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress),
+                FolderNames = _folderNames,
+            },
             Filter = Filter,
             Sort = Sort,
             ShowPinnedSection = settings.ShowPinnedSection && Scope.Kind != MailboxScopeKind.Pinned,

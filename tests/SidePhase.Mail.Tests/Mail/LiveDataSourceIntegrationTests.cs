@@ -176,6 +176,12 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         await _app.Mail.SyncAsync();
         var message = (await _app.Mail.GetMessagesAsync()).Single(m => m.Subject == subject);
 
+        // Attachment details come from the server's message structure: known and searchable before any download.
+        var info = Assert.Single(message.Attachments);
+        Assert.Equal("data.bin", info.FileName);
+        Assert.InRange(info.SizeBytes, content.Length - 64, content.Length + 64);
+        Assert.Contains(message.Id, (await _app.Mail.SearchDownloadedTextAsync(["filename:data"]))["filename:data"]);
+
         var reports = new List<double>();
         using var saved = new MemoryStream();
         await _app.Mail.SaveAttachmentAsync(message.Id, 0, saved, new SyncProgress(reports.Add));
@@ -202,7 +208,8 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
                 var m = new MimeKit.MimeMessage();
                 m.From.Add(new MimeKit.MailboxAddress("Archivist", "archive@example.test"));
                 m.Subject = $"Search test {i}";
-                m.Body = new MimeKit.TextPart("plain") { Text = $"The secret word is {word}." };
+                // The word comes after the part the server returns as a preview, so it is only found once downloaded.
+                m.Body = new MimeKit.TextPart("plain") { Text = string.Concat(Enumerable.Repeat("Lorem ipsum dolor sit amet. ", 40)) + $"The secret word is {word}." };
                 await Infrastructure.Mail.ImapOperations.AppendAsync(imap, "INBOX", m, MailKit.MessageFlags.None, CancellationToken.None);
             }
 

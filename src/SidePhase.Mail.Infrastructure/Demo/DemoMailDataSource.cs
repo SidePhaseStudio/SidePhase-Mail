@@ -1,6 +1,7 @@
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Models;
 using SidePhase.Mail.Core.Rendering;
+using SidePhase.Mail.Core.Services;
 
 namespace SidePhase.Mail.Infrastructure.Demo;
 
@@ -304,10 +305,16 @@ public sealed class DemoMailDataSource : IMailDataSource
         {
             IReadOnlyDictionary<string, IReadOnlySet<Guid>> result = terms.Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(
                 t => t,
-                t => (IReadOnlySet<Guid>)_bodies.Values
-                    .Where(b => b.TextBody?.Contains(t, StringComparison.CurrentCultureIgnoreCase) == true)
-                    .Select(b => b.MessageId)
-                    .ToHashSet(),
+                t =>
+                {
+                    var term = SearchIndexQuery.FromKey(t);
+                    return (IReadOnlySet<Guid>)_bodies.Values
+                        .Where(b => term.Operator == "filename"
+                            ? b.Attachments.Any(a => a.FileName.Contains(term.Value, StringComparison.CurrentCultureIgnoreCase))
+                            : b.TextBody?.Contains(term.Value, StringComparison.CurrentCultureIgnoreCase) == true)
+                        .Select(b => b.MessageId)
+                        .ToHashSet();
+                },
                 StringComparer.OrdinalIgnoreCase);
             return Task.FromResult(result);
         }

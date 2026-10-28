@@ -30,6 +30,64 @@ public sealed partial class MailPage : Page
 
     public MailListViewModel ViewModel { get; }
 
+    /// <summary>Fills the advanced search form from whatever is in the search box.</summary>
+    private void OnAdvancedSearchOpening(object? sender, object e)
+    {
+        var form = AdvancedSearch.FromQuery(ViewModel.SearchText);
+        AdvWords.Text = form.Words;
+        AdvFrom.Text = form.From;
+        AdvTo.Text = form.To;
+        AdvSubject.Text = form.Subject;
+        AdvBody.Text = form.Body;
+
+        AdvAccount.Items.Clear();
+        AdvAccount.Items.Add("Any account");
+        foreach (var name in ViewModel.AccountNames) AdvAccount.Items.Add(name);
+        var accountIndex = ViewModel.AccountNames.ToList().FindIndex(n => n.Equals(form.Account, StringComparison.CurrentCultureIgnoreCase));
+        AdvAccount.SelectedIndex = accountIndex + 1;
+
+        AdvIn.SelectedIndex = Math.Max(0, AdvIn.Items.OfType<ComboBoxItem>().ToList().FindIndex(i => string.Equals(i.Tag as string, form.In, StringComparison.OrdinalIgnoreCase)));
+        AdvAfter.Date = form.After;
+        AdvBefore.Date = form.Before;
+        AdvAttachment.IsChecked = form.HasAttachment;
+        AdvUnread.IsChecked = form.Unread;
+        AdvFavourite.IsChecked = form.Favourite;
+        AdvPinned.IsChecked = form.Pinned;
+        AdvWhere.SelectedIndex = ViewModel.SearchAllMail ? 1 : 0;
+    }
+
+    private void OnAdvancedSearchGo(object sender, RoutedEventArgs e)
+    {
+        var previous = AdvancedSearch.FromQuery(ViewModel.SearchText);
+        var form = previous with
+        {
+            Words = AdvWords.Text,
+            From = AdvFrom.Text,
+            To = AdvTo.Text,
+            Subject = AdvSubject.Text,
+            Body = AdvBody.Text,
+            Account = AdvAccount.SelectedIndex > 0 ? ViewModel.AccountNames[AdvAccount.SelectedIndex - 1] : string.Empty,
+            In = (AdvIn.SelectedItem as ComboBoxItem)?.Tag as string ?? string.Empty,
+            After = AdvAfter.Date?.Date,
+            Before = AdvBefore.Date?.Date,
+            HasAttachment = AdvAttachment.IsChecked == true,
+            Unread = AdvUnread.IsChecked == true,
+            Favourite = AdvFavourite.IsChecked == true,
+            Pinned = AdvPinned.IsChecked == true,
+        };
+
+        ViewModel.SearchAllMail = AdvWhere.SelectedIndex == 1;
+        ViewModel.SearchText = form.ToQuery();
+        AdvancedSearchFlyout.Hide();
+    }
+
+    private void OnAdvancedSearchClear(object sender, RoutedEventArgs e)
+    {
+        ViewModel.SearchText = string.Empty;
+        ViewModel.SearchAllMail = false;
+        AdvancedSearchFlyout.Hide();
+    }
+
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_syncingSelection) return;

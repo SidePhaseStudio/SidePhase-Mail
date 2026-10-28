@@ -288,6 +288,89 @@ public sealed class MailCacheTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Search_index_covers_subjects_people_text_and_attachment_names_and_follows_deletes()
+    {
+        var inbox = Folder("INBOX", FolderKind.Inbox);
+        await _cache.UpsertFolderAsync(inbox);
+        var report = Message(inbox, 1, 1, "<r@x>", subject: "Quarterly résumé") with
+        {
+            HasAttachments = true,
+            Attachments = [new AttachmentInfo("Budget-2026.xlsx", "application/vnd.ms-excel", 12_000)],
+            To = [new EmailAddress("Carol Jones", "carol@example.test")],
+        };
+        var other = Message(inbox, 1, 2, "<o@x>", subject: "Lunch");
+        await _cache.UpsertMessagesAsync([report, other]);
+        await _cache.SaveBodyAsync(new MessageBody { MessageId = other.Id, TextBody = "The zebra crossing is closed." });
+
+        Assert.Equal([report.Id], await _cache.SearchIndexAsync("\"resume\"*")); // diacritics folded
+        Assert.Equal([report.Id], await _cache.SearchIndexAsync("\"carol\"*"));
+        Assert.Equal([report.Id], await _cache.SearchIndexAsync("attachments : (\"budget\"*)"));
+        Assert.Equal([other.Id], await _cache.SearchIndexAsync("body : (\"zeb\"*)"));
+        Assert.Empty(await _cache.SearchIndexAsync("body : (\"budget\"*)"));
+
+        var summary = (await _cache.GetSummaryAsync(report.Id))!;
+        Assert.Equal("Budget-2026.xlsx", Assert.Single(summary.Attachments).FileName);
+
+        // Recording details again (e.g. when the body is downloaded) doesn't duplicate them.
+        await _cache.SaveBodyAsync(new MessageBody { MessageId = report.Id, TextBody = "x", Attachments = summary.Attachments });
+        Assert.Single((await _cache.GetSummaryAsync(report.Id))!.Attachments);
+
+        await _cache.DeleteMessagesAsync(inbox.Id, 1, [1u]);
+        Assert.Empty(await _cache.SearchIndexAsync("\"carol\"*"));
+        Assert.Empty(await _cache.GetMessagesMissingAttachmentDetailsAsync(inbox.Id, 1, 10));
+    }
+
+    [Fact]
+    public async Task Older_messages_without_attachment_details_are_listed_for_backfill()
+    {
+        var inbox = Folder("INBOX", FolderKind.Inbox);
+        await _cache.UpsertFolderAsync(inbox);
+        var old = Message(inbox, 1, 7, "<a@x>") with { HasAttachments = true };
+        await _cache.UpsertMessagesAsync([old]);
+        Assert.Equal((old.Id, 7u), Assert.Single(await _cache.GetMessagesMissingAttachmentDetailsAsync(inbox.Id, 1, 10)));
+        await _cache.SaveAttachmentDetailsAsync(old.Id, [new AttachmentInfo("scan.pdf", "application/pdf", 10)]);
+        Assert.Empty(await _cache.GetMessagesMissingAttachmentDetailsAsync(inbox.Id, 1, 10));
+        Assert.Equal([old.Id], await _cache.SearchIndexAsync("attachments : (\"scan\"*)"));
+    }
+
+    [Fact]
+    public async Task Migration_from_schema_2_indexes_mail_that_is_already_cached()
+    {
+        var file = Path.Combine(_dir, "v2.db");
+        var db = new MailDatabase(file);
+        await using (var c = await db.OpenAsync())
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = MailDatabase.Migrations[0] + "\n" + MailDatabase.Migrations[1] + "\nPRAGMA user_version = 2;";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var cache = new MailCache(db);
+        await cache.AddAccountAsync(Account(_account));
+        var inbox = Folder("INBOX", FolderKind.Inbox);
+        await cache.UpsertFolderAsync(inbox);
+        await using (var c = await db.OpenAsync())
+        await using (var cmd = c.CreateCommand())
+        {
+            // Rows written by the Milestone 4 app (no search index yet).
+            cmd.CommandText = """
+                INSERT INTO messages (id, account_id, folder_id, uid, uid_validity, identity_key, from_address, to_json, cc_json, subject, preview, date, is_read, is_starred, has_attachments)
+                VALUES ($id, $a, $f, 1, 1, 'k', 'bob@example.test', '[]', '[]', 'Invoice for October', 'Please pay', 0, 0, 0, 0);
+                INSERT INTO bodies (message_id, text, attachments_json, cached_at) VALUES ($id, 'The amount due is large', '[]', 0);
+                """;
+            cmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
+            cmd.Parameters.AddWithValue("$a", _account.ToString());
+            cmd.Parameters.AddWithValue("$f", inbox.Id.ToString());
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        Assert.Equal(MailDatabase.LatestVersion, await cache.InitializeAsync());
+        Assert.Single(await cache.SearchIndexAsync("\"invoice\"*"));
+        Assert.Single(await cache.SearchIndexAsync("body : (\"amount\"*)"));
+        Assert.Equal("alice@example.test", Assert.Single(await cache.GetAccountsAsync()).Account.EmailAddress);
+    }
+
+    [Fact]
     public async Task Folder_upsert_keeps_sync_state()
     {
         var inbox = Folder("INBOX", FolderKind.Inbox);

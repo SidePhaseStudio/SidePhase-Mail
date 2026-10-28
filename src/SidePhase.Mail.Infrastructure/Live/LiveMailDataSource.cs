@@ -6,6 +6,7 @@ using MimeKit;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Models;
 using SidePhase.Mail.Core.Scheduling;
+using SidePhase.Mail.Core.Services;
 using SidePhase.Mail.Infrastructure.Accounts;
 using SidePhase.Mail.Infrastructure.Mail;
 using SidePhase.Mail.Infrastructure.Storage;
@@ -870,9 +871,11 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         {
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
             var result = new Dictionary<string, IReadOnlySet<Guid>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var term in terms.Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var key in terms.Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                result[term] = await _cache.SearchBodyTextAsync(term, cancellationToken).ConfigureAwait(false);
+                // The FTS5 index covers subjects, people, downloaded text and attachment names of cached mail.
+                var fts = SearchIndexQuery.For(SearchIndexQuery.FromKey(key));
+                result[key] = fts is null ? new HashSet<Guid>() : await _cache.SearchIndexAsync(fts, ct: cancellationToken).ConfigureAwait(false);
             }
 
             return result;
