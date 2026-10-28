@@ -79,7 +79,93 @@ public sealed class MailCacheTests : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync();
         }
 
-        await Assert.ThrowsAnyAsync<Exception>(() => _cache.InitializeAsync());
+        // A new process opening the file (the migration result is remembered per process).
+        var reopened = new MailDatabase(_cache.Database.DatabaseFile);
+        var ex = await Assert.ThrowsAsync<MailCacheException>(() => reopened.MigrateAsync());
+        Assert.Equal(MailCacheProblem.NewerVersion, ex.Problem);
+
+        // Nothing was changed: the newer app can still open it.
+        await using var c2 = await reopened.OpenAsync();
+        await using var check = c2.CreateCommand();
+        check.CommandText = "PRAGMA user_version";
+        Assert.Equal(MailDatabase.LatestVersion + 5L, (long)(await check.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task Upgrades_take_a_backup_first_and_keep_only_the_latest_few()
+    {
+        var file = Path.Combine(_dir, "upgrade.db");
+        var backups = Path.Combine(_dir, "Backups");
+        for (var i = 0; i < MailDatabase.BackupsKept + 2; i++)
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(file)) File.Delete(file);
+            var db = new MailDatabase(file) { BackupsFolder = backups };
+            await using (var c = await db.OpenAsync())
+            await using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = MailDatabase.Migrations[0] + "\nPRAGMA user_version = 1;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await new MailCache(db).AddAccountAsync(Account(Guid.NewGuid(), $"user{i}@example.test"));
+            Assert.Equal(MailDatabase.LatestVersion, await db.MigrateAsync());
+            await Task.Delay(1100); // distinct timestamps in the backup names
+        }
+
+        var kept = Directory.GetFiles(backups, "mail-cache-schema1-*.db");
+        Assert.Equal(MailDatabase.BackupsKept, kept.Length);
+
+        // A backup is a working schema-1 database with the account in it.
+        await using var b = new SqliteConnection($"Data Source={kept.OrderBy(f => f).Last()};Pooling=False");
+        await b.OpenAsync();
+        await using var q = b.CreateCommand();
+        q.CommandText = "SELECT count(*) FROM accounts";
+        Assert.Equal(1L, (long)(await q.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task A_new_database_is_not_backed_up()
+    {
+        var backups = Path.Combine(_dir, "Backups");
+        var db = new MailDatabase(Path.Combine(_dir, "fresh.db")) { BackupsFolder = backups };
+        await db.MigrateAsync();
+        Assert.False(Directory.Exists(backups) && Directory.EnumerateFiles(backups).Any());
+    }
+
+    [Fact]
+    public async Task Concurrent_first_opens_migrate_once()
+    {
+        var db = new MailDatabase(Path.Combine(_dir, "concurrent.db"));
+        var results = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() => db.MigrateAsync())));
+        Assert.All(results, v => Assert.Equal(MailDatabase.LatestVersion, v));
+    }
+
+    [Fact]
+    public async Task Two_processes_upgrading_the_same_file_both_succeed()
+    {
+        var file = Path.Combine(_dir, "shared.db");
+        var results = await Task.WhenAll(
+            Task.Run(() => new MailDatabase(file).MigrateAsync()),
+            Task.Run(() => new MailDatabase(file).MigrateAsync()));
+        Assert.All(results, v => Assert.Equal(MailDatabase.LatestVersion, v));
+    }
+
+    [Fact]
+    public async Task A_damaged_file_is_reported_and_only_set_aside_on_request()
+    {
+        var file = Path.Combine(_dir, "damaged.db");
+        await File.WriteAllBytesAsync(file, Enumerable.Repeat((byte)0x5A, 8192).ToArray());
+        var db = new MailDatabase(file) { BackupsFolder = Path.Combine(_dir, "Backups") };
+
+        var ex = await Assert.ThrowsAsync<MailCacheException>(() => db.MigrateAsync());
+        Assert.Equal(MailCacheProblem.Damaged, ex.Problem);
+        Assert.Equal(8192, new FileInfo(file).Length); // untouched
+
+        var movedTo = db.SetAside();
+        Assert.True(File.Exists(movedTo));
+        Assert.Equal(MailDatabase.LatestVersion, await db.MigrateAsync());
+        Assert.Null(await db.CheckIntegrityAsync());
     }
 
     [Fact]

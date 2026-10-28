@@ -86,6 +86,7 @@ public sealed class ImapSessionPool(MailConnector connector, CredentialProvider 
     }
 
     internal static bool IsConnectionProblem(Exception ex) =>
+        ex is not (Mail.FolderRenumberedException or Security.SecretStoreUnavailableException) &&
         ex is ServiceNotConnectedException or ServiceNotAuthenticatedException or ImapProtocolException or IOException or SocketException
             || (ex is InvalidOperationException && ex.Message.Contains("not connected", StringComparison.OrdinalIgnoreCase));
 

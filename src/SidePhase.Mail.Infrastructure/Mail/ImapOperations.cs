@@ -9,14 +9,31 @@ public sealed record AppendResult(uint? Uid, uint UidValidity);
 
 public sealed record MoveResult(uint? NewUid, uint DestinationUidValidity);
 
+/// <summary>
+/// The server renumbered the folder (its UIDVALIDITY changed) since the message was cached, so the cached UID may now
+/// belong to a different message. The operation is refused; the next sync refreshes the folder.
+/// </summary>
+public sealed class FolderRenumberedException(string folderPath)
+    : IOException($"The folder \"{folderPath}\" changed on the server since it was last synced. Nothing was changed; refresh and try again.");
+
 /// <summary>Server-side changes. Each one is the direct result of an explicit user action.</summary>
 public static class ImapOperations
 {
-    public static async Task SetFlagsAsync(ImapClient client, string folderPath, uint uid, MessageFlags flags, bool add, CancellationToken ct)
+    /// <summary>
+    /// The server UID for a cached message, refusing to continue if the folder was renumbered: acting on a stale UID
+    /// could change or delete a different message. <paramref name="expectedUidValidity"/> 0 means "not known".
+    /// </summary>
+    internal static UniqueId IdFor(IMailFolder folder, uint uid, uint expectedUidValidity)
+    {
+        if (expectedUidValidity != 0 && folder.UidValidity != expectedUidValidity) throw new FolderRenumberedException(folder.FullName);
+        return new UniqueId(folder.UidValidity, uid);
+    }
+
+    public static async Task SetFlagsAsync(ImapClient client, string folderPath, uint uid, uint expectedUidValidity, MessageFlags flags, bool add, CancellationToken ct)
     {
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
         var request = new StoreFlagsRequest(add ? StoreAction.Add : StoreAction.Remove, flags) { Silent = true };
-        await folder.StoreAsync(new UniqueId(folder.UidValidity, uid), request, ct).ConfigureAwait(false);
+        await folder.StoreAsync(IdFor(folder, uid, expectedUidValidity), request, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -24,11 +41,11 @@ public static class ImapOperations
     /// filters (e.g. Dovecot antispam, Fastmail) can learn from the user's choice. Skipped silently when the folder
     /// doesn't accept custom keywords.
     /// </summary>
-    public static async Task SetJunkKeywordAsync(ImapClient client, string folderPath, uint uid, bool isJunk, CancellationToken ct)
+    public static async Task SetJunkKeywordAsync(ImapClient client, string folderPath, uint uid, uint expectedUidValidity, bool isJunk, CancellationToken ct)
     {
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
         if (!folder.PermanentFlags.HasFlag(MessageFlags.UserDefined)) return;
-        var id = new UniqueId(folder.UidValidity, uid);
+        var id = IdFor(folder, uid, expectedUidValidity);
         await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Add, [isJunk ? "$Junk" : "$NotJunk"]) { Silent = true }, ct).ConfigureAwait(false);
         await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Remove, [isJunk ? "$NotJunk" : "$Junk"]) { Silent = true }, ct).ConfigureAwait(false);
     }
@@ -40,11 +57,11 @@ public static class ImapOperations
         return folder.PermanentFlags.HasFlag(MessageFlags.Flagged) || folder.AcceptedFlags.HasFlag(MessageFlags.Flagged);
     }
 
-    public static async Task<MoveResult> MoveAsync(ImapClient client, string sourcePath, uint uid, string destinationPath, CancellationToken ct)
+    public static async Task<MoveResult> MoveAsync(ImapClient client, string sourcePath, uint uid, uint expectedUidValidity, string destinationPath, CancellationToken ct)
     {
         var destination = await client.GetFolderAsync(destinationPath, ct).ConfigureAwait(false);
         var source = await OpenAsync(client, sourcePath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
-        var id = new UniqueId(source.UidValidity, uid);
+        var id = IdFor(source, uid, expectedUidValidity);
         UniqueId? newUid;
         if ((client.Capabilities & (ImapCapabilities.Move | ImapCapabilities.UidPlus)) != 0)
         {
@@ -66,11 +83,11 @@ public static class ImapOperations
     /// each source UID's new UID where the server reports it (COPYUID), and the destination's UIDVALIDITY.
     /// </summary>
     public static async Task<(IReadOnlyDictionary<uint, uint> NewUids, uint DestinationUidValidity)> MoveManyAsync(
-        ImapClient client, string sourcePath, IReadOnlyList<uint> uids, string destinationPath, CancellationToken ct)
+        ImapClient client, string sourcePath, IReadOnlyList<uint> uids, uint expectedUidValidity, string destinationPath, CancellationToken ct)
     {
         var destination = await client.GetFolderAsync(destinationPath, ct).ConfigureAwait(false);
         var source = await OpenAsync(client, sourcePath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
-        var ids = uids.Select(u => new UniqueId(source.UidValidity, u)).ToList();
+        var ids = uids.Select(u => IdFor(source, u, expectedUidValidity)).ToList();
         UniqueIdMap map;
         if ((client.Capabilities & (ImapCapabilities.Move | ImapCapabilities.UidPlus)) != 0)
         {
@@ -89,11 +106,11 @@ public static class ImapOperations
     }
 
     /// <summary>Sets $Junk / $NotJunk on several messages at once (ignored where keywords aren't allowed).</summary>
-    public static async Task SetJunkKeywordAsync(ImapClient client, string folderPath, IReadOnlyList<uint> uids, bool isJunk, CancellationToken ct)
+    public static async Task SetJunkKeywordAsync(ImapClient client, string folderPath, IReadOnlyList<uint> uids, uint expectedUidValidity, bool isJunk, CancellationToken ct)
     {
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
         if (!folder.PermanentFlags.HasFlag(MessageFlags.UserDefined)) return;
-        var ids = uids.Select(u => new UniqueId(folder.UidValidity, u)).ToList();
+        var ids = uids.Select(u => IdFor(folder, u, expectedUidValidity)).ToList();
         await folder.StoreAsync(ids, new StoreFlagsRequest(StoreAction.Add, [isJunk ? "$Junk" : "$NotJunk"]) { Silent = true }, ct).ConfigureAwait(false);
         await folder.StoreAsync(ids, new StoreFlagsRequest(StoreAction.Remove, [isJunk ? "$NotJunk" : "$Junk"]) { Silent = true }, ct).ConfigureAwait(false);
     }
@@ -109,10 +126,10 @@ public static class ImapOperations
     /// Marks the message \Deleted and expunges just that UID when the server supports UIDPLUS. Without UIDPLUS a plain
     /// EXPUNGE could remove other messages flagged elsewhere, so the message is only flagged.
     /// </summary>
-    public static async Task DeleteAsync(ImapClient client, string folderPath, uint uid, CancellationToken ct)
+    public static async Task DeleteAsync(ImapClient client, string folderPath, uint uid, uint expectedUidValidity, CancellationToken ct)
     {
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadWrite, ct).ConfigureAwait(false);
-        var id = new UniqueId(folder.UidValidity, uid);
+        var id = IdFor(folder, uid, expectedUidValidity);
         await folder.StoreAsync(id, new StoreFlagsRequest(StoreAction.Add, MessageFlags.Deleted) { Silent = true }, ct).ConfigureAwait(false);
         if (client.Capabilities.HasFlag(ImapCapabilities.UidPlus))
         {
@@ -120,22 +137,22 @@ public static class ImapOperations
         }
     }
 
-    public static async Task<MimeMessage> FetchMessageAsync(ImapClient client, string folderPath, uint uid, CancellationToken ct)
+    public static async Task<MimeMessage> FetchMessageAsync(ImapClient client, string folderPath, uint uid, uint expectedUidValidity, CancellationToken ct)
     {
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadOnly, ct).ConfigureAwait(false);
         // MailKit uses BODY.PEEK, so downloading a message doesn't mark it as read on the server.
-        return await folder.GetMessageAsync(new UniqueId(folder.UidValidity, uid), ct).ConfigureAwait(false);
+        return await folder.GetMessageAsync(IdFor(folder, uid, expectedUidValidity), ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Downloads a raw message into <paramref name="destination"/> in 1 MB pieces, so a message with large attachments
     /// never has to fit in memory. Uses BODY.PEEK, so the message isn't marked as read.
     /// </summary>
-    public static async Task DownloadMessageAsync(ImapClient client, string folderPath, uint uid, Stream destination, IProgress<double>? progress, CancellationToken ct)
+    public static async Task DownloadMessageAsync(ImapClient client, string folderPath, uint uid, uint expectedUidValidity, Stream destination, IProgress<double>? progress, CancellationToken ct)
     {
         const int Chunk = 1024 * 1024;
         var folder = await OpenAsync(client, folderPath, FolderAccess.ReadOnly, ct).ConfigureAwait(false);
-        var id = new UniqueId(folder.UidValidity, uid);
+        var id = IdFor(folder, uid, expectedUidValidity);
         var summary = (await folder.FetchAsync([id], new FetchRequest(MessageSummaryItems.UniqueId | MessageSummaryItems.Size), ct).ConfigureAwait(false)).FirstOrDefault()
             ?? throw new InvalidOperationException("This message is no longer on the server.");
         var size = (long)(summary.Size ?? 0);

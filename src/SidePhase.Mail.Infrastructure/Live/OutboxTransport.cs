@@ -11,9 +11,10 @@ public sealed class OutboxTransport(DemoMailDataSource demo, LiveMailDataSource 
 {
     public async Task<SendAttemptResult> SendAsync(OutboxItem item, CancellationToken ct)
     {
+        var draft = item.Draft with { StableMessageKey = item.Id };
         var result = item.IsDemo
-            ? await demo.SendAsync(item.Draft, null, ct).ConfigureAwait(false)
-            : await live.SendAsync(item.Draft, null, ct).ConfigureAwait(false);
+            ? await demo.SendAsync(draft, null, ct).ConfigureAwait(false)
+            : await live.SendAsync(draft, null, ct).ConfigureAwait(false);
         return new SendAttemptResult(result.Outcome, result.Message);
     }
 }

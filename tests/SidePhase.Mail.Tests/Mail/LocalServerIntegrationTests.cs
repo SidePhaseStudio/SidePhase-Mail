@@ -145,7 +145,7 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
 
         // 3. Body on demand (BODY.PEEK: still unread on the server) with the attachment.
         var reference = (await _cache.GetMessageRefAsync(received.Id))!;
-        var full = await ImapOperations.FetchMessageAsync(imap, reference.FolderPath, reference.Uid, CancellationToken.None);
+        var full = await ImapOperations.FetchMessageAsync(imap, reference.FolderPath, reference.Uid, reference.UidValidity, CancellationToken.None);
         var body = MessageBodyExtractor.Extract(received.Id, full);
         Assert.Contains("Hello Bob", body.TextBody);
         Assert.Equal("report.txt", Assert.Single(body.Attachments).FileName);
@@ -156,7 +156,7 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
         Assert.False((await _cache.GetSummaryAsync(received.Id))!.IsRead);
 
         // 4. Read and starred flags are written to the server and come back on the next sync.
-        await ImapOperations.SetFlagsAsync(imap, reference.FolderPath, reference.Uid, MessageFlags.Seen | MessageFlags.Flagged, add: true, CancellationToken.None);
+        await ImapOperations.SetFlagsAsync(imap, reference.FolderPath, reference.Uid, reference.UidValidity, MessageFlags.Seen | MessageFlags.Flagged, add: true, CancellationToken.None);
         await _cache.SetFlagsAsync(received.Id, isRead: false, isStarred: false); // pretend the cache is stale
         inbox = (await _cache.GetFoldersAsync(_bob)).Single(f => f.Id == inbox.Id);
         var flagSync = await sync.SyncFolderAsync(imap, inbox);
@@ -167,7 +167,7 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
 
         // 5. Pin it, move it to the archive: the pin follows the message.
         await _cache.SetPinnedAsync(_bob, reference.IdentityKey, DateTimeOffset.UtcNow);
-        var move = await ImapOperations.MoveAsync(imap, reference.FolderPath, reference.Uid, archiveFolder.Path, CancellationToken.None);
+        var move = await ImapOperations.MoveAsync(imap, reference.FolderPath, reference.Uid, reference.UidValidity, archiveFolder.Path, CancellationToken.None);
         Assert.NotNull(move.NewUid);
         inbox = (await _cache.GetFoldersAsync(_bob)).Single(f => f.Id == inbox.Id);
         await sync.SyncFolderAsync(imap, inbox);
@@ -179,7 +179,7 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
         Assert.True(moved.IsPinned);
 
         // 6. Delete permanently (explicit action): gone from the server and, after sync, from the cache.
-        await ImapOperations.DeleteAsync(imap, archiveFolder.Path, move.NewUid!.Value, CancellationToken.None);
+        await ImapOperations.DeleteAsync(imap, archiveFolder.Path, move.NewUid!.Value, move.DestinationUidValidity, CancellationToken.None);
         archiveFolder = (await _cache.GetFoldersAsync(_bob)).Single(f => f.Id == archiveFolder.Id);
         var deleteSync = await sync.SyncFolderAsync(imap, archiveFolder);
         Assert.Equal(1, deleteSync.Removed);
@@ -201,9 +201,9 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
 
         var appended = await ImapOperations.AppendAsync(imap, drafts.Path, message, MessageFlags.Draft | MessageFlags.Seen, CancellationToken.None);
         Assert.NotNull(appended.Uid);
-        var fetched = await ImapOperations.FetchMessageAsync(imap, drafts.Path, appended.Uid!.Value, CancellationToken.None);
+        var fetched = await ImapOperations.FetchMessageAsync(imap, drafts.Path, appended.Uid!.Value, appended.UidValidity, CancellationToken.None);
         Assert.Equal(message.Subject, fetched.Subject);
-        await ImapOperations.DeleteAsync(imap, drafts.Path, appended.Uid.Value, CancellationToken.None);
+        await ImapOperations.DeleteAsync(imap, drafts.Path, appended.Uid.Value, appended.UidValidity, CancellationToken.None);
         await imap.DisconnectAsync(true);
     }
 
@@ -225,7 +225,7 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
         var appended = await ImapOperations.AppendAsync(imap, sent.Path, message, MessageFlags.Seen, CancellationToken.None);
         Assert.True(await Infrastructure.Live.LiveMailDataSource.SentCopyExistsAsync(imap, sent.Path, message.MessageId));
 
-        await ImapOperations.DeleteAsync(imap, sent.Path, appended.Uid!.Value, CancellationToken.None);
+        await ImapOperations.DeleteAsync(imap, sent.Path, appended.Uid!.Value, appended.UidValidity, CancellationToken.None);
         await imap.DisconnectAsync(true);
     }
 
@@ -239,17 +239,42 @@ public sealed class LocalServerIntegrationTests : IAsyncLifetime
         message.Body = new TextPart("plain") { Text = "buy now" };
         var appended = await ImapOperations.AppendAsync(imap, "INBOX", message, MessageFlags.None, CancellationToken.None);
 
-        await ImapOperations.SetJunkKeywordAsync(imap, "INBOX", appended.Uid!.Value, isJunk: true, CancellationToken.None);
+        await ImapOperations.SetJunkKeywordAsync(imap, "INBOX", appended.Uid!.Value, appended.UidValidity, isJunk: true, CancellationToken.None);
         var inbox = await imap.GetFolderAsync("INBOX");
         var summary = (await inbox.FetchAsync([new UniqueId(inbox.UidValidity, appended.Uid.Value)], MessageSummaryItems.Flags)).Single();
         Assert.Contains("$Junk", summary.Keywords);
 
-        await ImapOperations.SetJunkKeywordAsync(imap, "INBOX", appended.Uid.Value, isJunk: false, CancellationToken.None);
+        await ImapOperations.SetJunkKeywordAsync(imap, "INBOX", appended.Uid.Value, appended.UidValidity, isJunk: false, CancellationToken.None);
         summary = (await inbox.FetchAsync([new UniqueId(inbox.UidValidity, appended.Uid.Value)], MessageSummaryItems.Flags)).Single();
         Assert.Contains("$NotJunk", summary.Keywords);
         Assert.DoesNotContain("$Junk", summary.Keywords);
 
-        await ImapOperations.DeleteAsync(imap, "INBOX", appended.Uid.Value, CancellationToken.None);
+        await ImapOperations.DeleteAsync(imap, "INBOX", appended.Uid.Value, appended.UidValidity, CancellationToken.None);
+        await imap.DisconnectAsync(true);
+    }
+
+    [MailServerFact]
+    public async Task Operations_on_a_renumbered_folder_are_refused_and_change_nothing()
+    {
+        using var imap = await ImapAsync(TestMailServer.User1);
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress("Someone", "someone@example.test"));
+        message.Subject = "Renumbered " + Guid.NewGuid().ToString("N")[..6];
+        message.Body = new TextPart("plain") { Text = "keep me" };
+        var appended = await ImapOperations.AppendAsync(imap, "INBOX", message, MessageFlags.None, CancellationToken.None);
+        var staleValidity = appended.UidValidity + 1; // what the cache would hold if the server had renumbered INBOX
+
+        await Assert.ThrowsAsync<FolderRenumberedException>(() =>
+            ImapOperations.DeleteAsync(imap, "INBOX", appended.Uid!.Value, staleValidity, CancellationToken.None));
+        await Assert.ThrowsAsync<FolderRenumberedException>(() =>
+            ImapOperations.SetFlagsAsync(imap, "INBOX", appended.Uid!.Value, staleValidity, MessageFlags.Seen, add: true, CancellationToken.None));
+
+        var inbox = await imap.GetFolderAsync("INBOX");
+        var summary = (await inbox.FetchAsync([new UniqueId(inbox.UidValidity, appended.Uid!.Value)], MessageSummaryItems.Flags)).Single();
+        Assert.False(summary.Flags!.Value.HasFlag(MessageFlags.Deleted));
+        Assert.False(summary.Flags!.Value.HasFlag(MessageFlags.Seen));
+
+        await ImapOperations.DeleteAsync(imap, "INBOX", appended.Uid.Value, appended.UidValidity, CancellationToken.None);
         await imap.DisconnectAsync(true);
     }
 

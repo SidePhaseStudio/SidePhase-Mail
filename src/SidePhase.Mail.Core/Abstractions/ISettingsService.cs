@@ -21,4 +21,13 @@ public interface ISettingsService
 
     /// <summary>Waits for any pending save to finish.</summary>
     Task FlushAsync();
+
+    /// <summary>
+    /// Set when the settings file couldn't be read at start-up (and wasn't simply missing). Changes made in this
+    /// session are then kept in memory only, so the unreadable file is never replaced with defaults.
+    /// </summary>
+    string? LoadProblem { get; }
+
+    /// <summary>Set when settings were restored from the last good copy because the file was damaged.</summary>
+    bool RestoredFromBackup { get; }
 }

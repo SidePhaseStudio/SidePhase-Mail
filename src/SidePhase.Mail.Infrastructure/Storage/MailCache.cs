@@ -832,8 +832,18 @@ public sealed class MailCache(MailDatabase database)
     /// <summary>Removes every cached account, folder and message (the server is never touched).</summary>
     public async Task ClearMessagesAsync(CancellationToken ct = default)
     {
+        // One transaction: an interruption must never leave empty folders that still look fully synced (sync would then
+        // only fetch newer mail, and older messages would never come back).
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
-        await MailDatabase.ExecuteAsync(c, "DELETE FROM bodies; DELETE FROM messages; UPDATE folders SET uid_validity = 0, highest_uid = 0, highest_modseq = 0, last_sync = NULL;", ct).ConfigureAwait(false);
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM bodies; DELETE FROM messages; UPDATE folders SET uid_validity = 0, highest_uid = 0, highest_modseq = 0, last_sync = NULL;";
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
     }
 
     internal static IReadOnlyList<EmailAddress> ReadAddresses(string json) =>

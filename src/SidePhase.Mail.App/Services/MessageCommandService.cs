@@ -290,6 +290,32 @@ public sealed class MessageCommandService(
         windows.OpenCompose(draft with { Mode = ComposeMode.EditDraft });
     }
 
+    /// <summary>
+    /// Opens a new message from a mailto: link (a link in a message, or Windows when SidePhase Mail is the default
+    /// email app). Only recipients, subject and body are used; nothing is sent until the user presses Send.
+    /// </summary>
+    public async Task ComposeFromLinkAsync(Core.Composition.MailtoLink link)
+    {
+        var accounts = await mail.GetAccountsAsync();
+        var account = accounts.FirstOrDefault(a => a.Id == settings.Current.DefaultSendingAccountId) ?? accounts.FirstOrDefault();
+        if (account is null)
+        {
+            toasts.Show("Add an account before writing a message.", ToastKind.Warning);
+            return;
+        }
+
+        windows.OpenCompose(new DraftMessage
+        {
+            AccountId = account.Id,
+            To = link.To,
+            Cc = link.Cc,
+            Bcc = link.Bcc,
+            Subject = link.Subject,
+            TextBody = link.Body,
+            IsPlainText = settings.Current.DefaultComposeFormat == ComposeFormat.PlainText,
+        });
+    }
+
     public async Task ComposeNewAsync(Guid? accountId = null, EmailAddress? to = null)
     {
         var accounts = await mail.GetAccountsAsync();

@@ -58,7 +58,84 @@ public sealed class SettingsTests : IDisposable
         await service.LoadAsync();
 
         Assert.Equal(AppTheme.DarkGlass, service.Current.Theme);
-        Assert.True(File.Exists(file + ".corrupt"));
+        Assert.Single(Directory.GetFiles(_root, "settings.json.corrupt-*"));
+        Assert.Null(service.LoadProblem);
+    }
+
+    [Fact]
+    public async Task Damaged_file_is_restored_from_the_last_good_copy()
+    {
+        var store = new JsonSettingsStore(new AppDataPaths(_root));
+        await store.SaveAsync(new AppSettings { AccentColor = "#111111" });
+        await store.SaveAsync(new AppSettings { AccentColor = "#222222" });
+        Assert.True(File.Exists(store.BackupFile));
+
+        // A power cut leaves the file empty.
+        await File.WriteAllTextAsync(Path.Combine(_root, "settings.json"), string.Empty);
+
+        var service = new SettingsService(store);
+        await service.LoadAsync();
+
+        Assert.True(service.RestoredFromBackup);
+        Assert.Equal("#111111", service.Current.AccentColor);
+        Assert.Single(Directory.GetFiles(_root, "settings.json.corrupt-*"));
+    }
+
+    [Fact]
+    public async Task Saving_over_a_damaged_file_never_replaces_the_good_backup()
+    {
+        var store = new JsonSettingsStore(new AppDataPaths(_root));
+        await store.SaveAsync(new AppSettings { AccentColor = "#111111" });
+        await store.SaveAsync(new AppSettings { AccentColor = "#222222" });
+        await File.WriteAllTextAsync(Path.Combine(_root, "settings.json"), "{ broken");
+
+        await store.SaveAsync(new AppSettings { AccentColor = "#333333" });
+
+        Assert.Equal("#333333", (await store.LoadAsync())?.AccentColor);
+        Assert.Contains("#111111", await File.ReadAllTextAsync(store.BackupFile));
+    }
+
+    [Fact]
+    public async Task Only_a_backup_left_by_an_interrupted_save_is_used()
+    {
+        var store = new JsonSettingsStore(new AppDataPaths(_root));
+        await store.SaveAsync(new AppSettings { AccentColor = "#111111" });
+        await store.SaveAsync(new AppSettings { AccentColor = "#222222" });
+        File.Delete(Path.Combine(_root, "settings.json"));
+
+        var result = await store.LoadWithRecoveryAsync();
+
+        Assert.True(result.RestoredFromBackup);
+        Assert.Equal("#111111", result.Settings?.AccentColor);
+    }
+
+    [Fact]
+    public async Task Unreadable_settings_are_never_overwritten_with_defaults()
+    {
+        var store = new UnreadableSettingsStore();
+        var service = new SettingsService(store);
+        await service.LoadAsync();
+
+        Assert.NotNull(service.LoadProblem);
+        service.Update(s => s.AccentColor = "#ABCDEF");
+        await service.FlushAsync();
+
+        Assert.Equal("#ABCDEF", service.Current.AccentColor);
+        Assert.Equal(0, store.Saves);
+    }
+
+    private sealed class UnreadableSettingsStore : SidePhase.Mail.Core.Abstractions.ISettingsStore
+    {
+        public int Saves { get; private set; }
+
+        public Task<AppSettings?> LoadAsync(CancellationToken cancellationToken = default) =>
+            throw new SettingsUnavailableException("locked");
+
+        public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
+        {
+            Saves++;
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

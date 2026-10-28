@@ -33,8 +33,11 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     private IReadOnlyList<StoredAccount>? _accounts;
     private bool _initialized;
 
-    public LiveMailDataSource(MailCache cache, MailConnector connector, CredentialProvider credentials, IClock clock)
+    private readonly PendingSentCopies? _pendingSentCopies;
+
+    public LiveMailDataSource(MailCache cache, MailConnector connector, CredentialProvider credentials, IClock clock, PendingSentCopies? pendingSentCopies = null)
     {
+        _pendingSentCopies = pendingSentCopies;
         _cache = cache;
         _connector = connector;
         _credentials = credentials;
@@ -122,7 +125,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
         try
         {
-            var mime = await _imap.RunAsync(account, c => ImapOperations.FetchMessageAsync(c, reference.FolderPath, reference.Uid, cancellationToken), cancellationToken).ConfigureAwait(false);
+            var mime = await _imap.RunAsync(account, c => ImapOperations.FetchMessageAsync(c, reference.FolderPath, reference.Uid, reference.UidValidity, cancellationToken), cancellationToken).ConfigureAwait(false);
             var body = MessageBodyExtractor.Extract(messageId, mime);
             await _cache.SaveBodyAsync(body, cancellationToken).ConfigureAwait(false);
 
@@ -154,7 +157,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
         try
         {
-            var mime = await _imap.RunAsync(account, c => ImapOperations.FetchMessageAsync(c, reference.FolderPath, reference.Uid, cancellationToken), cancellationToken).ConfigureAwait(false);
+            var mime = await _imap.RunAsync(account, c => ImapOperations.FetchMessageAsync(c, reference.FolderPath, reference.Uid, reference.UidValidity, cancellationToken), cancellationToken).ConfigureAwait(false);
             return MessageBodyExtractor.GetAttachmentContent(mime, attachmentIndex);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -178,7 +181,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             await _imap.RunAsync(account, async c =>
             {
                 raw.SetLength(0); // a retry after a dropped connection starts again
-                await ImapOperations.DownloadMessageAsync(c, reference.FolderPath, reference.Uid, raw, download, cancellationToken).ConfigureAwait(false);
+                await ImapOperations.DownloadMessageAsync(c, reference.FolderPath, reference.Uid, reference.UidValidity, raw, download, cancellationToken).ConfigureAwait(false);
                 return true;
             }, cancellationToken).ConfigureAwait(false);
 
@@ -251,7 +254,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                                 continue;
                             }
 
-                            await ImapOperations.SetFlagsAsync(client, reference.FolderPath, reference.Uid, flag, value, _shutdown.Token).ConfigureAwait(false);
+                            await ImapOperations.SetFlagsAsync(client, reference.FolderPath, reference.Uid, reference.UidValidity, flag, value, _shutdown.Token).ConfigureAwait(false);
                         }
                     }, _shutdown.Token).ConfigureAwait(false);
                 }
@@ -440,7 +443,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                         {
                             try
                             {
-                                await ImapOperations.SetJunkKeywordAsync(client, batch[0].FolderPath, batch.Select(r => r.Uid).ToList(), isJunk, ct).ConfigureAwait(false);
+                                await ImapOperations.SetJunkKeywordAsync(client, batch[0].FolderPath, batch.Select(r => r.Uid).ToList(), batch[0].UidValidity, isJunk, ct).ConfigureAwait(false);
                             }
                             catch (MailKit.Net.Imap.ImapCommandException)
                             {
@@ -448,7 +451,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                             }
                         }
 
-                        var result = await ImapOperations.MoveManyAsync(client, batch[0].FolderPath, batch.Select(r => r.Uid).ToList(), destination.Path, ct).ConfigureAwait(false);
+                        var result = await ImapOperations.MoveManyAsync(client, batch[0].FolderPath, batch.Select(r => r.Uid).ToList(), batch[0].UidValidity, destination.Path, ct).ConfigureAwait(false);
 
                         // Servers without COPYUID: find the moved copies by Message-ID.
                         var map = new Dictionary<uint, uint>(result.NewUids);
@@ -525,7 +528,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             if (reference is null || account is null || reference.FolderKind is not (FolderKind.Trash or FolderKind.Junk or FolderKind.Drafts)) continue;
             try
             {
-                await _imap.RunAsync(account, c => ImapOperations.DeleteAsync(c, reference.FolderPath, reference.Uid, cancellationToken), cancellationToken).ConfigureAwait(false);
+                await _imap.RunAsync(account, c => ImapOperations.DeleteAsync(c, reference.FolderPath, reference.Uid, reference.UidValidity, cancellationToken), cancellationToken).ConfigureAwait(false);
                 await _cache.DeleteMessageAsync(id, cancellationToken).ConfigureAwait(false);
                 removed.Add(id);
             }
@@ -554,23 +557,44 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         {
             var folder = await FindOrCreateFolderAsync(account, FolderKind.Drafts, cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("This account has no Drafts folder.");
-            var mime = MimeMessageBuilder.Build(draft, account.Account, null, null, ReadableAttachmentsOnly(draft));
+            var attachments = ReadableAttachmentsOnly(draft);
+            var mime = MimeMessageBuilder.Build(draft, account.Account, null, null, attachments);
             var oldRef = draft.DraftId is { } oldId ? await _cache.GetMessageRefAsync(oldId, cancellationToken).ConfigureAwait(false) : null;
+
+            // Never replace a server draft with a copy that has lost something: drafts written in another app are
+            // edited without their attachments, and attachments whose files have moved can't be re-attached.
+            var keepOld = false;
+            if (oldRef is { FolderKind: FolderKind.Drafts }
+                && await _cache.GetSummaryAsync(oldRef.Id, cancellationToken).ConfigureAwait(false) is { } oldSummary)
+            {
+                var oldAttachments = oldSummary.Attachments.Count > 0 ? oldSummary.Attachments.Count : oldSummary.HasAttachments ? 1 : 0;
+                keepOld = oldAttachments > attachments.Count;
+            }
 
             var appended = await _imap.RunAsync(account, async client =>
             {
-                var result = await ImapOperations.AppendAsync(client, folder.Path, mime, MessageFlags.Draft | MessageFlags.Seen, cancellationToken).ConfigureAwait(false);
+                // If a dropped connection made this a retry, the first attempt may already have stored the draft.
+                var result = mime.MessageId is { } messageId
+                    && await ImapOperations.FindByMessageIdAsync(client, folder.Path, messageId, cancellationToken).ConfigureAwait(false) is { } existing
+                        ? new AppendResult(existing.Uid, existing.UidValidity)
+                        : await ImapOperations.AppendAsync(client, folder.Path, mime, MessageFlags.Draft | MessageFlags.Seen, cancellationToken).ConfigureAwait(false);
 
                 // Replacing your own earlier draft copy is part of saving it.
-                if (oldRef is { FolderKind: FolderKind.Drafts })
+                if (oldRef is { FolderKind: FolderKind.Drafts } && !keepOld)
                 {
-                    await ImapOperations.DeleteAsync(client, oldRef.FolderPath, oldRef.Uid, cancellationToken).ConfigureAwait(false);
+                    await ImapOperations.DeleteAsync(client, oldRef.FolderPath, oldRef.Uid, oldRef.UidValidity, cancellationToken).ConfigureAwait(false);
                 }
 
                 return result;
             }, cancellationToken).ConfigureAwait(false);
 
-            if (oldRef is not null) await _cache.DeleteMessageAsync(oldRef.Id, cancellationToken).ConfigureAwait(false);
+            if (keepOld)
+            {
+                ErrorOccurred?.Invoke(this, new MailErrorEventArgs(account.Account.Id,
+                    "The draft was saved. Its earlier copy in Drafts was kept too, because it has attachments this copy doesn't."));
+            }
+
+            if (oldRef is not null && !keepOld) await _cache.DeleteMessageAsync(oldRef.Id, cancellationToken).ConfigureAwait(false);
 
             await SyncFolderQuietlyAsync(account, folder, cancellationToken).ConfigureAwait(false);
             if (appended.Uid is { } uid)
@@ -641,11 +665,25 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             }
 
             var tracker = new SmtpSendTracker();
+            string serverReply;
             try
             {
                 var credential = await _credentials.GetAsync(account.Account.Id, account.Settings, ct: cancellationToken).ConfigureAwait(false);
-                using var smtp = await _connector.ConnectSmtpAsync(account.Settings.Smtp, credential, cancellationToken).ConfigureAwait(false);
-                await SmtpSender.SendAsync(smtp, mime, progress, cancellationToken, tracker).ConfigureAwait(false);
+                MailKit.Net.Smtp.SmtpClient smtp;
+                try
+                {
+                    smtp = await _connector.ConnectSmtpAsync(account.Settings.Smtp, credential, cancellationToken).ConfigureAwait(false);
+                }
+                catch (MailKit.Security.AuthenticationException) when (account.Settings.AuthMethod != AuthMethod.Password)
+                {
+                    // The access token was revoked or rotated before its expiry: refresh once and sign in again
+                    // (nothing has been sent yet at this point).
+                    credential = await _credentials.GetAsync(account.Account.Id, account.Settings, forceRefresh: true, cancellationToken).ConfigureAwait(false);
+                    smtp = await _connector.ConnectSmtpAsync(account.Settings.Smtp, credential, cancellationToken).ConfigureAwait(false);
+                }
+
+                using var smtpLifetime = smtp;
+                serverReply = await SmtpSender.SendAsync(smtp, mime, progress, cancellationToken, tracker).ConfigureAwait(false);
                 try { await smtp.DisconnectAsync(true, CancellationToken.None).ConfigureAwait(false); } catch (Exception) { /* already sent */ }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !tracker.DataStarted)
@@ -663,8 +701,28 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
             }
 
             // From here on the server has accepted the message. Filing the Sent copy and tidying the draft happen in
-            // the background; a problem there is reported separately and never turns the send into a failure.
-            _ = Task.Run(() => AfterSendAsync(account, draft, mime));
+            // the background; a problem there is reported separately and never turns the send into a failure. The
+            // Sent copy is written to disk first, so it's filed later even if the app closes before that happens.
+            string? pendingCopy = null;
+            if (NeedsOwnSentCopy(account))
+            {
+                PrepareSentCopy(mime, draft);
+                if (_pendingSentCopies is not null)
+                {
+                    try
+                    {
+                        pendingCopy = await _pendingSentCopies.SaveAsync(account.Account.Id, mime, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // Still filed straight away below; only the crash safety net is missing.
+                    }
+                }
+            }
+
+            _ = Task.Run(() => AfterSendAsync(account, draft, mime, pendingCopy));
+            Trace($"accepted by {account.Settings.Smtp.Host}:{account.Settings.Smtp.Port}, reply \"{OneLine(serverReply)}\"; " +
+                  (NeedsOwnSentCopy(account) ? "filing a copy in Sent" : $"{account.Account.Provider} files the Sent copy itself"));
             return new SendResult(true, "Sent.");
         }
         finally
@@ -673,26 +731,64 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
         }
     }
 
-    private async Task AfterSendAsync(StoredAccount account, DraftMessage draft, MimeMessage mime)
+    /// <summary>Gmail and Outlook.com/Microsoft 365 save sent mail themselves; other servers need a copy appended.</summary>
+    private static bool NeedsOwnSentCopy(StoredAccount account) =>
+        account.Account.Provider is not (MailProviderKind.Gmail or MailProviderKind.Microsoft);
+
+    /// <summary>The Sent copy keeps the Bcc recipients (they aren't sent to anyone, but the sender should see them).</summary>
+    private static void PrepareSentCopy(MimeMessage mime, DraftMessage draft)
+    {
+        mime.Bcc.Clear();
+        foreach (var b in draft.Bcc) mime.Bcc.Add(new MailboxAddress(b.Name ?? string.Empty, b.Address));
+    }
+
+    private async Task FileSentCopyAsync(StoredAccount account, MimeMessage mime, CancellationToken ct)
+    {
+        var sent = await FindOrCreateFolderAsync(account, FolderKind.Sent, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("This account has no Sent folder and one couldn't be created.");
+        var outcome = await _imap.RunAsync(account, async c =>
+        {
+            // Some servers file a copy of everything sent through SMTP themselves. Only add ours if the
+            // server hasn't, so the message never appears twice in Sent.
+            if (await SentCopyExistsAsync(c, sent.Path, mime.MessageId).ConfigureAwait(false)) return "the server had already filed one";
+            var result = await ImapOperations.AppendAsync(c, sent.Path, mime, MessageFlags.Seen, ct).ConfigureAwait(false);
+            return result.Uid is { } uid ? $"appended as UID {uid}" : "appended";
+        }, ct).ConfigureAwait(false);
+        Trace($"Sent copy in \"{sent.Path}\": {outcome}");
+    }
+
+    /// <summary>Files Sent copies left over from a previous session (the app closed before they were filed).</summary>
+    internal async Task FilePendingSentCopiesAsync(CancellationToken ct)
+    {
+        if (_pendingSentCopies is null) return;
+        var pending = _pendingSentCopies.List();
+        if (pending.Count == 0) return;
+        var accounts = await GetStoredAccountsAsync(ct).ConfigureAwait(false);
+        foreach (var copy in pending)
+        {
+            var account = accounts.FirstOrDefault(a => a.Account.Id == copy.AccountId);
+            if (account is null) continue; // account removed: given up on after PendingSentCopies.GiveUpAfter
+            try
+            {
+                var mime = await PendingSentCopies.LoadAsync(copy, ct).ConfigureAwait(false);
+                await FileSentCopyAsync(account, mime, ct).ConfigureAwait(false);
+                PendingSentCopies.Remove(copy.File);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Report(account, ex, "A sent message's copy couldn't be saved to Sent yet (SidePhase Mail will try again)");
+            }
+        }
+    }
+
+    private async Task AfterSendAsync(StoredAccount account, DraftMessage draft, MimeMessage mime, string? pendingCopy)
     {
         try
         {
-            // Gmail and Outlook.com/Microsoft 365 save sent mail themselves; other servers need a copy appended.
-            if (account.Account.Provider is not (MailProviderKind.Gmail or MailProviderKind.Microsoft))
+            if (NeedsOwnSentCopy(account))
             {
-                var sent = await FindOrCreateFolderAsync(account, FolderKind.Sent, CancellationToken.None).ConfigureAwait(false);
-                if (sent is not null)
-                {
-                    mime.Bcc.Clear();
-                    foreach (var b in draft.Bcc) mime.Bcc.Add(new MailboxAddress(b.Name ?? string.Empty, b.Address));
-                    await _imap.RunAsync(account, async c =>
-                    {
-                        // Some servers file a copy of everything sent through SMTP themselves. Only add ours if the
-                        // server hasn't, so the message never appears twice in Sent.
-                        if (await SentCopyExistsAsync(c, sent.Path, mime.MessageId).ConfigureAwait(false)) return;
-                        await ImapOperations.AppendAsync(c, sent.Path, mime, MessageFlags.Seen, CancellationToken.None).ConfigureAwait(false);
-                    }, CancellationToken.None).ConfigureAwait(false);
-                }
+                await FileSentCopyAsync(account, mime, CancellationToken.None).ConfigureAwait(false);
+                if (pendingCopy is not null) PendingSentCopies.Remove(pendingCopy);
             }
         }
         catch (Exception ex)
@@ -707,7 +803,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 var reference = await _cache.GetMessageRefAsync(draftId).ConfigureAwait(false);
                 if (reference is { FolderKind: FolderKind.Drafts })
                 {
-                    await _imap.RunAsync(account, c => ImapOperations.DeleteAsync(c, reference.FolderPath, reference.Uid, CancellationToken.None), CancellationToken.None).ConfigureAwait(false);
+                    await _imap.RunAsync(account, c => ImapOperations.DeleteAsync(c, reference.FolderPath, reference.Uid, reference.UidValidity, CancellationToken.None), CancellationToken.None).ConfigureAwait(false);
                     await _cache.DeleteMessageAsync(draftId).ConfigureAwait(false);
                 }
 
@@ -719,7 +815,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                 var original = await _cache.GetMessageRefAsync(source).ConfigureAwait(false);
                 if (original is not null)
                 {
-                    await _imap.RunAsync(account, c => ImapOperations.SetFlagsAsync(c, original.FolderPath, original.Uid, MessageFlags.Answered, true, CancellationToken.None), CancellationToken.None).ConfigureAwait(false);
+                    await _imap.RunAsync(account, c => ImapOperations.SetFlagsAsync(c, original.FolderPath, original.Uid, original.UidValidity, MessageFlags.Answered, true, CancellationToken.None), CancellationToken.None).ConfigureAwait(false);
                 }
             }
         }
@@ -730,6 +826,20 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
         await SyncAccountKindsAsync(account, [FolderKind.Sent, FolderKind.Drafts]).ConfigureAwait(false);
         SendCompleted?.Invoke(this, draft);
+    }
+
+    /// <summary>
+    /// Step-by-step notes on sending (server replies, where Sent copies were filed), for the diagnostic log. Never
+    /// includes addresses, subjects or message content.
+    /// </summary>
+    public event EventHandler<string>? SendTrace;
+
+    private void Trace(string text) => SendTrace?.Invoke(this, text);
+
+    private static string OneLine(string? text)
+    {
+        var line = (text ?? string.Empty).ReplaceLineEndings(" ").Trim();
+        return line.Length > 200 ? line[..200] + "…" : line;
     }
 
     /// <summary>Raised after a sent message's follow-up work (Sent copy, draft clean-up, Sent sync) has finished.</summary>
@@ -901,6 +1011,7 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
                         await Task.WhenAll(due.Select(a => Task.Run(() => SyncAccountAsync(a, null, _shutdown.Token)))).ConfigureAwait(false);
                     }
 
+                    if (first) await FilePendingSentCopiesAsync(_shutdown.Token).ConfigureAwait(false);
                     first = false;
                     await Task.Delay(TimeSpan.FromSeconds(30), _shutdown.Token).ConfigureAwait(false);
                 }

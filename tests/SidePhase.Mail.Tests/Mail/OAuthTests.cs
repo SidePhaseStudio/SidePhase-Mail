@@ -131,3 +131,45 @@ public class OAuthTests
         Assert.Contains("SidePhase", page);
     }
 }
+
+public class OAuthOutageTests
+{
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "<html>Service unavailable</html>")]
+    [InlineData(HttpStatusCode.OK, "<html>captive portal</html>")]
+    [InlineData(HttpStatusCode.InternalServerError, "{\"error\":\"server_error\"}")]
+    [InlineData(HttpStatusCode.TooManyRequests, "{\"error\":\"slow_down\"}")]
+    public async Task Provider_outages_are_transient_and_never_ask_for_a_new_sign_in(HttpStatusCode status, string body)
+    {
+        var client = new OAuthClient(new HttpClient(new FakeTokenHandler(status, body)), new NoBrowser());
+        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Microsoft("cid"), "rt"));
+
+        Assert.True(ex.IsTransient);
+        Assert.False(SidePhase.Mail.Infrastructure.Mail.MailErrorTranslator.Describe(ex).RequiresSignIn);
+        Assert.Equal(SidePhase.Mail.Core.Scheduling.SendOutcome.TemporaryFailure, SidePhase.Mail.Infrastructure.Mail.SmtpSender.Classify(ex, dataStarted: false));
+    }
+
+    [Fact]
+    public async Task A_revoked_sign_in_is_permanent()
+    {
+        var client = new OAuthClient(new HttpClient(new FakeTokenHandler(HttpStatusCode.BadRequest, "{\"error\":\"invalid_grant\"}")), new NoBrowser());
+        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid", null), "rt"));
+
+        Assert.False(ex.IsTransient);
+        Assert.True(SidePhase.Mail.Infrastructure.Mail.MailErrorTranslator.Describe(ex).RequiresSignIn);
+    }
+
+    [Fact]
+    public async Task Unreachable_provider_is_transient()
+    {
+        var client = new OAuthClient(new HttpClient(new ThrowingHandler()), new NoBrowser());
+        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid", null), "rt"));
+        Assert.True(ex.IsTransient);
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new HttpRequestException("No such host is known.");
+    }
+}

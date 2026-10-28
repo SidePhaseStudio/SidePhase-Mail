@@ -17,7 +17,11 @@ public static class MailErrorTranslator
         var where = string.IsNullOrEmpty(server) ? "the mail server" : server;
         return exception switch
         {
+            OAuthException { IsTransient: true } oauth => new(oauth.Message, false),
             OAuthException oauth => new(oauth.Message, true),
+            Security.SecretStoreUnavailableException => new(
+                "SidePhase Mail couldn't read this account's saved sign-in details (the file may be locked by another program). It will try again.",
+                false),
             AuthenticationException => new(
                 $"{Capitalise(where)} didn't accept the sign-in. Check the username and password (some providers need an app password), or sign in again.",
                 true),
@@ -33,6 +37,7 @@ public static class MailErrorTranslator
             OperationCanceledException => new("The operation was cancelled or timed out.", false),
             ImapCommandException imap => new($"{Capitalise(where)} refused the request: {imap.ResponseText}", false),
             ImapProtocolException or SmtpProtocolException => new($"The connection to {where} was interrupted. SidePhase Mail will try again.", false),
+            FolderRenumberedException renumbered => new(renumbered.Message, false),
             ServiceNotConnectedException or ServiceNotAuthenticatedException or IOException => new(
                 $"The connection to {where} was lost. Check your internet connection; SidePhase Mail will try again.",
                 false),

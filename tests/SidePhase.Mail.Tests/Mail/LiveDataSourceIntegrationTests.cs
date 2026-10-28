@@ -45,7 +45,7 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         var cache = new MailCache(new MailDatabase(paths));
         var connector = TestMailServer.Connector();
         var clock = new FixedClock(DateTimeOffset.UtcNow);
-        var live = new LiveMailDataSource(cache, connector, credentials, clock);
+        var live = new LiveMailDataSource(cache, connector, credentials, clock, new PendingSentCopies(paths));
         var router = new MailDataSourceRouter(new DemoMailDataSource(clock), live, settings);
         router.ErrorOccurred += (_, e) => { lock (_errors) _errors.Add(e); };
         var accounts = new AccountService(cache, connector, credentials, new AccountDiscovery(new HttpClient()), oauth, oauthConfig, live, settings);
@@ -128,6 +128,35 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         await _app.Mail.SyncAsync();
         Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == sentSubject && m.AccountId == bob.Id);
         Assert.DoesNotContain(await _app.Mail.GetMessagesAsync(), m => m.Subject == undoneSubject);
+
+        // The sender's Sent folder has exactly one copy, carrying the outbox item's stable Message-ID, and no copy is
+        // left waiting on disk.
+        var sentCopy = await WaitForAsync(_app.Mail, m => m.Subject == sentSubject && m.AccountId == alice.Id && m.FolderKind == FolderKind.Sent);
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == sentSubject && m.AccountId == alice.Id && m.FolderKind == FolderKind.Sent);
+        Assert.Contains(keep.Id.ToString("N"), sentCopy.MessageIdHeader);
+        Assert.Empty(new PendingSentCopies(new AppDataPaths(_root)).List());
+    }
+
+    [MailServerFact]
+    public async Task A_sent_copy_left_by_a_crash_is_filed_once_on_the_next_start()
+    {
+        var alice = await _app.Accounts.AddAsync(Request(TestMailServer.User1, "Alice"));
+        var subject = "Crash copy " + Guid.NewGuid().ToString("N")[..6];
+        var mime = new MimeKit.MimeMessage();
+        mime.From.Add(new MimeKit.MailboxAddress("Alice", alice.EmailAddress));
+        mime.To.Add(new MimeKit.MailboxAddress(null, "bob@example.test"));
+        mime.Subject = subject;
+        mime.MessageId = Guid.NewGuid().ToString("N") + ".sidephase@example.test";
+        mime.Body = new MimeKit.TextPart("plain") { Text = "accepted by SMTP, then the app closed" };
+        var pending = new PendingSentCopies(new AppDataPaths(_root));
+        await pending.SaveAsync(alice.Id, mime);
+
+        await _app.Live.FilePendingSentCopiesAsync(CancellationToken.None);
+        await _app.Live.FilePendingSentCopiesAsync(CancellationToken.None); // nothing left: no second copy
+
+        await WaitForAsync(_app.Mail, m => m.Subject == subject && m.FolderKind == FolderKind.Sent);
+        Assert.Single(await _app.Mail.GetMessagesAsync(), m => m.Subject == subject && m.FolderKind == FolderKind.Sent);
+        Assert.Empty(pending.List());
     }
 
     [MailServerFact]
