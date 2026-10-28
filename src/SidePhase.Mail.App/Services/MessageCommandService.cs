@@ -51,6 +51,50 @@ public sealed class MessageCommandService(
     public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool isRead) =>
         mail.SetReadAsync(messages.Where(m => m.IsRead != isRead).Select(m => m.Id).ToList(), isRead);
 
+    /// <summary>Marks many messages read or unread, with undo.</summary>
+    public async Task SetReadWithUndoAsync(IReadOnlyList<MessageSummary> messages, bool isRead)
+    {
+        var changed = messages.Where(m => m.IsRead != isRead).Select(m => m.Id).ToList();
+        if (changed.Count == 0) return;
+        await mail.SetReadAsync(changed, isRead);
+        toasts.ShowWithUndo($"Marked {changed.Count} as {(isRead ? "read" : "unread")}", () => mail.SetReadAsync(changed, !isRead));
+    }
+
+    /// <summary>Adds many messages to (or removes them from) favourites, with undo.</summary>
+    public async Task SetStarredWithUndoAsync(IReadOnlyList<MessageSummary> messages, bool isStarred)
+    {
+        var changed = messages.Where(m => m.IsStarred != isStarred).Select(m => m.Id).ToList();
+        if (changed.Count == 0) return;
+        await mail.SetStarredAsync(changed, isStarred);
+        toasts.ShowWithUndo(isStarred ? $"Added {changed.Count} to favourites" : $"Removed {changed.Count} from favourites", () => mail.SetStarredAsync(changed, !isStarred));
+    }
+
+    /// <summary>Moves messages to a folder (of their own account), showing progress for big batches, with undo.</summary>
+    public async Task MoveToFolderAsync(IReadOnlyList<MessageSummary> messages, MailFolder folder)
+    {
+        var targets = messages.Where(m => m.AccountId == folder.AccountId && m.FolderId != folder.Id).Select(m => m.Id).ToList();
+        var otherAccounts = messages.Count(m => m.AccountId != folder.AccountId);
+        if (targets.Count == 0)
+        {
+            toasts.Show(otherAccounts > 0 ? "Messages can only be moved to folders of their own account." : $"Already in {folder.Name}.");
+            return;
+        }
+
+        var lastShown = -1;
+        var progress = new Progress<double>(p =>
+        {
+            var percent = (int)(p * 100);
+            if (targets.Count < 50 || percent - lastShown < 10) return;
+            lastShown = percent;
+            toasts.Show($"Moving {targets.Count} messages to {folder.Name}… {percent}%");
+        });
+        if (targets.Count >= 50) toasts.Show($"Moving {targets.Count} messages to {folder.Name}…");
+
+        var moves = await mail.MoveToFolderAsync(targets, folder.Id, progress);
+        var note = otherAccounts > 0 ? $" ({otherAccounts} from other accounts stayed where they were)" : string.Empty;
+        toasts.ShowWithUndo(moves.Count == 1 ? $"Moved to {folder.Name}{note}" : $"Moved {moves.Count} messages to {folder.Name}{note}", () => mail.RestoreAsync(moves));
+    }
+
     public Task ArchiveAsync(MessageSummary message) => ArchiveAsync([message]);
 
     /// <summary>Archives one message or a whole conversation.</summary>

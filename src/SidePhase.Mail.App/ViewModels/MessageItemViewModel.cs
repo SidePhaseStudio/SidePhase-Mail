@@ -59,7 +59,7 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public string ExpandTooltip => IsExpanded ? "Collapse conversation" : $"Show all {ConversationCount} messages";
 
     /// <summary>What list actions (archive, delete, read) apply to: the whole conversation in view, or this message.</summary>
-    private IReadOnlyList<MessageSummary> Targets => IsConversation && _inView.Count > 0 ? _inView : [Summary];
+    public IReadOnlyList<MessageSummary> Targets => IsConversation && _inView.Count > 0 ? _inView : [Summary];
 
     /// <summary>Makes this row the head of a conversation (or a single message again when <paramref name="conversation"/> is null).</summary>
     public void SetConversation(Guid? key, IReadOnlyList<MessageSummary>? conversation, IReadOnlyList<MessageSummary>? inView, bool expanded)

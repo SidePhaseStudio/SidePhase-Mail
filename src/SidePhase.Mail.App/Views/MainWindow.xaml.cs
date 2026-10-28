@@ -391,6 +391,8 @@ public sealed partial class MainWindow : Window
             container.IsExpanded = model.IsExpanded;
         }
 
+        EnableMessageDrop(model, container);
+
         var badge = new InfoBadge();
         if (Application.Current.Resources.TryGetValue("SpInfoBadgeStyle", out var style) && style is Style badgeStyle)
         {
@@ -403,6 +405,56 @@ public sealed partial class MainWindow : Window
 
         _navContainers[model] = container;
         return container;
+    }
+
+    /// <summary>Folders in the sidebar accept messages dragged from the list (moved on the server, with undo).</summary>
+    private void EnableMessageDrop(NavItemViewModel model, NavigationViewItem container)
+    {
+        var scope = model.Scope;
+        var accepts = scope is { Kind: Core.Models.MailboxScopeKind.AccountFolder }
+            || scope is { Kind: Core.Models.MailboxScopeKind.UnifiedFolder, FolderKind: Core.Models.FolderKind.Inbox or Core.Models.FolderKind.Archive or Core.Models.FolderKind.Junk or Core.Models.FolderKind.Trash }
+            || scope is { Kind: Core.Models.MailboxScopeKind.UnifiedInbox };
+        if (!accepts) return;
+
+        container.AllowDrop = true;
+        container.DragOver += (_, e) =>
+        {
+            if (!e.DataView.Properties.ContainsKey(MailPage.MessageDragFormat)) return;
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+            if (e.DragUIOverride is not null) e.DragUIOverride.Caption = "Move to " + model.Title;
+        };
+        container.Drop += async (_, e) =>
+        {
+            if (!e.DataView.Properties.TryGetValue(MailPage.MessageDragFormat, out var value) || value is not string text) return;
+            var ids = text.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Guid.Parse).ToHashSet();
+            var messages = (await App.GetService<IMailDataSource>().GetMessagesAsync()).Where(m => ids.Contains(m.Id)).ToList();
+            if (messages.Count == 0) return;
+
+            var commands = App.GetService<MessageCommandService>();
+            if (scope!.Kind == Core.Models.MailboxScopeKind.AccountFolder)
+            {
+                var folder = (await App.GetService<IMailDataSource>().GetFoldersAsync(scope.AccountId!.Value)).FirstOrDefault(f => f.Id == scope.FolderId);
+                if (folder is not null) await commands.MoveToFolderAsync(messages, folder);
+                return;
+            }
+
+            switch (scope.FolderKind ?? Core.Models.FolderKind.Inbox)
+            {
+                case Core.Models.FolderKind.Archive:
+                    await commands.ArchiveAsync(messages);
+                    break;
+                case Core.Models.FolderKind.Trash:
+                    await commands.DeleteAsync(messages);
+                    break;
+                case Core.Models.FolderKind.Junk:
+                    await commands.MoveToJunkAsync(messages);
+                    break;
+                default:
+                    var moves = await App.GetService<IMailDataSource>().MoveToAsync(messages.Select(m => m.Id).ToList(), Core.Models.FolderKind.Inbox);
+                    App.GetService<ToastService>().ShowWithUndo(moves.Count == 1 ? "Moved to Inbox" : $"Moved {moves.Count} messages to Inbox", () => App.GetService<IMailDataSource>().RestoreAsync(moves));
+                    break;
+            }
+        };
     }
 
     private MenuFlyout CreateFolderMenu(Guid folderId)

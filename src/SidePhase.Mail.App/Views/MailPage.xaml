@@ -319,6 +319,63 @@
               Content="{x:Bind ViewModel.SearchScopeToggleText, Mode=OneWay}"
               FontSize="12" />
         </StackPanel>
+        <!-- Bulk actions for a multiple selection (Ctrl/Shift+click). -->
+        <Border
+            Margin="12,0,12,6"
+            Padding="10,4,6,4"
+            Background="{ThemeResource SpCardBrush}"
+            BorderBrush="{ThemeResource SpStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Visibility="{x:Bind ViewModel.IsMultiSelect, Mode=OneWay}">
+          <Grid ColumnSpacing="2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold" Text="{x:Bind ViewModel.SelectionText, Mode=OneWay}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0">
+              <Button AutomationProperties.Name="Archive selected" Command="{x:Bind ViewModel.BulkArchiveCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Archive (Backspace)">
+                <FontIcon FontSize="13" Glyph="&#xE7B8;" />
+              </Button>
+              <Button AutomationProperties.Name="Delete selected" Command="{x:Bind ViewModel.BulkDeleteCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Move to Trash (Delete)">
+                <FontIcon FontSize="13" Glyph="&#xE74D;" />
+              </Button>
+              <Button AutomationProperties.Name="Mark selected as read" Command="{x:Bind ViewModel.BulkMarkReadCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Mark as read (Ctrl+Q)">
+                <FontIcon FontSize="13" Glyph="&#xE8C3;" />
+              </Button>
+              <Button AutomationProperties.Name="Mark selected as unread" Command="{x:Bind ViewModel.BulkMarkUnreadCommand}" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Mark as unread (Ctrl+U)">
+                <FontIcon FontSize="13" Glyph="&#xE715;" />
+              </Button>
+              <Button AutomationProperties.Name="More actions for the selection" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="More">
+                <FontIcon FontSize="13" Glyph="&#xE712;" />
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedRight">
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.BulkStarCommand}" Text="Add to favourites">
+                      <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE734;" />
+                      </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.BulkUnstarCommand}" Text="Remove from favourites" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.BulkJunkCommand}" Text="Move to Junk">
+                      <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE7BA;" />
+                      </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.ClearSelectionCommand}" Text="Clear selection" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button AutomationProperties.Name="Move selected to a folder" Style="{StaticResource SpQuickActionButtonStyle}" ToolTipService.ToolTip="Move to folder (or drag onto a folder)">
+                <FontIcon FontSize="13" Glyph="&#xE8DE;" />
+                <Button.Flyout>
+                  <MenuFlyout Opening="OnBulkMoveOpening" Placement="BottomEdgeAlignedRight" />
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
         <StackPanel Margin="20,0,0,4" Orientation="Horizontal" Spacing="6" Visibility="{x:Bind ViewModel.HasActiveFilter, Mode=OneWay}">
           <Button Padding="10,3,8,4" Command="{x:Bind ViewModel.ClearFilterCommand}" CornerRadius="12" Background="{ThemeResource SpBadgeBrush}" BorderThickness="0" ToolTipService.ToolTip="Clear filter">
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -337,8 +394,10 @@
             ItemContainerStyleSelector="{StaticResource ContainerStyleSelector}"
             ItemTemplateSelector="{StaticResource TemplateSelector}"
             ItemsSource="{x:Bind ViewModel.Entries}"
+            CanDragItems="True"
+            DragItemsStarting="OnDragItemsStarting"
             SelectionChanged="OnSelectionChanged"
-            SelectionMode="Single"
+            SelectionMode="Extended"
             ShowsScrollingPlaceholders="False">
           <ListView.KeyboardAccelerators>
             <KeyboardAccelerator Key="Delete" Invoked="OnDeleteAccelerator" />
@@ -347,6 +406,7 @@
             <KeyboardAccelerator Key="U" Invoked="OnMarkUnreadAccelerator" Modifiers="Control" />
             <KeyboardAccelerator Key="P" Invoked="OnPinAccelerator" Modifiers="Control,Shift" />
             <KeyboardAccelerator Key="Insert" Invoked="OnStarAccelerator" />
+            <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
           </ListView.KeyboardAccelerators>
         </ListView>
 

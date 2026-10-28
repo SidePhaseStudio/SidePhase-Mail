@@ -199,11 +199,13 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
 
     // ------------------------------------------------------------------ flags (optimistic, reverted on failure)
 
+    // Cache work for many messages runs off the caller's thread (SQLite calls complete synchronously), so bulk
+    // actions never freeze the window.
     public Task SetReadAsync(IReadOnlyCollection<Guid> messageIds, bool isRead, CancellationToken cancellationToken = default) =>
-        ChangeFlagsAsync(messageIds, MessageFlags.Seen, isRead, (id, value) => _cache.SetFlagsAsync(id, value, null, CancellationToken.None), r => r.IsRead);
+        Task.Run(() => ChangeFlagsAsync(messageIds, MessageFlags.Seen, isRead, (id, value) => _cache.SetFlagsAsync(id, value, null, CancellationToken.None), r => r.IsRead), cancellationToken);
 
     public Task SetStarredAsync(IReadOnlyCollection<Guid> messageIds, bool isStarred, CancellationToken cancellationToken = default) =>
-        ChangeFlagsAsync(messageIds, MessageFlags.Flagged, isStarred, (id, value) => _cache.SetFlagsAsync(id, null, value, CancellationToken.None), r => r.IsStarred);
+        Task.Run(() => ChangeFlagsAsync(messageIds, MessageFlags.Flagged, isStarred, (id, value) => _cache.SetFlagsAsync(id, null, value, CancellationToken.None), r => r.IsStarred), cancellationToken);
 
     private async Task ChangeFlagsAsync(
         IReadOnlyCollection<Guid> ids,
@@ -383,12 +385,20 @@ public sealed class LiveMailDataSource : IMailDataSource, IAsyncDisposable
     /// in step: moved rows are re-keyed to their new UID so the list updates at once, and messages whose new location
     /// isn't cached are remembered so they can still be moved back.
     /// </summary>
-    private async Task<IReadOnlyList<MoveRecord>> MoveManyAsync(
+    private Task<IReadOnlyList<MoveRecord>> MoveManyAsync(
         IReadOnlyCollection<Guid> messageIds,
         Func<StoredAccount, StoredMessageRef, CancellationToken, Task<StoredFolder?>> destinationFor,
         IProgress<double>? progress,
         CancellationToken ct,
-        bool undo = false)
+        bool undo = false) =>
+        Task.Run(() => MoveManyCoreAsync(messageIds.ToList(), destinationFor, progress, ct, undo), ct);
+
+    private async Task<IReadOnlyList<MoveRecord>> MoveManyCoreAsync(
+        IReadOnlyCollection<Guid> messageIds,
+        Func<StoredAccount, StoredMessageRef, CancellationToken, Task<StoredFolder?>> destinationFor,
+        IProgress<double>? progress,
+        CancellationToken ct,
+        bool undo)
     {
         var moves = new List<MoveRecord>();
         var touched = new List<Guid>(messageIds);

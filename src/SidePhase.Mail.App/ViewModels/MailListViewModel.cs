@@ -170,6 +170,88 @@ public sealed partial class MailListViewModel : ObservableObject
     [ObservableProperty]
     public partial MessageItemViewModel? SelectedItem { get; set; }
 
+    // ---------------------------------------------------------------- multi-select and bulk actions
+
+    private IReadOnlyList<MessageItemViewModel> _selection = [];
+
+    /// <summary>More than one message is selected (Ctrl/Shift+click): the bulk toolbar is shown.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectionText))]
+    public partial bool IsMultiSelect { get; set; }
+
+    public string SelectionText => $"{SelectionTargets().Count} selected";
+
+    /// <summary>Called by the page with the list's current selection.</summary>
+    public void SetSelection(IReadOnlyList<MessageItemViewModel> items)
+    {
+        _selection = items;
+        IsMultiSelect = items.Count > 1;
+        OnPropertyChanged(nameof(SelectionText));
+    }
+
+    /// <summary>The messages a bulk action applies to (whole conversations for conversation rows), without duplicates.</summary>
+    public IReadOnlyList<MessageSummary> SelectionTargets() =>
+        _selection.SelectMany(i => i.Targets).DistinctBy(m => m.Id).ToList();
+
+    /// <summary>Raised when the selection should be cleared (after a bulk action or Esc).</summary>
+    public event EventHandler? ClearSelectionRequested;
+
+    [RelayCommand]
+    private void ClearSelection() => ClearSelectionRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private async Task BulkArchiveAsync() => await RunBulkAsync(t => _commands.ArchiveAsync(t));
+
+    [RelayCommand]
+    private async Task BulkDeleteAsync() => await RunBulkAsync(t => _commands.DeleteAsync(t));
+
+    [RelayCommand]
+    private async Task BulkJunkAsync() => await RunBulkAsync(t => _commands.MoveToJunkAsync(t));
+
+    [RelayCommand]
+    private async Task BulkMarkReadAsync() => await RunBulkAsync(t => _commands.SetReadWithUndoAsync(t, true), clear: false);
+
+    [RelayCommand]
+    private async Task BulkMarkUnreadAsync() => await RunBulkAsync(t => _commands.SetReadWithUndoAsync(t, false), clear: false);
+
+    [RelayCommand]
+    private async Task BulkStarAsync() => await RunBulkAsync(t => _commands.SetStarredWithUndoAsync(t, true), clear: false);
+
+    [RelayCommand]
+    private async Task BulkUnstarAsync() => await RunBulkAsync(t => _commands.SetStarredWithUndoAsync(t, false), clear: false);
+
+    public Task BulkMoveAsync(MailFolder folder) => RunBulkAsync(t => _commands.MoveToFolderAsync(t, folder));
+
+    /// <summary>The folders bulk "Move to" offers (those of the selected messages' accounts).</summary>
+    public async Task<IReadOnlyList<(MailAccount Account, MailFolder Folder)>> MoveTargetsAsync(IReadOnlyCollection<Guid>? accountIds = null)
+    {
+        var accounts = await _mail.GetAccountsAsync();
+        var wanted = accountIds ?? SelectionTargets().Select(m => m.AccountId).ToHashSet();
+        var result = new List<(MailAccount, MailFolder)>();
+        foreach (var account in accounts.Where(a => wanted.Contains(a.Id)))
+        {
+            foreach (var folder in await _mail.GetFoldersAsync(account.Id)) result.Add((account, folder));
+        }
+
+        return result;
+    }
+
+    private async Task RunBulkAsync(Func<IReadOnlyList<MessageSummary>, Task> action, bool clear = true)
+    {
+        var targets = SelectionTargets();
+        if (targets.Count == 0) return;
+        try
+        {
+            await action(targets);
+        }
+        catch (Exception ex)
+        {
+            _toasts.Show("That didn't work: " + ex.Message, ToastKind.Error);
+        }
+
+        if (clear) ClearSelectionRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     public bool HasActiveFilter => Filter != MessageFilter.All;
 
     public string FilterLabel => Filter switch

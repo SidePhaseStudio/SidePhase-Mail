@@ -24,11 +24,65 @@ public sealed partial class MailPage : Page
         InitializeComponent();
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.ClearSelectionRequested += OnClearSelectionRequested;
+        Unloaded += (_, _) => ViewModel.ClearSelectionRequested -= OnClearSelectionRequested;
         _settings.SettingsChanged += (_, e) => DispatcherQueue.TryEnqueue(() => ApplyLayout(e.Settings.ReadingPane));
         ApplyLayout(_settings.Current.ReadingPane);
     }
 
     public MailListViewModel ViewModel { get; }
+
+    private void OnClearSelectionRequested(object? sender, EventArgs e)
+    {
+        var keep = ViewModel.SelectedItem;
+        _syncingSelection = true;
+        MessageList.SelectedItems.Clear();
+        if (keep is not null && ViewModel.Entries.Contains(keep)) MessageList.SelectedItem = keep;
+        _syncingSelection = false;
+        ViewModel.SetSelection(keep is null ? [] : [keep]);
+    }
+
+    /// <summary>Fills "Move to" with the folders of the selected messages' accounts.</summary>
+    private async void OnBulkMoveOpening(object? sender, object e)
+    {
+        if (sender is not MenuFlyout menu) return;
+        menu.Items.Clear();
+        var targets = await ViewModel.MoveTargetsAsync();
+        var several = targets.Select(t => t.Account.Id).Distinct().Count() > 1;
+        foreach (var (account, folder) in targets)
+        {
+            var item = new MenuFlyoutItem
+            {
+                Text = several ? $"{account.DisplayName} · {folder.Name}" : folder.Name,
+                Icon = new FontIcon { Glyph = Helpers.Glyphs.ForFolder(folder.Kind) },
+            };
+            item.Click += async (_, _) => await ViewModel.BulkMoveAsync(folder);
+            menu.Items.Add(item);
+        }
+
+        if (menu.Items.Count == 0) menu.Items.Add(new MenuFlyoutItem { Text = "No folders", IsEnabled = false });
+    }
+
+    /// <summary>Dragging messages (or a selection) onto a folder in the sidebar moves them there.</summary>
+    private void OnDragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var dragged = e.Items.OfType<MessageItemViewModel>().ToList();
+        var selected = MessageList.SelectedItems.OfType<MessageItemViewModel>().ToList();
+        if (dragged.Count == 1 && selected.Count > 1 && selected.Contains(dragged[0])) dragged = selected;
+        var ids = dragged.SelectMany(i => i.Targets).Select(m => m.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        e.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        e.Data.Properties[MessageDragFormat] = string.Join(",", ids);
+        e.Data.SetText(ids.Count == 1 ? "1 message" : $"{ids.Count} messages");
+    }
+
+    /// <summary>Data-package property carrying the dragged message ids (only understood inside SidePhase Mail).</summary>
+    public const string MessageDragFormat = "SidePhaseMail.MessageIds";
 
     /// <summary>Fills the advanced search form from whatever is in the search box.</summary>
     private void OnAdvancedSearchOpening(object? sender, object e)
@@ -91,6 +145,11 @@ public sealed partial class MailPage : Page
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_syncingSelection) return;
+
+        // Ctrl/Shift+click selects several messages: the bulk toolbar takes over and the reading pane stays put.
+        var messages = MessageList.SelectedItems.OfType<MessageItemViewModel>().ToList();
+        ViewModel.SetSelection(messages);
+        if (messages.Count > 1) return;
 
         var selected = MessageList.SelectedItem;
         if (selected is ListHeaderViewModel)
@@ -214,25 +273,29 @@ public sealed partial class MailPage : Page
     private void OnDeleteAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        if (ViewModel.Reading.HasMessage) ViewModel.Reading.DeleteCommand.Execute(null);
+        if (ViewModel.IsMultiSelect) ViewModel.BulkDeleteCommand.Execute(null);
+        else if (ViewModel.Reading.HasMessage) ViewModel.Reading.DeleteCommand.Execute(null);
     }
 
     private void OnArchiveAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        if (ViewModel.Reading.HasMessage) ViewModel.Reading.ArchiveCommand.Execute(null);
+        if (ViewModel.IsMultiSelect) ViewModel.BulkArchiveCommand.Execute(null);
+        else if (ViewModel.Reading.HasMessage) ViewModel.Reading.ArchiveCommand.Execute(null);
     }
 
     private void OnMarkReadAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        if (ViewModel.Reading.Message is { IsRead: false }) ViewModel.Reading.ToggleReadCommand.Execute(null);
+        if (ViewModel.IsMultiSelect) ViewModel.BulkMarkReadCommand.Execute(null);
+        else if (ViewModel.Reading.Message is { IsRead: false }) ViewModel.Reading.ToggleReadCommand.Execute(null);
     }
 
     private void OnMarkUnreadAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        if (ViewModel.Reading.Message is { IsRead: true }) ViewModel.Reading.ToggleReadCommand.Execute(null);
+        if (ViewModel.IsMultiSelect) ViewModel.BulkMarkUnreadCommand.Execute(null);
+        else if (ViewModel.Reading.Message is { IsRead: true }) ViewModel.Reading.ToggleReadCommand.Execute(null);
     }
 
     private void OnPinAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -245,5 +308,12 @@ public sealed partial class MailPage : Page
     {
         args.Handled = true;
         if (ViewModel.Reading.HasMessage) ViewModel.Reading.ToggleStarCommand.Execute(null);
+    }
+
+    private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!ViewModel.IsMultiSelect) return;
+        args.Handled = true;
+        ViewModel.ClearSelectionCommand.Execute(null);
     }
 }
