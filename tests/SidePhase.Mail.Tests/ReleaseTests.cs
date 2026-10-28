@@ -160,3 +160,66 @@ public sealed class PortableDataImporterTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(Package, ".import-staging")));
     }
 }
+
+/// <summary>Checks on the packaging and release files, so versions and identities can't drift apart.</summary>
+public sealed class PackagingTests
+{
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "SidePhase.Mail.sln"))) dir = dir.Parent;
+        return dir?.FullName ?? throw new InvalidOperationException("Repository root not found.");
+    }
+
+    private static System.Xml.Linq.XDocument Manifest() =>
+        System.Xml.Linq.XDocument.Load(Path.Combine(RepoRoot(), "src", "SidePhase.Mail.App", "Package.appxmanifest"));
+
+    private static readonly System.Xml.Linq.XNamespace Foundation = "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
+
+    [Fact]
+    public void Package_version_matches_the_app_version()
+    {
+        var props = System.Xml.Linq.XDocument.Load(Path.Combine(RepoRoot(), "Directory.Build.props"));
+        var prefix = props.Descendants("VersionPrefix").Single().Value;
+        var identity = Manifest().Root!.Element(Foundation + "Identity")!;
+
+        Assert.Equal(prefix + ".0", identity.Attribute("Version")!.Value);
+        Assert.Matches(@"^\d+\.\d+\.\d+$", prefix);
+    }
+
+    [Fact]
+    public void Package_identity_is_marked_as_a_development_placeholder()
+    {
+        var identity = Manifest().Root!.Element(Foundation + "Identity")!;
+        // A real publisher certificate subject must never be invented here: Partner Center supplies it.
+        Assert.Contains("(development)", identity.Attribute("Publisher")!.Value);
+        Assert.Equal("SidePhase Studio", Manifest().Root!.Element(Foundation + "Properties")!.Element(Foundation + "PublisherDisplayName")!.Value);
+    }
+
+    [Fact]
+    public void Every_image_the_manifest_names_exists()
+    {
+        var appFolder = Path.Combine(RepoRoot(), "src", "SidePhase.Mail.App");
+        var images = Manifest().Descendants()
+            .SelectMany(e => e.Attributes().Where(a => a.Value.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value)
+                .Concat(e.HasElements || !e.Value.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? [] : [e.Value]))
+            .Distinct()
+            .ToList();
+
+        Assert.NotEmpty(images);
+        foreach (var image in images)
+        {
+            var path = Path.Combine(appFolder, image.Replace('\\', Path.DirectorySeparatorChar));
+            var folder = Path.GetDirectoryName(path)!;
+            var name = Path.GetFileNameWithoutExtension(path);
+            Assert.True(Directory.GetFiles(folder, name + ".scale-*.png").Length > 0 || File.Exists(path), $"Missing image for {image}");
+        }
+    }
+
+    [Fact]
+    public void Only_the_capabilities_the_app_needs_are_declared()
+    {
+        var capabilities = Manifest().Descendants().Where(e => e.Name.LocalName == "Capability").Select(e => e.Attribute("Name")!.Value).Order();
+        Assert.Equal(["internetClient", "runFullTrust"], capabilities);
+    }
+}

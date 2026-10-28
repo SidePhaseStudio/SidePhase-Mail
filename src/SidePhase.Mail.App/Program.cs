@@ -32,7 +32,7 @@ public static class Program
 
         if (RedirectToRunningInstance()) return 0;
 
-        Application.Start(_ =>
+        Application.Start(_ignored =>
         {
             var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(context);

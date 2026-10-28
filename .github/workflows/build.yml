@@ -5,12 +5,20 @@ on:
     branches: [ main, 'claude/**', 'feature/**' ]
   pull_request:
   workflow_dispatch:
+  # Used by the beta release workflow, which only drafts a release once all of this has passed.
+  workflow_call:
+    outputs:
+      version:
+        description: Version built (e.g. 0.6.0-beta.1)
+        value: ${{ jobs.windows-x64.outputs.version }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  # github.workflow is the caller's name when called from the release workflow, so a release build never cancels
+  # (or is cancelled by) an ordinary push build of the same branch.
+  group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -76,7 +84,9 @@ jobs:
   windows-x64:
     name: Windows x64 (build, test, package)
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Check out
@@ -91,6 +101,20 @@ jobs:
         run: |
           dotnet --info
           Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          [xml] $props = Get-Content Directory.Build.props
+          $prefix = $props.Project.PropertyGroup.VersionPrefix | Where-Object { $_ } | Select-Object -First 1
+          $suffix = $props.Project.PropertyGroup.VersionSuffix | Where-Object { $_ } | Select-Object -First 1
+          $version = if ($suffix) { "$prefix-$suffix" } else { $prefix }
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "label=$version+$short" >> $env:GITHUB_OUTPUT
+          "short=$short" >> $env:GITHUB_OUTPUT
+          Write-Host "SidePhase Mail $version (commit $short)"
 
       - name: Restore
         run: |
@@ -110,6 +134,7 @@ jobs:
           dotnet publish src/SidePhase.Mail.App/SidePhase.Mail.App.csproj
           -c $env:CONFIGURATION -r win-x64 -p:Platform=x64 --no-restore
           -o artifacts/SidePhaseMail-win-x64
+          -p:SourceRevisionId=${{ github.sha }}
           -bl:artifacts/logs/publish.binlog
 
       - name: Verify the application was produced
@@ -198,27 +223,159 @@ jobs:
         shell: pwsh
         run: |
           @"
-          SidePhase Mail — Milestone 1 preview (Windows x64)
-          ===================================================
+          SidePhase Mail ${{ steps.version.outputs.version }} - portable build (Windows x64)
+          =================================================================
 
           1. Extract this whole folder anywhere (for example your Desktop).
           2. Double-click SidePhaseMail.exe.
 
-          No installer is needed: .NET and the Windows App SDK are bundled.
-          Requirements: Windows 10 1809+ (Windows 11 recommended for the Mica glass effect)
-          and the Microsoft Edge WebView2 Runtime (pre-installed on Windows 11).
+          No installer is needed: .NET and the Windows App SDK are bundled. Data is kept in
+          %LOCALAPPDATA%\SidePhase Mail. The installed (MSIX) app keeps its own data and copies yours from
+          here the first time it starts (see docs/PACKAGING.md).
 
-          This build shows DEMONSTRATION DATA only. No email is sent or received.
+          Requirements: Windows 10 1809+ (Windows 11 recommended for the Mica glass effect) and the
+          Microsoft Edge WebView2 Runtime (pre-installed on Windows 11).
+
           Windows SmartScreen may warn because the build is unsigned: choose "More info" > "Run anyway".
+          This is a beta: see docs/BETA_TESTING.md and RELEASE_READINESS.md.
 
-          Commit: $env:GITHUB_SHA
+          Version: ${{ steps.version.outputs.label }}
+          Commit:  $env:GITHUB_SHA
           "@ | Set-Content -Encoding utf8 artifacts/SidePhaseMail-win-x64/README-FIRST.txt
 
       - name: Upload application
         uses: actions/upload-artifact@v4
         with:
-          name: SidePhaseMail-win-x64
+          name: SidePhaseMail-${{ steps.version.outputs.version }}-win-x64-portable
           path: artifacts/SidePhaseMail-win-x64/
+          if-no-files-found: error
+          retention-days: 30
+
+      # ------------------------------------------------------------------ MSIX (installed / Store build)
+
+      - name: Build the MSIX package (unsigned)
+        run: >
+          dotnet build src/SidePhase.Mail.App/SidePhase.Mail.App.csproj
+          -c $env:CONFIGURATION -r win-x64 -p:Platform=x64
+          -p:SidePhasePackage=msix
+          -p:SourceRevisionId=${{ github.sha }}
+          -bl:artifacts/logs/msix.binlog
+
+      - name: Verify the MSIX package
+        id: msix
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem artifacts/msix -Recurse -Filter *.msix | Where-Object { $_.FullName -notmatch '\\Dependencies\\' } | Select-Object -First 1
+          if (-not $msix) {
+            Get-ChildItem artifacts/msix -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length | Format-Table -AutoSize
+            Write-Error "No .msix package was produced."; exit 1
+          }
+          Write-Host "Package: $($msix.FullName) ($([math]::Round($msix.Length / 1MB, 1)) MB)"
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
+          try {
+            $entry = $zip.Entries | Where-Object FullName -eq 'AppxManifest.xml'
+            $reader = New-Object IO.StreamReader($entry.Open()); [xml] $manifest = $reader.ReadToEnd(); $reader.Close()
+            $names = $zip.Entries.FullName
+          } finally { $zip.Dispose() }
+
+          $identity = $manifest.Package.Identity
+          Write-Host "Identity: $($identity.Name) $($identity.Version) $($identity.ProcessorArchitecture), publisher '$($identity.Publisher)'"
+          $deps = @($manifest.Package.Dependencies.PackageDependency | ForEach-Object { "$($_.Name) >= $($_.MinVersion)" })
+          Write-Host "Package dependencies: $($deps -join '; ')"
+          $problems = @()
+          if ($identity.Name -ne 'SidePhaseStudio.SidePhaseMail') { $problems += "unexpected identity name" }
+          if ($identity.ProcessorArchitecture -ne 'x64') { $problems += "not an x64 package" }
+          if (-not ($deps -match 'Microsoft.WindowsAppRuntime')) { $problems += "no Windows App Runtime dependency" }
+          if (-not ($manifest.OuterXml -match 'windows.protocol')) { $problems += "mailto: registration missing" }
+          foreach ($file in 'SidePhaseMail.exe', 'SidePhaseMail.dll', 'SidePhase.Mail.Core.dll', 'SidePhase.Mail.Infrastructure.dll', 'resources.pri') {
+            if (-not ($names -contains $file)) { $problems += "missing $file" }
+          }
+          if (-not ($names -match '^Assets/Package/Square44x44Logo')) { $problems += "missing package images" }
+          if ($problems) { Write-Error ("MSIX check failed: " + ($problems -join ', ')); exit 1 }
+          "path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
+          "folder=$($msix.DirectoryName)" >> $env:GITHUB_OUTPUT
+
+      # Proves the package installs, starts and uninstalls cleanly. The signing certificate is created on the runner
+      # for this one test, used only to sign the copy installed here, and never exported or uploaded: the artifact
+      # below stays unsigned.
+      - name: MSIX install, launch and uninstall test
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/smoke | Out-Null
+          $env:SIDEPHASE_NO_ERROR_DIALOG = "1"
+          $work = Join-Path $env:RUNNER_TEMP "msix-test"
+          New-Item -ItemType Directory -Force $work | Out-Null
+          $copy = Join-Path $work (Split-Path "${{ steps.msix.outputs.path }}" -Leaf)
+          Copy-Item "${{ steps.msix.outputs.path }}" $copy
+
+          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=SidePhase Studio (development)' -KeyUsage DigitalSignature `
+            -CertStoreLocation Cert:\CurrentUser\My -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}') -NotAfter (Get-Date).AddDays(1)
+          $store = New-Object Security.Cryptography.X509Certificates.X509Store 'TrustedPeople', 'LocalMachine'
+          $store.Open('ReadWrite'); $store.Add([Security.Cryptography.X509Certificates.X509Certificate2]::new($cert.RawData)); $store.Close()
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd SHA256 /sha1 $cert.Thumbprint /s My $copy
+          if ($LASTEXITCODE -ne 0) { Write-Error "signtool failed"; exit 1 }
+
+          $deps = Join-Path "${{ steps.msix.outputs.folder }}" "Dependencies\x64"
+          $install = @{ Path = $copy }
+          if (Test-Path $deps) { $install.DependencyPath = @(Get-ChildItem $deps -Filter *.msix | ForEach-Object FullName) }
+          Add-AppxPackage @install
+          $pkg = Get-AppxPackage -Name 'SidePhaseStudio.SidePhaseMail'
+          if (-not $pkg) { Write-Error "The package didn't install."; exit 1 }
+          Write-Host "Installed $($pkg.PackageFullName) at $($pkg.InstallLocation)"
+
+          Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
+          Start-Sleep -Seconds 25
+          $proc = Get-Process SidePhaseMail -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$($pkg.InstallLocation)*" }
+          $alive = [bool] $proc
+          Write-Host "Installed app running after 25 s: $alive"
+          $data = Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalState"
+          if (Test-Path "$data\Logs") { Get-ChildItem "$data\Logs" | ForEach-Object { Write-Host "---- $($_.Name) ----"; Get-Content $_.FullName; Copy-Item $_.FullName "artifacts/smoke/msix-$($_.Name)" } }
+          $dataOk = Test-Path (Join-Path $data "settings.json") -PathType Leaf
+          Write-Host "Data folder: $data (exists: $(Test-Path $data))"
+          if ($proc) { $proc | Stop-Process -Force; Start-Sleep -Seconds 2 }
+
+          Remove-AppxPackage -Package $pkg.PackageFullName
+          $left = Get-AppxPackage -Name 'SidePhaseStudio.SidePhaseMail'
+          $dataLeft = Test-Path $data
+          Write-Host "After uninstall: package present: $([bool]$left), data folder present: $dataLeft"
+          Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object Thumbprint -eq $cert.Thumbprint | Remove-Item
+          Remove-Item $cert.PSPath
+
+          if (-not $alive) { Write-Error "The installed app didn't stay running."; exit 1 }
+          if ($left) { Write-Error "The package is still installed after Remove-AppxPackage."; exit 1 }
+
+      - name: Add MSIX install instructions
+        shell: pwsh
+        run: |
+          Copy-Item scripts/packaging/Install-DevPackage.ps1 "${{ steps.msix.outputs.folder }}/"
+          @"
+          SidePhase Mail ${{ steps.version.outputs.version }} - MSIX package (Windows x64, UNSIGNED beta)
+          ======================================================================
+
+          This package is not signed (no signing key is kept in CI), so Windows won't install it as it is.
+          To try it on a test PC, open PowerShell as administrator in this folder and run:
+
+              .\Install-DevPackage.ps1 -Package .\$(Split-Path "${{ steps.msix.outputs.path }}" -Leaf)
+
+          The script creates a test certificate on your PC only, signs the package, installs the Windows App
+          Runtime from Dependencies\ and installs SidePhase Mail. Remove the certificate afterwards with
+          .\Install-DevPackage.ps1 -RemoveCertificate. Full details: docs/PACKAGING.md.
+
+          The installed app copies accounts and settings from the portable build the first time it starts
+          (the portable copy is left untouched).
+
+          Version: ${{ steps.version.outputs.label }}
+          Commit:  $env:GITHUB_SHA
+          "@ | Set-Content -Encoding utf8 "${{ steps.msix.outputs.folder }}/README-FIRST.txt"
+
+      - name: Upload MSIX package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SidePhaseMail-${{ steps.version.outputs.version }}-win-x64-msix
+          path: ${{ steps.msix.outputs.folder }}
           if-no-files-found: error
           retention-days: 30
 

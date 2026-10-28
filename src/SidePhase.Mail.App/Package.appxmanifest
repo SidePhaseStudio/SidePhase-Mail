@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX package manifest for SidePhase Mail (the installed / Microsoft Store build).
+  See docs/PACKAGING.md before changing anything here.
+
+  PLACEHOLDERS - replace before a Microsoft Store submission:
+  * Identity Name and Publisher: use the values Partner Center assigns when the app name is reserved
+    (Product management > Product identity). Publisher must also match the signing certificate's subject for
+    packages signed outside the Store. "CN=SidePhase Studio (development)" is a local development placeholder,
+    not a real certificate.
+  * Images in Assets\Package\ are generated from the app logo and should be replaced with final artwork.
+  Identity Version must stay Major.Minor.Build.0 (the Store requires revision 0) and match <VersionPrefix> in
+  Directory.Build.props (a unit test checks this). CI may raise the third number for beta builds.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  IgnorableNamespaces="uap rescap com desktop">
+
+  <Identity
+    Name="SidePhaseStudio.SidePhaseMail"
+    Publisher="CN=SidePhase Studio (development)"
+    Version="0.6.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>SidePhase Mail</DisplayName>
+    <PublisherDisplayName>SidePhase Studio</PublisherDisplayName>
+    <Logo>Assets\Package\StoreLogo.png</Logo>
+    <Description>A simple, private email client for Windows 11.</Description>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 11 is the supported target; 19041 is the oldest build the Windows App SDK runs on. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-GB" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="SidePhase Mail"
+        Description="A simple, private email client for Windows 11."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Package\Square150x150Logo.png"
+        Square44x44Logo="Assets\Package\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Package\Wide310x150Logo.png" ShortName="SidePhase Mail" />
+        <uap:SplashScreen Image="Assets\Package\SplashScreen.png" BackgroundColor="#0B0E14" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Lets Windows offer SidePhase Mail as the default email app (Settings > Apps > Default apps). Links only
+             open a new message; nothing is sent until the user presses Send. -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mailto">
+            <uap:DisplayName>SidePhase Mail</uap:DisplayName>
+            <uap:Logo>Assets\Package\Square44x44Logo.png</uap:Logo>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!-- Windows App SDK app notifications: clicking a notification while the app is closed starts it. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="SidePhaseMail.exe" Arguments="----AppNotificationActivated:" DisplayName="SidePhase Mail notifications">
+              <com:Class Id="A9CE1860-543A-4677-AF8B-2890EBB063F8" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="A9CE1860-543A-4677-AF8B-2890EBB063F8" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Connects to the user's own mail servers and OAuth providers only. -->
+    <Capability Name="internetClient" />
+    <!-- Required for a WinUI 3 desktop (full trust) app. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
