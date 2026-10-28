@@ -24,13 +24,27 @@ internal static class StartupDiagnostics
         try
         {
             var file = Path.Combine(new AppDataPaths().LogsFolder, "app.log");
-            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            File.AppendAllText(file, $"{DateTimeOffset.Now:O} {what}: {exception.GetType().FullName}: {exception.Message}{Environment.NewLine}");
+            Append(file, $"{DateTimeOffset.Now:O} {what}: {exception.GetType().FullName}: {exception.Message}{Environment.NewLine}");
         }
         catch (Exception)
         {
             // Logging must never fail the caller.
         }
+    }
+
+    /// <summary>Largest a log file grows before it's rotated to .old (one previous file is kept).</summary>
+    private const long MaxLogBytes = 1024 * 1024;
+
+    /// <summary>
+    /// Appends to a log with secrets and email addresses removed (tokens, passwords, codes; see LogRedactor), and
+    /// keeps each log small.
+    /// </summary>
+    internal static void Append(string file, string text)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        var info = new FileInfo(file);
+        if (info.Exists && info.Length > MaxLogBytes) File.Move(file, file + ".old", overwrite: true);
+        File.AppendAllText(file, Core.Formatting.LogRedactor.Redact(text));
     }
 
     public static void Report(string stage, Exception exception, bool showDialog = true)
@@ -46,20 +60,19 @@ internal static class StartupDiagnostics
 
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
-            File.AppendAllText(LogFile, details);
+            Append(LogFile, details);
         }
         catch (Exception)
         {
             // Nothing else we can do; the message box below still reports the problem.
         }
 
-        Console.Error.WriteLine(details);
+        Console.Error.WriteLine(Core.Formatting.LogRedactor.Redact(details));
 
         if (showDialog && Environment.GetEnvironmentVariable("SIDEPHASE_NO_ERROR_DIALOG") != "1")
         {
             MessageBoxW(0,
-                $"SidePhase Mail couldn't start ({stage}).\n\n{exception.GetType().Name}: {exception.Message}\n\nDetails were saved to:\n{LogFile}",
+                $"SidePhase Mail couldn't start ({stage}).\n\n{exception.GetType().Name}: {Core.Formatting.LogRedactor.Redact(exception.Message)}\n\nDetails were saved to:\n{LogFile}",
                 "SidePhase Mail", MB_OK | MB_ICONERROR);
         }
     }

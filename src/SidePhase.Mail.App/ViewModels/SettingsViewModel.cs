@@ -337,12 +337,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         _mailRules = mailRules;
         _ruleEditor = ruleEditor;
-        _mailRules.Changed += (_, _) => _ui.Post(() => _ = LoadRulesAsync());
+        _mailRules.Changed += (_, _) => ui.Post(() => _ = LoadRulesAsync());
         _localFilter = localFilter;
-        _localFilter.Changed += (_, _) => _ui.Post(() => OnPropertyChanged(nameof(LocalFilterStatus)));
+        _localFilter.Changed += (_, _) => ui.Post(() => OnPropertyChanged(nameof(LocalFilterStatus)));
         _accounts = accounts;
         _live = live;
-        _live.AccountStatusChanged += (_, id) => _ui.Post(() =>
+        _live.AccountStatusChanged += (_, id) => ui.Post(() =>
         {
             foreach (var account in Accounts.Where(a => a.Account.Id == id)) account.RefreshStatus();
         });

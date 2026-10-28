@@ -172,6 +172,7 @@ public partial class App : Application
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<OutboxViewModel>();
         services.AddSingleton<ContactsViewModel>();
+        services.AddSingleton<AttachmentsViewModel>();
         services.AddTransient<AddAccountViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
@@ -184,16 +185,15 @@ public partial class App : Application
         {
             if (_paths is not null)
             {
-                Directory.CreateDirectory(_paths.LogsFolder);
                 var entry = new StringBuilder()
                     .Append(DateTimeOffset.Now.ToString("O")).Append(' ')
                     .Append(e.Exception.GetType().FullName).Append(": ").AppendLine(e.Exception.Message)
                     .AppendLine(e.Exception.StackTrace)
                     .ToString();
-                File.AppendAllText(Path.Combine(_paths.LogsFolder, "errors.log"), entry);
+                StartupDiagnostics.Append(Path.Combine(_paths.LogsFolder, "errors.log"), entry);
             }
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Logging must never crash the app.
         }

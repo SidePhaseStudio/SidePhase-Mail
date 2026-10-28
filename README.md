@@ -87,9 +87,28 @@ Design tokens and the visual language are documented in [docs/DESIGN_SYSTEM.md](
 | Ctrl+Enter | Send (compose window; can ask first — Settings › Mail) |
 | Ctrl+S | Save draft (compose window) |
 | Ctrl+K | Insert link (compose window) |
-| Esc | Close the compose window or dialog |
+| Esc | Close the compose window or dialog; clear a multiple selection |
+| Ctrl/Shift+click | Select several messages (bulk archive, delete, read, move, favourite, junk; or drag onto a folder) |
 
 The same list is in *Settings › Shortcuts*.
+
+## Search
+
+Type words to search subjects, people, attachment names and the text of messages stored on this PC (an SQLite FTS5
+index; "invo" finds "invoice"). Operators narrow it down, and the form behind the search box writes them for you:
+
+| Operator | Example |
+| --- | --- |
+| from:, to:, subject:, body: | `from:jane subject:"next year"` |
+| account:, in:, folder: | `account:work in:sent`, `folder:projects` |
+| is: | `is:unread`, `is:starred`, `is:pinned`, `is:followup`, `is:snoozed` |
+| has:, filename:, filetype: | `has:attachment`, `filename:invoice`, `filetype:pdf` (or image, document, spreadsheet…) |
+| larger:, smaller: | `larger:5mb` |
+| after:, before:, on:, newer_than:, older_than: | `after:2026-01-31`, `newer_than:7d` |
+| category: | `category:bills` |
+
+Search covers mail stored on this PC; *Search on server* also asks your mail server about older mail. Smart folders
+are saved searches.
 
 ## Demonstration data
 

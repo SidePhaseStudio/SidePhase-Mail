@@ -18,7 +18,9 @@ public static class ShortcutReference
         new("Ctrl+Q / Ctrl+U", "Mark as read / unread"),
         new("Ctrl+Shift+P", "Pin or unpin"),
         new("Insert", "Add to or remove from favourites"),
-        new("Shift+F10", "All actions for the selected message, including Snooze and Remind me"),
+        new("Ctrl+click / Shift+click", "Select several messages for bulk actions (archive, delete, read, move, favourite, junk)"),
+        new("Esc", "Clear a multiple selection"),
+        new("Shift+F10", "All actions for the selected message, including Snooze, Remind me and categories"),
     ];
 
     public static IReadOnlyList<ShortcutEntry> Compose { get; } =

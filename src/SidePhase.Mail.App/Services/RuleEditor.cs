@@ -49,10 +49,10 @@ public sealed class RuleEditor(DialogService dialogs, MailRuleService rules, IMa
         }
 
         var name = new TextBox { Header = "Name", Text = existing?.Name ?? string.Empty, PlaceholderText = "e.g. Newsletters" };
-        var account = new ComboBox { Header = "Applies to", HorizontalAlignment = HorizontalAlignment.Stretch };
-        account.Items.Add("Every account");
-        foreach (var a in accounts) account.Items.Add($"{a.DisplayName} ({a.EmailAddress})");
-        account.SelectedIndex = existing?.AccountId is { } aid ? accounts.FindIndex(a => a.Id == aid) + 1 : 0;
+        var accountBox = new ComboBox { Header = "Applies to", HorizontalAlignment = HorizontalAlignment.Stretch };
+        accountBox.Items.Add("Every account");
+        foreach (var a in accounts) accountBox.Items.Add($"{a.DisplayName} ({a.EmailAddress})");
+        accountBox.SelectedIndex = existing?.AccountId is { } aid ? accounts.FindIndex(a => a.Id == aid) + 1 : 0;
 
         var matchMode = new ComboBox { Header = "Match", HorizontalAlignment = HorizontalAlignment.Stretch };
         matchMode.Items.Add("All of these conditions");
@@ -91,9 +91,9 @@ public sealed class RuleEditor(DialogService dialogs, MailRuleService rules, IMa
         var actions = existing?.Actions ?? [];
         var moveFolder = actions.FirstOrDefault(a => a.Kind == RuleActionKind.MoveToFolder)?.Value;
         var move = new CheckBox { Content = "Move to folder", IsChecked = moveFolder is not null };
-        var folder = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, PlaceholderText = "Choose a folder" };
-        foreach (var (f, a) in folders) folder.Items.Add(accounts.Count > 1 ? $"{a.DisplayName} · {f.Name}" : f.Name);
-        folder.SelectedIndex = folders.FindIndex(f => f.Folder.Id.ToString() == moveFolder);
+        var folderBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, PlaceholderText = "Choose a folder" };
+        foreach (var (f, a) in folders) folderBox.Items.Add(accounts.Count > 1 ? $"{a.DisplayName} · {f.Name}" : f.Name);
+        folderBox.SelectedIndex = folders.FindIndex(f => f.Folder.Id.ToString() == moveFolder);
         var markRead = new CheckBox { Content = "Mark as read", IsChecked = actions.Any(a => a.Kind == RuleActionKind.MarkRead) };
         var star = new CheckBox { Content = "Add to favourites", IsChecked = actions.Any(a => a.Kind == RuleActionKind.Star) };
         var categoryValue = actions.FirstOrDefault(a => a.Kind == RuleActionKind.AddCategory)?.Value;
@@ -105,12 +105,12 @@ public sealed class RuleEditor(DialogService dialogs, MailRuleService rules, IMa
 
         var panel = new StackPanel { Spacing = 10, Width = 460 };
         panel.Children.Add(name);
-        panel.Children.Add(Pair(account, matchMode));
+        panel.Children.Add(Pair(accountBox, matchMode));
         panel.Children.Add(new TextBlock { Text = "When a new message arrives and…", FontSize = 13 });
         panel.Children.Add(conditionsPanel);
         panel.Children.Add(addCondition);
         panel.Children.Add(new TextBlock { Text = "Do this", FontSize = 13, Margin = new Thickness(0, 6, 0, 0) });
-        panel.Children.Add(Pair(move, folder));
+        panel.Children.Add(Pair(move, folderBox));
         panel.Children.Add(Pair(markRead, star));
         panel.Children.Add(Pair(category, categoryName));
         panel.Children.Add(Pair(silence, stop));
@@ -137,8 +137,8 @@ public sealed class RuleEditor(DialogService dialogs, MailRuleService rules, IMa
             if (await dialogs.ShowAsync(dialog) != ContentDialogResult.Primary) return;
 
             var chosenActions = new List<RuleAction>();
-            if (move.IsChecked == true && folder.SelectedIndex >= 0) chosenActions.Add(new RuleAction(RuleActionKind.MoveToFolder, folders[folder.SelectedIndex].Folder.Id.ToString()));
-            if (move.IsChecked == true && folder.SelectedIndex < 0) chosenActions.Add(new RuleAction(RuleActionKind.MoveToFolder, null));
+            if (move.IsChecked == true && folderBox.SelectedIndex >= 0) chosenActions.Add(new RuleAction(RuleActionKind.MoveToFolder, folders[folderBox.SelectedIndex].Folder.Id.ToString()));
+            if (move.IsChecked == true && folderBox.SelectedIndex < 0) chosenActions.Add(new RuleAction(RuleActionKind.MoveToFolder, null));
             if (markRead.IsChecked == true) chosenActions.Add(new RuleAction(RuleActionKind.MarkRead));
             if (star.IsChecked == true) chosenActions.Add(new RuleAction(RuleActionKind.Star));
             if (category.IsChecked == true) chosenActions.Add(new RuleAction(RuleActionKind.AddCategory, categoryName.Text.Trim()));
@@ -153,7 +153,7 @@ public sealed class RuleEditor(DialogService dialogs, MailRuleService rules, IMa
             var rule = (existing ?? new MailRule { Id = Guid.NewGuid(), Name = string.Empty }) with
             {
                 Name = name.Text,
-                AccountId = account.SelectedIndex > 0 ? accounts[account.SelectedIndex - 1].Id : null,
+                AccountId = accountBox.SelectedIndex > 0 ? accounts[accountBox.SelectedIndex - 1].Id : null,
                 MatchAll = matchMode.SelectedIndex != 1,
                 Conditions = conditions,
                 Actions = chosenActions,

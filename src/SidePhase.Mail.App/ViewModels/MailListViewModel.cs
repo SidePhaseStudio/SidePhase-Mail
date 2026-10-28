@@ -545,39 +545,55 @@ public sealed partial class MailListViewModel : ObservableObject
         }
 
         // "All mail" searches every account and folder; Junk and Trash only when asked for with in:.
+        // Filtering, searching, grouping into conversations and sorting run off the UI thread, so big mailboxes
+        // don't make the window stutter. Everything they read is a snapshot taken here.
         var searchEverywhere = IsSearchActive && SearchAllMail;
-        var asksForJunkOrTrash = searchEverywhere && MessageSearch.Parse(SearchText).Any(t => t.Operator == "in");
-        var inScope = all.Where(m => searchEverywhere
-                ? !m.IsSnoozed && (asksForJunkOrTrash || m.FolderKind is not (FolderKind.Junk or FolderKind.Trash))
-                : smartFilter?.Invoke(m) ?? MailboxScopeMatcher.Matches(m, Scope, _junk.IsLocallyJunk))
-            .ToList();
-
-        // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
-        // Trash, Junk, drafts and snoozed messages only take part when they're what is being viewed.
-        var groupConversations = settings.ConversationView && Scope.FolderKind is not (FolderKind.Drafts or FolderKind.Trash or FolderKind.Junk);
-        var conversationContext = groupConversations
-            ? all.Where(m => m.FolderKind is not (FolderKind.Trash or FolderKind.Junk or FolderKind.Drafts) && !m.IsSnoozed && !_junk.IsLocallyJunk(m))
-            : null;
-
-        var sections = MessageListBuilder.Build(inScope, new MessageListOptions
+        var searchText = SearchText;
+        var scope = Scope;
+        var filter = Filter;
+        var sort = Sort;
+        var searchContext = new SearchContext
         {
-            SearchText = SearchText,
-            Search = new SearchContext
+            BodyMatches = _bodyMatches,
+            ServerMatches = _serverMatches,
+            AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress),
+            FolderNames = _folderNames,
+        };
+        var clockNow = _clock.Now;
+        var firstDay = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var isLocallyJunk = (Func<MessageSummary, bool>)_junk.IsLocallyJunk;
+
+        var (inScope, sections) = await Task.Run(() =>
+        {
+            var asksForJunkOrTrash = searchEverywhere && MessageSearch.Parse(searchText).Any(t => t.Operator == "in");
+            var matching = all.Where(m => searchEverywhere
+                    ? !m.IsSnoozed && (asksForJunkOrTrash || m.FolderKind is not (FolderKind.Junk or FolderKind.Trash))
+                    : smartFilter?.Invoke(m) ?? MailboxScopeMatcher.Matches(m, scope, isLocallyJunk))
+                .ToList();
+
+            // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
+            // Trash, Junk, drafts and snoozed messages only take part when they're what is being viewed.
+            var groupConversations = settings.ConversationView && scope.FolderKind is not (FolderKind.Drafts or FolderKind.Trash or FolderKind.Junk);
+            var conversationContext = groupConversations
+                ? all.Where(m => m.FolderKind is not (FolderKind.Trash or FolderKind.Junk or FolderKind.Drafts) && !m.IsSnoozed && !isLocallyJunk(m)).ToList()
+                : null;
+
+            var built = MessageListBuilder.Build(matching, new MessageListOptions
             {
-                BodyMatches = _bodyMatches,
-                ServerMatches = _serverMatches,
-                AccountNames = accounts.ToDictionary(a => a.Id, a => a.DisplayName + " " + a.EmailAddress),
-                FolderNames = _folderNames,
-            },
-            Filter = Filter,
-            Sort = Sort,
-            ShowPinnedSection = settings.ShowPinnedSection && Scope.Kind != MailboxScopeKind.Pinned,
-            PinnedSectionCollapsed = settings.PinnedSectionCollapsed,
-            Now = _clock.Now,
-            FirstDayOfWeek = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek,
-            GroupConversations = groupConversations,
-            ConversationContext = conversationContext,
+                SearchText = searchText,
+                Search = searchContext,
+                Filter = filter,
+                Sort = sort,
+                ShowPinnedSection = settings.ShowPinnedSection && scope.Kind != MailboxScopeKind.Pinned,
+                PinnedSectionCollapsed = settings.PinnedSectionCollapsed,
+                Now = clockNow,
+                FirstDayOfWeek = firstDay,
+                GroupConversations = groupConversations,
+                ConversationContext = conversationContext,
+            });
+            return (matching, built);
         });
+        if (version != _refreshVersion) return; // a newer refresh superseded this one
 
         var now = _clock.Now;
         var compact = settings.Density == ListDensity.Compact;

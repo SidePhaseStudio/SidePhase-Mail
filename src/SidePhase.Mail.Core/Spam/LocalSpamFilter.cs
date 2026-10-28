@@ -47,7 +47,7 @@ public sealed class LocalSpamFilter(ISpamLearningStore store)
 
     private const int MaxEvidence = 15;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private SpamModel? _model;
+    private volatile SpamModel? _model;
 
     public event EventHandler? Changed;
 
@@ -82,9 +82,11 @@ public sealed class LocalSpamFilter(ISpamLearningStore store)
             if (previous is { } p && p.IsSpam == isSpam) return;
             await store.ApplyAsync(message.AccountId, identity, isSpam, tokens, previous, ct).ConfigureAwait(false);
 
-            var model = _model!;
+            // Copy, change and swap, so readers on other threads always see a complete model.
+            var model = Clone(_model!);
             if (previous is { } old) Count(model, old.Tokens, old.IsSpam, -1);
             Count(model, tokens, isSpam, +1);
+            _model = model;
         }
         finally
         {
@@ -179,6 +181,13 @@ public sealed class LocalSpamFilter(ISpamLearningStore store)
         : "“" + token + "”";
 
     private static string IdentityOf(MessageSummary message) => message.MessageIdHeader?.Trim() is { Length: > 0 } id ? id : message.Id.ToString("N");
+
+    private static SpamModel Clone(SpamModel source)
+    {
+        var copy = new SpamModel { SpamMessages = source.SpamMessages, HamMessages = source.HamMessages };
+        foreach (var (token, counts) in source.Tokens) copy.Tokens[token] = counts;
+        return copy;
+    }
 
     private static void Count(SpamModel model, IReadOnlyList<string> tokens, bool isSpam, int delta)
     {

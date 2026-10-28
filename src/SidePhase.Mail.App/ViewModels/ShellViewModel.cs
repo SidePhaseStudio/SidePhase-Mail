@@ -35,7 +35,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _mail = mail;
         _outbox = outbox;
         _smartFolders = smartFolders;
-        _smartFolders.Changed += (_, _) => _ui.Post(() => _ = BuildAsync());
+        _smartFolders.Changed += (_, _) => ui.Post(() => _ = BuildAsync());
         _outbox.Changed += (_, _) => QueueCountRefresh();
         _junk = junk;
         _settings = settings;

@@ -228,7 +228,19 @@ public sealed partial class MainWindow : Window
                 // Not in the current view (e.g. a folder was open): switch to the Unified Inbox and try again.
                 ShowInbox();
                 await _mailList.NavigateAsync(Core.Models.MailboxScope.UnifiedInbox, "Unified Inbox");
-                await _mailList.SelectMessageAsync(messageId);
+                if (!await _mailList.SelectMessageAsync(messageId))
+                {
+                    // Elsewhere (Archive, Sent, a folder): open the folder it's in.
+                    var mail = App.GetService<IMailDataSource>();
+                    if (await mail.GetMessageAsync(messageId) is { } message
+                        && (await mail.GetFoldersAsync(message.AccountId)).FirstOrDefault(f => f.Id == message.FolderId) is { } folder)
+                    {
+                        var scope = Core.Models.MailboxScope.ForFolder(folder);
+                        SelectScope(scope);
+                        await _mailList.NavigateAsync(scope, folder.Name);
+                        await _mailList.SelectMessageAsync(messageId);
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -272,6 +284,9 @@ public sealed partial class MainWindow : Window
         {
             case "settings":
                 ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
+                break;
+            case "attachments":
+                ContentFrame.Navigate(typeof(AttachmentsPage), null, new EntranceNavigationTransitionInfo());
                 break;
             case "contacts":
                 ContentFrame.Navigate(typeof(ContactsPage), null, new EntranceNavigationTransitionInfo());
