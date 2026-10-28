@@ -55,6 +55,38 @@
           </MenuFlyoutItem.Icon>
         </MenuFlyoutItem>
         <MenuFlyoutSeparator />
+        <MenuFlyoutSubItem Text="Snooze">
+          <MenuFlyoutSubItem.Icon>
+            <FontIcon Glyph="&#xE823;" />
+          </MenuFlyoutSubItem.Icon>
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="LaterToday" Text="Later today" />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="TomorrowMorning" Text="Tomorrow morning" />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="ThisWeekend" Text="This weekend" />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="NextWeek" Text="Next week" />
+          <MenuFlyoutSeparator />
+          <MenuFlyoutItem Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}" CommandParameter="Custom" Text="Choose date and time…" />
+          <MenuFlyoutItem
+              Command="{x:Bind Item.SnoozeCommand, Mode=OneWay}"
+              CommandParameter="Clear"
+              Text="Unsnooze"
+              Visibility="{x:Bind Item.IsSnoozed, Mode=OneWay}" />
+        </MenuFlyoutSubItem>
+        <MenuFlyoutSubItem Text="Remind me to follow up">
+          <MenuFlyoutSubItem.Icon>
+            <FontIcon Glyph="&#xE7C1;" />
+          </MenuFlyoutSubItem.Icon>
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="Tomorrow" Text="Tomorrow" />
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="InThreeDays" Text="In 3 days" />
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="NextWeek" Text="Next week" />
+          <MenuFlyoutSeparator />
+          <MenuFlyoutItem Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}" CommandParameter="Custom" Text="Custom…" />
+          <MenuFlyoutItem
+              Command="{x:Bind Item.FollowUpCommand, Mode=OneWay}"
+              CommandParameter="Clear"
+              Text="Mark follow-up done"
+              Visibility="{x:Bind Item.HasFollowUp, Mode=OneWay}" />
+        </MenuFlyoutSubItem>
+        <MenuFlyoutSeparator />
         <MenuFlyoutItem Command="{x:Bind Item.ArchiveCommand, Mode=OneWay}" Text="Archive">
           <MenuFlyoutItem.Icon>
             <FontIcon Glyph="&#xE7B8;" />
@@ -153,6 +185,24 @@
               Foreground="{ThemeResource SpAccentTextBrush}"
               Glyph="&#xE840;"
               Visibility="{x:Bind Item.IsPinned, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpTextSecondaryBrush}"
+              Glyph="&#xE823;"
+              ToolTipService.ToolTip="{x:Bind Item.SnoozeTooltip, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsSnoozed, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpWarningBrush}"
+              Glyph="&#xE7C1;"
+              ToolTipService.ToolTip="{x:Bind Item.FollowUpTooltip, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsFollowUpPending, Mode=OneWay}" />
+          <FontIcon
+              FontSize="12"
+              Foreground="{ThemeResource SpDangerBrush}"
+              Glyph="&#xE7C1;"
+              ToolTipService.ToolTip="{x:Bind Item.FollowUpTooltip, Mode=OneWay}"
+              Visibility="{x:Bind Item.IsFollowUpOverdue, Mode=OneWay}" />
         </StackPanel>
 
         <Grid Grid.Column="3" Opacity="{x:Bind h:X.HideIf(IsHovered), Mode=OneWay}">

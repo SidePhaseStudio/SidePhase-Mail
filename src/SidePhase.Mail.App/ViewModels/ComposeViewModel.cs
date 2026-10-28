@@ -7,6 +7,7 @@ using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Composition;
 using SidePhase.Mail.Core.Formatting;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 
 namespace SidePhase.Mail.App.ViewModels;
 
@@ -31,14 +32,27 @@ public sealed partial class ComposeViewModel : ObservableObject
     private readonly IMailDataSource _mail;
     private readonly ToastService _toasts;
     private readonly ISettingsService _settings;
+    private readonly OutboxService _outbox;
+    private readonly WindowService _windows;
+    private readonly IClock _clock;
     private readonly DraftMessage _initial;
     private Guid? _draftId;
 
-    public ComposeViewModel(IMailDataSource mail, ISettingsService settings, ToastService toasts, DraftMessage draft)
+    public ComposeViewModel(
+        IMailDataSource mail,
+        ISettingsService settings,
+        ToastService toasts,
+        OutboxService outbox,
+        WindowService windows,
+        IClock clock,
+        DraftMessage draft)
     {
         _mail = mail;
         _settings = settings;
         _toasts = toasts;
+        _outbox = outbox;
+        _windows = windows;
+        _clock = clock;
         _initial = draft;
         _draftId = draft.DraftId;
         SelectedAccountIndex = -1;
@@ -70,6 +84,9 @@ public sealed partial class ComposeViewModel : ObservableObject
     /// <summary>Provided by the window: reads the editor's current content.</summary>
     public Func<ComposeBody>? BodyProvider { get; set; }
 
+    /// <summary>Provided by the window: turns a schedule choice into a time (asking for one for "Custom").</summary>
+    public Func<string, Task<DateTimeOffset?>>? PickScheduleTime { get; set; }
+
     public event EventHandler? CloseRequested;
 
     public ObservableCollection<MailAccount> Accounts { get; } = [];
@@ -88,6 +105,8 @@ public sealed partial class ComposeViewModel : ObservableObject
     public bool HasQuotedText => !string.IsNullOrEmpty(_initial.QuotedText);
 
     public bool IsNewMessage => _initial.Mode is ComposeMode.New or ComposeMode.Reply or ComposeMode.ReplyAll or ComposeMode.Forward;
+
+    public bool BodyIncludesSignature => _initial.BodyIncludesSignature;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Signature))]
@@ -167,6 +186,11 @@ public sealed partial class ComposeViewModel : ObservableObject
 
     private bool CanSend() => !IsSending;
 
+    /// <summary>
+    /// Sends the message. With Undo Send on, it is held in the outbox for a few seconds first: the window closes and a
+    /// notice offers Undo, which brings the message back here. Undo only works until the message is handed to the
+    /// mail server; after that it can't be recalled.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
     {
@@ -177,6 +201,83 @@ public sealed partial class ComposeViewModel : ObservableObject
             return;
         }
 
+        var delay = _settings.Current.UndoSendSeconds;
+        if (delay > 0)
+        {
+            await QueueAsync(draft, _clock.Now.AddSeconds(delay), OutboxKind.UndoWindow);
+            return;
+        }
+
+        await SendDirectAsync(draft);
+    }
+
+    /// <param name="choice">A QuickTime name or "Custom".</param>
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task ScheduleSendAsync(string choice)
+    {
+        var draft = BuildDraft(out var error);
+        if (draft is null)
+        {
+            SetStatus(error!, error: true);
+            return;
+        }
+
+        if (PickScheduleTime is null) return;
+        var when = await PickScheduleTime(choice);
+        if (when is null) return;
+        if (when <= _clock.Now)
+        {
+            SetStatus("Choose a time in the future.", error: true);
+            return;
+        }
+
+        await QueueAsync(draft, when.Value, OutboxKind.Scheduled);
+    }
+
+    private async Task QueueAsync(DraftMessage draft, DateTimeOffset sendAt, OutboxKind kind)
+    {
+        IsSending = true;
+        try
+        {
+            var item = await _outbox.QueueAsync(draft with { BodyIncludesSignature = true }, sendAt, kind, _mail.IsDemo);
+            IsDirty = false;
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+
+            if (kind == OutboxKind.UndoWindow)
+            {
+                _toasts.ShowWithAction("Sending…", ToastKind.Info, "Undo", () => UndoAsync(item.Id), sendAt - _clock.Now);
+            }
+            else
+            {
+                _toasts.Show(
+                    $"Scheduled for {QuickTimes.Describe(sendAt, _clock.Now, TimeZoneInfo.Local)}. SidePhase Mail needs to be open then to send it.",
+                    ToastKind.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Couldn't queue the message: " + ex.Message, error: true);
+        }
+        finally
+        {
+            IsSending = false;
+        }
+    }
+
+    private async Task UndoAsync(Guid outboxId)
+    {
+        var draft = await _outbox.CancelAsync(outboxId);
+        if (draft is null)
+        {
+            _toasts.Show("Too late to undo — the message has already gone to the mail server.", ToastKind.Warning);
+            return;
+        }
+
+        _windows.OpenCompose(draft);
+    }
+
+    private async Task SendDirectAsync(DraftMessage draft)
+    {
         IsSending = true;
         SendProgress = 0;
         SetStatus("Sending…", error: false);

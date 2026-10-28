@@ -263,6 +263,25 @@
               <ComboBoxItem Content="Plain text" />
             </ComboBox>
           </controls:SettingsCard>
+          <controls:SettingsCard
+              Description="Holds each message for a few seconds after you press Send, so you can take it back. Undo works only until the message reaches your mail server — after that it can't be recalled."
+              Glyph="&#xE7A7;"
+              Header="Undo Send">
+            <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.UndoSendIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="Off" />
+              <ComboBoxItem Content="5 seconds" />
+              <ComboBoxItem Content="10 seconds" />
+              <ComboBoxItem Content="20 seconds" />
+              <ComboBoxItem Content="30 seconds" />
+            </ComboBox>
+          </controls:SettingsCard>
+          <controls:SettingsCard Description="Ask before sending when you press Ctrl+Enter in a message." Glyph="&#xE724;" Header="Confirm Ctrl+Enter send">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.ConfirmCtrlEnterSend, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+          </controls:SettingsCard>
+          <controls:SettingsCard
+              Description="Scheduled messages and snoozes are handled by SidePhase Mail on this PC. Keep the app open (it can be minimised) for scheduled messages to go out on time. Snoozes and follow-up reminders aren't shared with other mail apps."
+              Glyph="&#xE823;"
+              Header="Scheduling" />
 
         </StackPanel>
 

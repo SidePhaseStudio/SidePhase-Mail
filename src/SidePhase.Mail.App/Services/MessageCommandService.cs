@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using SidePhase.Mail.Core.Abstractions;
 using SidePhase.Mail.Core.Composition;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Core.Services;
 using SidePhase.Mail.Core.Settings;
 
@@ -17,7 +18,8 @@ public sealed class MessageCommandService(
     ISettingsService settings,
     ToastService toasts,
     DialogService dialogs,
-    WindowService windows)
+    WindowService windows,
+    IClock clock)
 {
     public Task ToggleStarAsync(MessageSummary message) => mail.SetStarredAsync([message.Id], !message.IsStarred);
 
@@ -78,6 +80,64 @@ public sealed class MessageCommandService(
             if (moves.Count > 0) await mail.RestoreAsync(moves);
         });
     }
+
+    /// <summary>
+    /// Snoozes a message until a preset time ("LaterToday", "TomorrowMorning", "ThisWeekend", "NextWeek"), a chosen
+    /// time ("Custom"), or brings it back now ("Clear"). Snoozing is stored on this PC only.
+    /// </summary>
+    public async Task SnoozeAsync(MessageSummary message, string choice)
+    {
+        if (choice == "Clear")
+        {
+            var previous = message.SnoozedUntil;
+            await mail.SetSnoozeAsync([message.Id], null);
+            toasts.ShowWithUndo("Unsnoozed", () => mail.SetSnoozeAsync([message.Id], previous));
+            return;
+        }
+
+        var until = await ResolveTimeAsync(choice, "Snooze until", "Snooze", message.SnoozedUntil);
+        if (until is null) return;
+
+        var before = message.SnoozedUntil;
+        await mail.SetSnoozeAsync([message.Id], until);
+        toasts.ShowWithUndo($"Snoozed until {Describe(until.Value)}", () => mail.SetSnoozeAsync([message.Id], before));
+    }
+
+    /// <summary>
+    /// Sets a follow-up reminder ("Tomorrow", "InThreeDays", "NextWeek", "Custom") or marks it done ("Clear").
+    /// Reminders only notify you; they never change or send the message.
+    /// </summary>
+    public async Task FollowUpAsync(MessageSummary message, string choice)
+    {
+        var before = message.FollowUpAt;
+        if (choice == "Clear")
+        {
+            await mail.SetFollowUpAsync([message.Id], null);
+            toasts.ShowWithUndo("Follow-up done", () => mail.SetFollowUpAsync([message.Id], before));
+            return;
+        }
+
+        var due = await ResolveTimeAsync(choice, "Remind me to follow up", "Set reminder", message.FollowUpAt);
+        if (due is null) return;
+
+        await mail.SetFollowUpAsync([message.Id], due);
+        toasts.ShowWithUndo($"Reminder set for {Describe(due.Value)}", () => mail.SetFollowUpAsync([message.Id], before));
+    }
+
+    /// <summary>Turns a menu choice into an exact time, asking for a date and time when "Custom" is chosen.</summary>
+    public async Task<DateTimeOffset?> ResolveTimeAsync(string choice, string title, string confirmText, DateTimeOffset? current = null, XamlRoot? root = null)
+    {
+        var now = clock.Now;
+        if (choice == "Custom")
+        {
+            var suggested = current is { } c && c > now ? c : QuickTimes.Resolve(QuickTime.TomorrowMorning, now, TimeZoneInfo.Local);
+            return await dialogs.PickDateTimeAsync(title, confirmText, suggested, root);
+        }
+
+        return Enum.TryParse<QuickTime>(choice, out var preset) ? QuickTimes.Resolve(preset, now, TimeZoneInfo.Local) : null;
+    }
+
+    public string Describe(DateTimeOffset when) => QuickTimes.Describe(when, clock.Now, TimeZoneInfo.Local);
 
     public async Task ReplyAsync(MessageSummary message, ComposeMode mode)
     {

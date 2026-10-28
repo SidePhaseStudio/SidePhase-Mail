@@ -5,6 +5,7 @@ using SidePhase.Mail.App.Helpers;
 using SidePhase.Mail.App.Services;
 using SidePhase.Mail.Core.Formatting;
 using SidePhase.Mail.Core.Models;
+using SidePhase.Mail.Core.Scheduling;
 using SidePhase.Mail.Core.Spam;
 
 namespace SidePhase.Mail.App.ViewModels;
@@ -43,6 +44,15 @@ public sealed partial class MessageItemViewModel : ObservableObject
     public bool IsDraft { get; private set; }
     public bool IsInJunk { get; private set; }
     public bool HasPreview => !IsCompact && Preview.Length > 0;
+
+    public bool IsSnoozed { get; private set; }
+    public bool IsNotSnoozed => !IsSnoozed;
+    public bool HasFollowUp { get; private set; }
+    public bool HasNoFollowUp => !HasFollowUp;
+    public bool IsFollowUpOverdue { get; private set; }
+    public bool IsFollowUpPending => HasFollowUp && !IsFollowUpOverdue;
+    public string FollowUpTooltip { get; private set; } = string.Empty;
+    public string SnoozeTooltip { get; private set; } = string.Empty;
 
     /// <summary>"Spam 14.2", "Suspicious" or empty.</summary>
     public string SpamTag { get; private set; } = string.Empty;
@@ -108,6 +118,14 @@ public sealed partial class MessageItemViewModel : ObservableObject
         Subject = m.DisplaySubject;
         Preview = m.Preview;
         DateText = DateDisplayFormatter.ForList(m.Date, context.Now);
+        IsSnoozed = m.SnoozedUntil is not null;
+        SnoozeTooltip = m.SnoozedUntil is { } until ? "Snoozed until " + QuickTimes.Describe(until, context.Now, TimeZoneInfo.Local) : string.Empty;
+        if (m.SnoozedUntil is { } back) DateText = QuickTimes.Describe(back, context.Now, TimeZoneInfo.Local);
+        HasFollowUp = m.FollowUpAt is not null;
+        IsFollowUpOverdue = m.FollowUpAt is { } due && due <= context.Now;
+        FollowUpTooltip = m.FollowUpAt is { } at
+            ? (IsFollowUpOverdue ? "Follow-up overdue since " : "Follow up ") + QuickTimes.Describe(at, context.Now, TimeZoneInfo.Local)
+            : string.Empty;
         IsUnread = !m.IsRead;
         IsStarred = m.IsStarred;
         IsPinned = m.IsPinned;
@@ -133,6 +151,8 @@ public sealed partial class MessageItemViewModel : ObservableObject
             SenderName,
             Subject,
             HasAttachments ? "has attachments" : null,
+            SnoozeTooltip,
+            FollowUpTooltip,
             DateText,
         }.Where(s => !string.IsNullOrEmpty(s)));
     }
@@ -163,4 +183,12 @@ public sealed partial class MessageItemViewModel : ObservableObject
 
     [RelayCommand]
     private Task ForwardAsync() => _commands.ReplyAsync(Summary, ComposeMode.Forward);
+
+    /// <param name="choice">A <see cref="QuickTime"/> name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task SnoozeAsync(string choice) => _commands.SnoozeAsync(Summary, choice);
+
+    /// <param name="choice">A <see cref="QuickTime"/> name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task FollowUpAsync(string choice) => _commands.FollowUpAsync(Summary, choice);
 }

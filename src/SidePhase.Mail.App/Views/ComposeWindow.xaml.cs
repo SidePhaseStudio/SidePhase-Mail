@@ -33,6 +33,8 @@ public sealed partial class ComposeWindow : Window
         App.GetService<ThemeService>().Register(this, RootGrid, SolidLayer);
 
         ViewModel.BodyProvider = GetBody;
+        ViewModel.PickScheduleTime = async choice =>
+            await App.GetService<MessageCommandService>().ResolveTimeAsync(choice, "Schedule send", "Schedule", root: RootGrid.XamlRoot);
         ViewModel.CloseRequested += (_, _) =>
         {
             _closeConfirmed = true;
@@ -49,7 +51,7 @@ public sealed partial class ComposeWindow : Window
         await ViewModel.InitializeAsync();
 
         var body = ViewModel.InitialBodyText.Replace("\r\n", "\r").Replace('\n', '\r');
-        if (ViewModel.IsNewMessage && ViewModel.Signature.Length > 0)
+        if (ViewModel.IsNewMessage && !ViewModel.BodyIncludesSignature && ViewModel.Signature.Length > 0)
         {
             body += "\r\r" + ViewModel.Signature.Replace("\r\n", "\r").Replace('\n', '\r');
         }
@@ -73,6 +75,34 @@ public sealed partial class ComposeWindow : Window
 
         RichEditor.Document.GetText(TextGetOptions.None, out var text);
         return new ComposeBody(text.Replace('\r', '\n').TrimEnd(), RichTextHtmlExporter.Export(RichEditor.Document));
+    }
+
+    /// <summary>Ctrl+Enter sends, after asking first if the user turned that on in Settings.</summary>
+    private async void OnSendAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (!ViewModel.SendCommand.CanExecute(null)) return;
+        if (App.GetService<Core.Abstractions.ISettingsService>().Current.ConfirmCtrlEnterSend)
+        {
+            var confirmed = await App.GetService<DialogService>().ConfirmAsync(
+                "Send this message?", "You pressed Ctrl+Enter.", "Send", root: RootGrid.XamlRoot);
+            if (!confirmed) return;
+        }
+
+        await ViewModel.SendCommand.ExecuteAsync(null);
+    }
+
+    private async void OnSaveAcceleratorInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.SaveDraftCommand.CanExecute(null)) await ViewModel.SaveDraftCommand.ExecuteAsync(null);
+    }
+
+    /// <summary>Esc closes the window (asking to save the draft if there are changes).</summary>
+    private void OnEscapeInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        Close();
     }
 
     private void OnEditorTextChanged(object sender, RoutedEventArgs e)

@@ -87,6 +87,12 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [ObservableProperty] public partial bool HasAttachments { get; set; }
     [ObservableProperty] public partial bool ShowRemoteContentBanner { get; set; }
     [ObservableProperty] public partial bool ShowSpamBanner { get; set; }
+    [ObservableProperty] public partial bool ShowFollowUpBanner { get; set; }
+    [ObservableProperty] public partial bool FollowUpIsOverdue { get; set; }
+    [ObservableProperty] public partial string FollowUpText { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool ShowSnoozeBanner { get; set; }
+    [ObservableProperty] public partial string SnoozeText { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool IsSnoozed { get; set; }
     [ObservableProperty] public partial bool SpamIsSevere { get; set; }
     [ObservableProperty] public partial string SpamTitle { get; set; }
     [ObservableProperty] public partial string SpamDetail { get; set; }
@@ -207,6 +213,23 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
 
         FolderName = _junk.IsLocallyJunk(m) ? "Junk (filtered)" : _folders.TryGetValue(m.FolderId, out var f) ? f.Name : string.Empty;
         UpdateSpamBanner(m);
+        UpdateReminderBanners(m);
+    }
+
+    private void UpdateReminderBanners(MessageSummary m)
+    {
+        var now = _clock.Now;
+        IsSnoozed = m.SnoozedUntil is not null;
+        ShowSnoozeBanner = m.SnoozedUntil is not null;
+        SnoozeText = m.SnoozedUntil is { } until
+            ? $"Snoozed until {_commands.Describe(until)}. It returns to its folder then."
+            : string.Empty;
+
+        ShowFollowUpBanner = m.FollowUpAt is not null;
+        FollowUpIsOverdue = m.FollowUpAt is { } due && due <= now;
+        FollowUpText = m.FollowUpAt is { } at
+            ? FollowUpIsOverdue ? $"Follow-up overdue (was due {_commands.Describe(at)})." : $"Follow up {_commands.Describe(at)}."
+            : string.Empty;
     }
 
     private void UpdateSpamBanner(MessageSummary m)
@@ -328,6 +351,14 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         Message is null ? Task.CompletedTask
         : IsInJunk ? _commands.NotJunkAsync(Message)
         : _commands.MoveToJunkAsync(Message);
+
+    /// <param name="choice">A QuickTime name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task SnoozeAsync(string choice) => Message is null ? Task.CompletedTask : _commands.SnoozeAsync(Message, choice);
+
+    /// <param name="choice">A QuickTime name, "Custom" or "Clear".</param>
+    [RelayCommand]
+    private Task FollowUpAsync(string choice) => Message is null ? Task.CompletedTask : _commands.FollowUpAsync(Message, choice);
 
     [RelayCommand]
     private void ShowRemoteContent()

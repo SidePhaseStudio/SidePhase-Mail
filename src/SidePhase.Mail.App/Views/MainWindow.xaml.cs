@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window
         App.GetService<ToastService>().ToastRequested += (_, request) => DispatcherQueue.TryEnqueue(() => ShowToast(request));
         App.GetService<IMailDataSource>().ErrorOccurred += (_, e) => DispatcherQueue.TryEnqueue(() => ShowMailError(e));
         App.GetService<DesktopNotificationService>().OpenMessageRequested += (_, id) => DispatcherQueue.TryEnqueue(() => _ = OpenMessageAsync(id));
+        App.GetService<Core.Scheduling.OutboxService>().AttemptFinished += (_, item) => DispatcherQueue.TryEnqueue(() => ShowSendResult(item));
 
         Shell.NavigationRebuilt += (_, _) =>
         {
@@ -141,6 +142,32 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>Reports how a message from the outbox (undo window or scheduled) got on.</summary>
+    private void ShowSendResult(Core.Scheduling.OutboxItem item)
+    {
+        var toasts = App.GetService<ToastService>();
+        var subject = string.IsNullOrWhiteSpace(item.Draft.Subject) ? "(No subject)" : item.Draft.Subject;
+        switch (item.State)
+        {
+            case Core.Scheduling.OutboxState.Accepted:
+                toasts.Show(item.Kind == Core.Scheduling.OutboxKind.Scheduled ? $"Scheduled message sent: \"{subject}\"" : "Message sent.", ToastKind.Success);
+                break;
+            case Core.Scheduling.OutboxState.Failed:
+                toasts.ShowWithAction($"\"{subject}\" wasn't sent: {item.LastError}", ToastKind.Error, "View", ShowOutboxAsync);
+                break;
+            case Core.Scheduling.OutboxState.Uncertain:
+                toasts.ShowWithAction($"\"{subject}\" may or may not have been delivered. It won't be sent again automatically.", ToastKind.Warning, "View", ShowOutboxAsync);
+                break;
+        }
+    }
+
+    private Task ShowOutboxAsync()
+    {
+        var item = Shell.NavItems.FirstOrDefault(i => i.PageTag == "outbox");
+        if (item is not null && _navContainers.TryGetValue(item, out var container)) NavView.SelectedItem = container;
+        return Task.CompletedTask;
+    }
+
     /// <summary>Brings the window forward and opens a message (from a notification click).</summary>
     public async Task OpenMessageAsync(Guid messageId)
     {
@@ -197,6 +224,9 @@ public sealed partial class MainWindow : Window
             case "add-account":
                 ContentFrame.Navigate(typeof(WelcomePage), null, new EntranceNavigationTransitionInfo());
                 break;
+            case NavItemViewModel { PageTag: "outbox" }:
+                ContentFrame.Navigate(typeof(OutboxPage), null, new EntranceNavigationTransitionInfo());
+                break;
             case NavItemViewModel { Scope: not null } item:
                 _ = NavigateToMailboxAsync(item);
                 break;
@@ -252,7 +282,7 @@ public sealed partial class MainWindow : Window
         {
             Tag = model,
             Icon = icon,
-            SelectsOnInvoked = model.Scope is not null,
+            SelectsOnInvoked = model.Scope is not null || model.PageTag is not null,
         };
 
         if (model.Kind == NavItemKind.Account)

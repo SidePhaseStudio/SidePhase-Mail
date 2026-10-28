@@ -234,6 +234,30 @@ public sealed partial class SettingsViewModel : ObservableObject
         set => Set(s => s.DefaultComposeFormat = (ComposeFormat)value, (int)S.DefaultComposeFormat != value && value >= 0);
     }
 
+    private static readonly int[] UndoSendDelays = [0, 5, 10, 20, 30];
+
+    public int UndoSendIndex
+    {
+        get => Math.Max(0, Array.IndexOf(UndoSendDelays, S.UndoSendSeconds));
+        set
+        {
+            if (value < 0 || value >= UndoSendDelays.Length) return;
+            Set(s => s.UndoSendSeconds = UndoSendDelays[value], S.UndoSendSeconds != UndoSendDelays[value]);
+        }
+    }
+
+    public bool ConfirmCtrlEnterSend
+    {
+        get => S.ConfirmCtrlEnterSend;
+        set => Set(s => s.ConfirmCtrlEnterSend = value, S.ConfirmCtrlEnterSend != value);
+    }
+
+    public bool ConversationView
+    {
+        get => S.ConversationView;
+        set => Set(s => s.ConversationView = value, S.ConversationView != value);
+    }
+
     public int SyncIntervalIndex
     {
         get => Math.Max(0, Array.IndexOf(SyncIntervals, S.SyncIntervalMinutes));

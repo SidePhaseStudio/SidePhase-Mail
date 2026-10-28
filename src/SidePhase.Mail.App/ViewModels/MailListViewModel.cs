@@ -466,6 +466,8 @@ public sealed partial class MailListViewModel : ObservableObject
         {
             MailboxScopeKind.Pinned => ("No pinned messages", "Right-click any message and choose \"Pin to top\" to keep it here, above everything else."),
             MailboxScopeKind.Favourites => ("No favourites yet", "Star a message to add it to your favourites."),
+            MailboxScopeKind.Snoozed => ("Nothing snoozed", "Right-click a message and choose Snooze to hide it until later. Snoozing is kept on this PC only and isn't shared with other mail apps."),
+            MailboxScopeKind.FollowUps => ("No follow-ups", "Right-click a message and choose \"Remind me to follow up\". You'll get a Windows notification when it's due."),
             _ when Scope.FolderKind == FolderKind.Junk => ("No junk", "Nice and tidy. Messages flagged by SpamAssassin or from blocked senders appear here."),
             _ => ("All caught up", $"There are no messages in {Title}."),
         };

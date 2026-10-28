@@ -363,6 +363,30 @@ public class OutboxTests
         Assert.Single(await _outbox.GetItemsAsync(isDemo: true));
         Assert.Single(await _outbox.GetItemsAsync(isDemo: false));
     }
+
+    [Fact]
+    public async Task Only_finished_messages_can_be_removed_from_the_history()
+    {
+        var item = await QueueIn(TimeSpan.FromMinutes(5));
+        Assert.False(await _outbox.ForgetAsync(item.Id)); // still waiting to send
+
+        _clock.Now += TimeSpan.FromMinutes(5);
+        await _outbox.ProcessDueAsync();
+        Assert.True(await _outbox.ForgetAsync(item.Id));
+        Assert.Empty(await _outbox.GetItemsAsync(isDemo: false));
+        Assert.Single(_transport.Sent);
+    }
+
+    [Fact]
+    public async Task Undo_window_messages_are_sent_after_their_short_delay()
+    {
+        var item = await QueueIn(TimeSpan.FromSeconds(10), OutboxKind.UndoWindow);
+        _clock.Now += TimeSpan.FromSeconds(9);
+        Assert.Equal(0, await _outbox.ProcessDueAsync());
+        _clock.Now += TimeSpan.FromSeconds(1);
+        Assert.Equal(1, await _outbox.ProcessDueAsync());
+        Assert.Equal(OutboxState.Accepted, (await _store.GetAsync(item.Id))!.State);
+    }
 }
 
 public class SnoozeAndFollowUpTests

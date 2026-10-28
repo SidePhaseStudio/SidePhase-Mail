@@ -87,6 +87,15 @@ public sealed class AppSettings
     public ComposeFormat DefaultComposeFormat { get; set; } = ComposeFormat.RichText;
     public int SyncIntervalMinutes { get; set; } = 5;
 
+    /// <summary>Seconds a sent message is held so it can be undone (0 = off). Allowed: 0, 5, 10, 20, 30.</summary>
+    public int UndoSendSeconds { get; set; } = 10;
+
+    /// <summary>Ask before sending when Ctrl+Enter is pressed in the compose window.</summary>
+    public bool ConfirmCtrlEnterSend { get; set; }
+
+    /// <summary>Group replies into conversations in the message list.</summary>
+    public bool ConversationView { get; set; } = true;
+
     // Spam
     public double SpamThreshold { get; set; } = 5.0;
     public bool TreatHighScoresAsJunk { get; set; } = true;
@@ -135,6 +144,7 @@ public sealed class AppSettings
         if (!Formatting.ColorMath.TryParseHex(AccentColor, out _)) AccentColor = DefaultAccent;
         if (double.IsNaN(SpamThreshold) || SpamThreshold < 1 || SpamThreshold > 20) SpamThreshold = 5.0;
         if (SyncIntervalMinutes is < 1 or > 240) SyncIntervalMinutes = 5;
+        if (UndoSendSeconds is not (0 or 5 or 10 or 20 or 30)) UndoSendSeconds = 10;
         SenderRules ??= [];
         Signatures ??= [];
         SenderRules = SenderRules

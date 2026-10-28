@@ -14,6 +14,10 @@
       DragLeave="OnDragLeave"
       DragOver="OnDragOver"
       Drop="OnDrop">
+    <Grid.KeyboardAccelerators>
+      <KeyboardAccelerator Key="S" Invoked="OnSaveAcceleratorInvoked" Modifiers="Control" />
+      <KeyboardAccelerator Key="Escape" Invoked="OnEscapeInvoked" />
+    </Grid.KeyboardAccelerators>
     <Grid.Resources>
       <!-- Borderless fields: the layout's hairlines provide the structure. -->
       <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
@@ -281,9 +285,11 @@
       </StackPanel>
       <Button Grid.Column="1" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" Style="{StaticResource SpSubtleButtonStyle}" />
       <Button Grid.Column="2" Command="{x:Bind ViewModel.SaveDraftCommand}" Content="Save draft" Style="{StaticResource SpSecondaryButtonStyle}" />
-      <Button Grid.Column="3" MinWidth="110" Command="{x:Bind ViewModel.SendCommand}" Style="{StaticResource SpPrimaryButtonStyle}" ToolTipService.ToolTip="Send (Ctrl+Enter)">
+      <!-- Send, with a dropdown beside it for scheduling. -->
+      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="1">
+      <Button MinWidth="110" Command="{x:Bind ViewModel.SendCommand}" CornerRadius="6,0,0,6" Style="{StaticResource SpPrimaryButtonStyle}" ToolTipService.ToolTip="Send (Ctrl+Enter)">
         <Button.KeyboardAccelerators>
-          <KeyboardAccelerator Key="Enter" Modifiers="Control" />
+          <KeyboardAccelerator Key="Enter" Invoked="OnSendAcceleratorInvoked" Modifiers="Control" />
         </Button.KeyboardAccelerators>
         <Grid>
           <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind h:X.Collapsed(ViewModel.IsSending), Mode=OneWay}">
@@ -296,6 +302,38 @@
           </StackPanel>
         </Grid>
       </Button>
+      <Button
+          MinWidth="34"
+          Padding="8,0"
+          AutomationProperties.Name="More send options"
+          CornerRadius="0,6,6,0"
+          IsEnabled="{x:Bind h:X.Not(ViewModel.IsSending), Mode=OneWay}"
+          Style="{StaticResource SpPrimaryButtonStyle}"
+          ToolTipService.ToolTip="Send now or schedule">
+        <FontIcon FontSize="11" Glyph="&#xE70D;" />
+        <Button.Flyout>
+          <MenuFlyout Placement="TopEdgeAlignedRight">
+            <MenuFlyoutItem Command="{x:Bind ViewModel.SendCommand}" Text="Send now">
+              <MenuFlyoutItem.Icon>
+                <FontIcon Glyph="&#xE724;" />
+              </MenuFlyoutItem.Icon>
+            </MenuFlyoutItem>
+            <MenuFlyoutSubItem Text="Schedule send">
+              <MenuFlyoutSubItem.Icon>
+                <FontIcon Glyph="&#xE823;" />
+              </MenuFlyoutSubItem.Icon>
+              <MenuFlyoutItem Command="{x:Bind ViewModel.ScheduleSendCommand}" CommandParameter="LaterToday" Text="Later today" />
+              <MenuFlyoutItem Command="{x:Bind ViewModel.ScheduleSendCommand}" CommandParameter="TomorrowMorning" Text="Tomorrow morning" />
+              <MenuFlyoutItem Command="{x:Bind ViewModel.ScheduleSendCommand}" CommandParameter="NextWeek" Text="Monday morning" />
+              <MenuFlyoutSeparator />
+              <MenuFlyoutItem Command="{x:Bind ViewModel.ScheduleSendCommand}" CommandParameter="Custom" Text="Choose date and time…" />
+            </MenuFlyoutSubItem>
+            <MenuFlyoutSeparator />
+            <MenuFlyoutItem IsEnabled="False" Text="Scheduled messages are sent by this app: keep SidePhase Mail open (it can be minimised)." />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+      </StackPanel>
     </Grid>
 
     <!-- Drag & drop overlay -->

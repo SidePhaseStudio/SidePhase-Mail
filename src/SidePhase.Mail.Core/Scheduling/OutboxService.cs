@@ -116,6 +116,17 @@ public sealed class OutboxService(IOutboxStore store, IOutgoingTransport transpo
         return await TransitionAsync(id, item.State, i => i with { State = OutboxState.Cancelled }, wake: false, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Removes one sent or cancelled message from the outbox history.</summary>
+    public async Task<bool> ForgetAsync(Guid id, CancellationToken ct = default)
+    {
+        var item = await store.GetAsync(id, ct).ConfigureAwait(false);
+        if (item is null || !item.IsFinished) return false;
+        await store.DeleteAsync(id, ct).ConfigureAwait(false);
+        await _attachments.ReleaseAsync(id, ct).ConfigureAwait(false);
+        OnChanged();
+        return true;
+    }
+
     /// <summary>Removes finished items (sent or cancelled) older than <paramref name="age"/>.</summary>
     public async Task PruneAsync(TimeSpan age, CancellationToken ct = default)
     {

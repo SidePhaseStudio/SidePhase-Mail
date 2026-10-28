@@ -133,6 +133,38 @@
                       <FontIcon Glyph="{x:Bind ViewModel.JunkGlyph, Mode=OneWay}" />
                     </MenuFlyoutItem.Icon>
                   </MenuFlyoutItem>
+                  <MenuFlyoutSeparator />
+                  <MenuFlyoutSubItem Text="Snooze">
+                    <MenuFlyoutSubItem.Icon>
+                      <FontIcon Glyph="&#xE823;" />
+                    </MenuFlyoutSubItem.Icon>
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="LaterToday" Text="Later today" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="TomorrowMorning" Text="Tomorrow morning" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="ThisWeekend" Text="This weekend" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="NextWeek" Text="Next week" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="Custom" Text="Choose date and time…" />
+                    <MenuFlyoutItem
+                        Command="{x:Bind ViewModel.SnoozeCommand}"
+                        CommandParameter="Clear"
+                        Text="Unsnooze"
+                        Visibility="{x:Bind ViewModel.IsSnoozed, Mode=OneWay}" />
+                  </MenuFlyoutSubItem>
+                  <MenuFlyoutSubItem Text="Remind me to follow up">
+                    <MenuFlyoutSubItem.Icon>
+                      <FontIcon Glyph="&#xE7C1;" />
+                    </MenuFlyoutSubItem.Icon>
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="Tomorrow" Text="Tomorrow" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="InThreeDays" Text="In 3 days" />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="NextWeek" Text="Next week" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="Custom" Text="Custom…" />
+                    <MenuFlyoutItem
+                        Command="{x:Bind ViewModel.FollowUpCommand}"
+                        CommandParameter="Clear"
+                        Text="Mark follow-up done"
+                        Visibility="{x:Bind ViewModel.ShowFollowUpBanner, Mode=OneWay}" />
+                  </MenuFlyoutSubItem>
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
@@ -258,6 +290,32 @@
             Severity="{x:Bind SpamSeverity(ViewModel.SpamIsSevere), Mode=OneWay}">
           <InfoBar.ActionButton>
             <Button Command="{x:Bind ViewModel.SpamActionCommand}" Content="{x:Bind ViewModel.SpamActionText, Mode=OneWay}" />
+          </InfoBar.ActionButton>
+        </InfoBar>
+        <InfoBar
+            CornerRadius="8"
+            IsClosable="False"
+            IsOpen="{x:Bind ViewModel.ShowFollowUpBanner, Mode=OneWay}"
+            Message="{x:Bind ViewModel.FollowUpText, Mode=OneWay}"
+            Severity="{x:Bind FollowUpSeverity(ViewModel.FollowUpIsOverdue), Mode=OneWay}">
+          <InfoBar.IconSource>
+            <FontIconSource Glyph="&#xE7C1;" />
+          </InfoBar.IconSource>
+          <InfoBar.ActionButton>
+            <Button Command="{x:Bind ViewModel.FollowUpCommand}" CommandParameter="Clear" Content="Mark done" />
+          </InfoBar.ActionButton>
+        </InfoBar>
+        <InfoBar
+            CornerRadius="8"
+            IsClosable="False"
+            IsOpen="{x:Bind ViewModel.ShowSnoozeBanner, Mode=OneWay}"
+            Message="{x:Bind ViewModel.SnoozeText, Mode=OneWay}"
+            Severity="Informational">
+          <InfoBar.IconSource>
+            <FontIconSource Glyph="&#xE823;" />
+          </InfoBar.IconSource>
+          <InfoBar.ActionButton>
+            <Button Command="{x:Bind ViewModel.SnoozeCommand}" CommandParameter="Clear" Content="Unsnooze" />
           </InfoBar.ActionButton>
         </InfoBar>
         <InfoBar
