@@ -116,6 +116,9 @@ jobs:
             throw 'Set the SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET Actions secret before distributing this build (GOOGLE_SETUP.md).'
           }
 
+      - name: Verify product pages and in-app policy links
+        run: python website/verify.py
+
       - name: Read version
         id: version
         shell: pwsh

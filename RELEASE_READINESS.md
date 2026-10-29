@@ -117,7 +117,7 @@ connection errors; tested with the test server only).
 ## Security and privacy
 
 See [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) (findings and fixes in this milestone) and the
-[privacy policy draft](PRIVACY.md).
+[published privacy policy](https://sidephasestudio.com/sidephasemail/privacy/).
 
 ### Google OAuth distribution follow-up
 

@@ -2,6 +2,8 @@
 
 **A premium, native Windows 11 email client by SidePhase Studio.**
 
+[App website](https://sidephasestudio.com/sidephasemail/) · [Privacy policy](https://sidephasestudio.com/sidephasemail/privacy/) · [Support and data removal](https://sidephasestudio.com/sidephasemail/support/)
+
 SidePhase Mail is a genuine WinUI 3 desktop application — not a web wrapper — with a distinctive
 *Dark Glass* design built on Microsoft's Fluent Design: Mica backdrops, translucent layers, thin
 hairline borders, Segoe UI Variable typography and a calm, refined accent colour.
