@@ -2,6 +2,17 @@
 
 SidePhase Mail is a Windows desktop public client. Users choose **Add account → Google → Sign in with Google**. They do not create a Cloud project, enter a Client ID or supply a Google password to SidePhase Mail. Mail, OAuth tokens and processing stay on the PC; connections go directly to Google. There is no SidePhase backend or OAuth proxy.
 
+## Verified in this setup
+
+On 29 October 2026, the Studio Desktop client and external Testing audience were configured in `sidephase-mail`,
+the owner's Gmail account was listed as a test user, and the three consent scopes below were saved. Developer
+notifications use support@sidephasestudio.com; the consent-screen support address temporarily uses the owner's Gmail
+address, approved for testing only. The required Desktop value is saved as an Actions secret and in ignored local build
+configuration. A real browser sign-in succeeded after including it, both connection tests passed and Gmail folders and
+inbox messages synchronised in the portable Windows build. Real sending/delivery, expiry/revocation/removal and installed
+MSIX sign-in remain unverified. Public verification has not been submitted: product/privacy URLs and the eligible Studio
+support identity must be completed first.
+
 ## Application registration
 
 The Studio Desktop Client ID is configured once in the `SidePhaseGoogleClientId` property in **Directory.Build.props**. It is embedded as assembly metadata in Infrastructure and therefore travels with both portable and Microsoft Store/MSIX builds. This is a public identifier, safe to distribute and commit. Do not put the downloaded Google credentials JSON or the Desktop client value in the repository.

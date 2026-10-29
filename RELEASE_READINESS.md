@@ -13,7 +13,7 @@ CI), the CI packaging test (MSIX install → launch → uninstall on Windows), o
 | --- | --- | --- |
 | **"Sent but not arriving / not in Sent" report** (see Known issues) | Reported on a real account during this milestone; not reproduced against the test server. Must be diagnosed with the new send log before any wider beta. | Owner + dev |
 | Hand-check of the UI on Windows 11 | Most UI is verified only by compiling and starting (CI smoke test); see *Implemented but not fully tested*. | Owner / beta testers |
-| Google OAuth app + verification | The first real Google sign-in reached the loopback callback but token exchange required the Desktop client value; end-to-end validation is pending; public use needs restricted-scope verification and a security-assessment applicability determination ([ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md#before-public-release-provider-configuration-and-verification)). | SidePhase Studio |
+| Google OAuth app + verification | Real Google sign-in, IMAP/SMTP connection tests and Gmail inbox sync verified on 29 October 2026; public use needs restricted-scope verification and a security-assessment applicability determination ([ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md#before-public-release-provider-configuration-and-verification)). | SidePhase Studio |
 | Microsoft app registration + publisher verification | Outlook/Microsoft 365 sign-in never tested against Microsoft. | SidePhase Studio |
 | Partner Center name reservation | Real package identity (Name/Publisher) replaces the placeholders in `Package.appxmanifest`. | SidePhase Studio |
 | Code signing for non-Store packages | CI/beta MSIX are unsigned (testers use a local test certificate). | SidePhase Studio |
@@ -124,5 +124,10 @@ See [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) (findings and fixes in th
 The Studio Desktop Client ID is now embedded in both build channels; Google client setup fields/secrets have been
 removed from customer settings. Browser + PKCE, refresh, DPAPI storage and MailKit XOAUTH2 are reused.
 See GOOGLE_SETUP.md for restricted-scope justification, assessment applicability and the release checklist.
-Real Gmail consent, IMAP/SMTP login, refresh, delivery and mailbox operations still require a real-account test.
+Real Gmail consent, token exchange, the existing IMAP/SMTP connection checks, account creation and inbox sync were
+verified on 29 October 2026 in the portable Windows build. The actual Gmail Inbox, Drafts, Sent Mail and labels appeared
+and messages downloaded. Initial omission of the Desktop value produced `invalid_request`; supplying Google's issued
+Desktop value fixed the exchange. 473 tests passed, 15 local-server integration tests skipped; portable publish and MSIX
+build passed. No real send/delivery, expiry-driven refresh, revoke/reconnect, account-removal or installed-MSIX Google
+sign-in test is claimed. Those remain in GOOGLE_SETUP.md's release checklist.
 The temporary Google consent-screen Gmail support address must become support@sidephasestudio.com before release.
