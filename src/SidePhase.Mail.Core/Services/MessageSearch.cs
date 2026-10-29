@@ -193,6 +193,7 @@ public static class MessageSearch
                     || Contains(m.From.DisplayName, text)
                     || Contains(m.From.Address, text)
                     || m.To.Any(a => Contains(a.DisplayName, text) || Contains(a.Address, text))
+                    || m.Attachments.Any(a => Contains(a.FileName, text))
                     || body?.Contains(m.Id) == true;
     }
 

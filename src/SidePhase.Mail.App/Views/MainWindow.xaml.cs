@@ -157,7 +157,7 @@ public sealed partial class MainWindow : Window
     public void ShowWelcome()
     {
         _suppressNavigation = true;
-        NavView.SelectedItem = AddAccountItem;
+        NavView.SelectedItem = null;
         _suppressNavigation = false;
         ContentFrame.Navigate(typeof(WelcomePage), null, new DrillInNavigationTransitionInfo());
     }
@@ -166,7 +166,7 @@ public sealed partial class MainWindow : Window
     public void ShowAddAccount(AddAccountPreset preset = AddAccountPreset.Any)
     {
         _suppressNavigation = true;
-        NavView.SelectedItem = AddAccountItem;
+        NavView.SelectedItem = null;
         _suppressNavigation = false;
         ContentFrame.Navigate(typeof(AddAccountPage), preset, new DrillInNavigationTransitionInfo());
     }
@@ -311,14 +311,8 @@ public sealed partial class MainWindow : Window
                 ContentFrame.Navigate(typeof(SettingsPage), _settingsSection, new EntranceNavigationTransitionInfo());
                 _settingsSection = null;
                 break;
-            case "attachments":
-                ContentFrame.Navigate(typeof(AttachmentsPage), null, new EntranceNavigationTransitionInfo());
-                break;
             case "contacts":
                 ContentFrame.Navigate(typeof(ContactsPage), null, new EntranceNavigationTransitionInfo());
-                break;
-            case "add-account":
-                ContentFrame.Navigate(typeof(WelcomePage), null, new EntranceNavigationTransitionInfo());
                 break;
             case NavItemViewModel { PageTag: "outbox" }:
                 ContentFrame.Navigate(typeof(OutboxPage), null, new EntranceNavigationTransitionInfo());
@@ -566,6 +560,18 @@ internal static class WindowHelper
 {
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(nint hwnd);
+
+    /// <summary>Activates the window and puts it in front of the app's other windows.</summary>
+    public static void BringToFront(Window window)
+    {
+        window.Activate();
+        window.AppWindow.MoveInZOrderAtTop();
+        SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
+    }
 
     public static double GetScale(Window window)
     {

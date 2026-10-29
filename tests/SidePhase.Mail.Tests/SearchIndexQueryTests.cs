@@ -80,6 +80,10 @@ public class AdvancedOperatorTests
         Assert.True(Matches("filetype:pdf", small));
         Assert.True(Matches("filetype:jpg", big));
         Assert.False(Matches("filetype:pdf", big));
+
+        // Plain search words find attachments by name too (the separate Attachments page was folded into search).
+        Assert.True(Matches("contract", small));
+        Assert.False(Matches("contract", big));
     }
 
     [Fact]

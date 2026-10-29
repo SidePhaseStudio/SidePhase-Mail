@@ -194,7 +194,7 @@ Calendar, CardDAV/Google/Microsoft contact sync, IMAP IDLE, server-side schedule
 * Scheduled messages and Undo Send need SidePhase Mail to be running; a message that couldn't be sent within a day of its
   time is held rather than sent late.
 * A message reopened from Undo Send, the Scheduled page or crash recovery keeps its text but loses rich formatting.
-* Search, smart folders and the attachment finder cover mail stored on this PC (the newest 500 per folder on first sync);
+* Search (including attachment names) and smart folders cover mail stored on this PC (the newest 500 per folder on first sync);
   older mail is found with *Search on server*.
 * Rules run while SidePhase Mail is open, on new Inbox mail; they aren't server-side filters.
 * Local categories and spam learning aren't shared with other mail apps.

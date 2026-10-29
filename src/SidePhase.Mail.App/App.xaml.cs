@@ -352,7 +352,6 @@ public partial class App : Application
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<OutboxViewModel>();
         services.AddSingleton<ContactsViewModel>();
-        services.AddSingleton<AttachmentsViewModel>();
         services.AddTransient<AddAccountViewModel>();
 
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
