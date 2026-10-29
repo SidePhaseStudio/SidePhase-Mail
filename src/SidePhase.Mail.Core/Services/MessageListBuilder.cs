@@ -54,6 +54,12 @@ public sealed record MessageListOptions
     public SearchContext? Search { get; init; }
 
     public MessageFilter Filter { get; init; } = MessageFilter.All;
+
+    /// <summary>
+    /// Messages listed even when they no longer pass <see cref="Filter"/>: the open message stays put under "Unread"
+    /// after it's marked read, instead of vanishing.
+    /// </summary>
+    public IReadOnlySet<Guid>? KeepVisible { get; init; }
     public MessageSort Sort { get; init; } = MessageSort.NewestFirst;
 
     /// <summary>Show pinned messages in their own section above the rest.</summary>
@@ -89,7 +95,7 @@ public static class MessageListBuilder
         ArgumentNullException.ThrowIfNull(options);
 
         var search = MessageSearch.Compile(options.SearchText, (options.Search ?? new SearchContext()) with { Now = options.Now });
-        var filtered = messages.Where(m => PassesFilter(m, options.Filter) && search(m)).ToList();
+        var filtered = messages.Where(m => (PassesFilter(m, options.Filter) || options.KeepVisible?.Contains(m.Id) == true) && search(m)).ToList();
 
         var sections = new List<MessageSection>();
         var rest = filtered;
