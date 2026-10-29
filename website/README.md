@@ -13,3 +13,7 @@ Google public verification remains pending; no Store listing or Google approval 
 
 Run `python website/verify.py` to check page structure, local links, canonical URLs, policy disclosures and the app links.
 For visual checks, serve this folder with `python -m http.server 8765 --bind 127.0.0.1` and open `/sidephasemail/`.
+
+The deployed additive server locations are recorded in `nginx.locations.conf`; merge them inside the existing server
+block, validate the configuration and reload only the dedicated Studio nginx instance. `sitemap-entries.xml` records
+only this product's entries to merge into the existing sitemap; it must not replace the site's sitemap wholesale.
