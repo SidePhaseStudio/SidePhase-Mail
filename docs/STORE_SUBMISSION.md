@@ -31,9 +31,9 @@ credentials. These steps need the owner's accounts and decisions. Details are in
       token refresh with a real Gmail account and record the result in RELEASE_READINESS.md.**
 
 ## 4. Microsoft sign-in (Outlook.com / Microsoft 365)
-- [ ] Register an app in Microsoft Entra ID: *Accounts in any organizational directory and personal Microsoft
+- [x] Register an app in Microsoft Entra ID: *Accounts in any organizational directory and personal Microsoft
       accounts*, platform *Mobile and desktop*, redirect `http://localhost`.
-- [ ] Delegated permissions: `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`. Nothing else.
+- [x] Delegated permissions: `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`. Nothing else.
 - [ ] Complete publisher verification. **Then test with a personal and a work account and record the result.**
 
 Until steps 3 and 4 are done and verified, the app and its docs must not describe Google or Microsoft sign-in as ready.

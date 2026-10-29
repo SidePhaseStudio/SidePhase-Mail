@@ -3,10 +3,11 @@
 This document covers how SidePhase Mail connects to mail providers, how to register the OAuth apps that
 Google and Microsoft sign-in need, where data is stored, and the security decisions behind it.
 
-> **Verification status.** IMAP/SMTP with passwords is covered by automated tests against a real
-> (disposable) Dovecot/Postfix server in CI. **Google and Microsoft OAuth sign-in have not yet been tested
-> against the real providers**: the code (loopback redirect, PKCE, token exchange and refresh, XOAUTH2) is unit-tested
-> with fake token endpoints only. It needs to be checked with real app registrations before it is described as working.
+> **Verification status.** IMAP/SMTP is integration-tested against disposable Dovecot/Postfix in CI.
+> Real Google sign-in, connection checks and Gmail inbox synchronization succeeded on 29 October 2026.
+> Microsoft now has a bundled Studio public-client registration, but real Microsoft mailbox sign-in is still pending.
+> Token refresh and failure handling have automated fake-endpoint coverage. Public provider approval and the remaining
+> real-account lifecycle checks are not complete.
 
 ## How account setup works
 
