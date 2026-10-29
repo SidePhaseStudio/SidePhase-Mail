@@ -732,12 +732,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public string MicrosoftClientId
-    {
-        get => S.MicrosoftClientId ?? string.Empty;
-        set => Set(s => s.MicrosoftClientId = string.IsNullOrWhiteSpace(value) ? null : value.Trim(), (S.MicrosoftClientId ?? string.Empty) != value);
-    }
-
     private async Task<bool> SaveAppearanceAsync(AccountSettingsViewModel item, string name, string? color)
     {
         try

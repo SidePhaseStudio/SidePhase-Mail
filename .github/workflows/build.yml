@@ -31,6 +31,7 @@ env:
   CONFIGURATION: Release
   # Desktop registrations are public clients. Google still requires its issued Desktop value for token exchange.
   SidePhaseGoogleClientId: ${{ vars.SIDEPHASE_GOOGLE_CLIENT_ID }}
+  SidePhaseMicrosoftClientId: ${{ vars.SIDEPHASE_MICROSOFT_CLIENT_ID }}
   SidePhaseGoogleDesktopClientSecret: ${{ secrets.SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET }}
 
 jobs:

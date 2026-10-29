@@ -77,8 +77,12 @@ Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All`, `https://outlook.off
 4. **Authentication → Allow public client flows: Yes.**
 5. **API permissions → Add → APIs my organization uses → Office 365 Exchange Online** (delegated)
    `IMAP.AccessAsUser.All` and `SMTP.Send`, plus `offline_access`, `openid`, `email`.
-6. Copy the *Application (client) ID* into *Settings → Accounts → Microsoft application ID*, or set
-   `SIDEPHASE_MICROSOFT_CLIENT_ID` (optionally `SIDEPHASE_MICROSOFT_TENANT`, default `common`).
+6. Publisher: set `SidePhaseMicrosoftClientId` in `Directory.Build.props` to the public Application (client) ID.
+   CI can override it with repository variable `SIDEPHASE_MICROSOFT_CLIENT_ID`. Customers do not enter IDs.
+   Developers can override the bundled ID with environment variable `SIDEPHASE_MICROSOFT_CLIENT_ID`
+   (tenant override `SIDEPHASE_MICROSOFT_TENANT`, default `common`). No Microsoft secret is needed.
+
+Publisher registration and real Microsoft mailbox sign-in are pending. See [MICROSOFT_SETUP.md](../MICROSOFT_SETUP.md).
 
 Work/school tenants may require admin consent, and the mailbox must have IMAP and SMTP AUTH enabled.
 

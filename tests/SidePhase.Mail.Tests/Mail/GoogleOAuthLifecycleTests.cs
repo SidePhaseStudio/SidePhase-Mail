@@ -35,7 +35,16 @@ public sealed class GoogleOAuthLifecycleTests : IDisposable
     [InlineData("  ", "studio-id", "studio-id")]
     [InlineData(" dev-id ", "studio-id", "dev-id")]
     public void Registration_uses_bundled_id_unless_developer_override_is_nonempty(string? development, string bundled, string expected) =>
-        Assert.Equal(expected, OAuthConfiguration.ResolveGoogleClientId(development, bundled));
+        Assert.Equal(expected, OAuthConfiguration.ResolveClientId(development, bundled));
+
+    [Theory]
+    [InlineData(null, "studio-id", "legacy-id", "studio-id")]
+    [InlineData("  ", "studio-id", "legacy-id", "studio-id")]
+    [InlineData(" dev-id ", "studio-id", "legacy-id", "dev-id")]
+    [InlineData(null, "", "legacy-id", "legacy-id")]
+    [InlineData(null, null, null, null)]
+    public void Microsoft_registration_prefers_publisher_id_over_legacy_settings(string? development, string? bundled, string? legacy, string? expected) =>
+        Assert.Equal(expected, OAuthConfiguration.ResolveMicrosoftClientId(development, bundled, legacy));
 
     [Fact]
     public void Build_has_registration_metadata_and_google_is_a_public_client()

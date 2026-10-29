@@ -288,10 +288,7 @@
           </controls:SettingsCard>
 
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Sign-in providers" />
-          <TextBlock Margin="2,0,0,6" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Google sign-in is configured by SidePhase Studio: choose Add account to sign in. Microsoft registration settings are below." />
-          <controls:SettingsCard Description="From Microsoft Entra admin center → App registrations → Application (client) ID." Glyph="&#xE8D7;" Header="Microsoft application ID">
-            <TextBox MinWidth="280" IsSpellCheckEnabled="False" PlaceholderText="00000000-0000-0000-0000-000000000000" Text="{x:Bind ViewModel.MicrosoftClientId, Mode=TwoWay}" />
-          </controls:SettingsCard>
+          <TextBlock Margin="2,0,0,6" Style="{StaticResource SpCaptionTextStyle}" TextWrapping="Wrap" Text="Sign-in registrations are managed by SidePhase Studio. Choose Add account to sign in with an available provider." />
 
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Synchronisation" />
           <controls:SettingsCard Description="How often to check for new mail while SidePhase Mail is open." Glyph="&#xE895;" Header="Check for new mail">
