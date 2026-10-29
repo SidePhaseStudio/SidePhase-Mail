@@ -331,8 +331,8 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             SpamIsSevere = true;
             SpamTitle = "This looks like spam.";
             SpamDetail = m.Spam.ServerFlaggedAsSpam == true
-                ? $"Your mail server's SpamAssassin flagged it (score {score}).{tests}"
-                : $"SpamAssassin score {score} is above your threshold of {thresholdText}.{tests}";
+                ? $"Your mail server's spam filter ({m.Spam.FilterName}) flagged it{(m.Spam.Score is null ? string.Empty : $" (score {score})")}.{tests}"
+                : $"{m.Spam.FilterName} score {score} is above your threshold of {OwnThreshold(m.Spam, threshold)}.{tests}";
             SpamActionText = "Not junk";
         }
         else if (verdict == SpamVerdict.Suspicious)
@@ -340,7 +340,9 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             ShowSpamBanner = true;
             SpamIsSevere = false;
             SpamTitle = "Be careful with this message.";
-            SpamDetail = $"SpamAssassin score {score} is close to your threshold of {thresholdText}.{tests}";
+            SpamDetail = m.Spam.Authentication?.LooksForged == true
+                ? $"It failed the sender checks ({m.Spam.Authentication.Describe()}), so it may not really be from {m.From.Address}."
+                : $"{m.Spam.FilterName} score {score} is close to your threshold of {OwnThreshold(m.Spam, threshold)}.{tests}";
             SpamActionText = "Trust sender";
         }
         else
@@ -348,6 +350,10 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             ShowSpamBanner = false;
         }
     }
+
+    /// <summary>The user's threshold on the filter's own scale (SpamAssassin points, Microsoft SCL, Rspamd...).</summary>
+    private static string OwnThreshold(SpamReport spam, double threshold) =>
+        SpamClassifier.ThresholdFor(spam, threshold).ToString("0.0", CultureInfo.CurrentCulture);
 
     private void UpdateLocalOpinion(MessageSummary m)
     {
@@ -370,21 +376,26 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     private void UpdateSpamDetails(SpamReport spam, SpamVerdict verdict, double threshold)
     {
         var culture = CultureInfo.CurrentCulture;
-        var thresholdText = threshold.ToString("0.0", culture);
+        var thresholdText = OwnThreshold(spam, threshold);
         SpamCheckSummary = verdict switch
         {
-            _ when !spam.HasHeaders => "Spam check: not checked by your mail server",
+            _ when !spam.HasHeaders && spam.Authentication?.LooksForged == true => "Spam check: sender checks failed",
+            _ when !spam.HasHeaders => "Spam check: no verdict from your mail server",
             _ when spam.Trust == SpamHeaderTrust.Untrusted => "Spam check: ignored (added by the sender)",
-            SpamVerdict.Spam => $"Spam check: spam · score {Score(spam)} (your threshold {thresholdText})",
-            SpamVerdict.Suspicious => $"Spam check: suspicious · score {Score(spam)} (your threshold {thresholdText})",
-            SpamVerdict.Clean => $"Spam check: passed · score {Score(spam)} (your threshold {thresholdText})",
+            SpamVerdict.Spam => $"Spam check ({spam.FilterName}): spam · score {Score(spam)} (your threshold {thresholdText})",
+            SpamVerdict.Suspicious => $"Spam check ({spam.FilterName}): suspicious · score {Score(spam)} (your threshold {thresholdText})",
+            SpamVerdict.Clean => $"Spam check ({spam.FilterName}): passed · score {Score(spam)} (your threshold {thresholdText})",
             _ => "Spam check: no score reported",
         };
 
         var lines = new List<string>();
         if (!spam.HasHeaders)
         {
-            lines.Add("This message has no SpamAssassin headers. That doesn't mean it's safe — your provider may use a different spam filter or none.");
+            lines.Add("Your mail server didn't record a spam verdict in this message. SidePhase Mail reads SpamAssassin, Rspamd, "
+                      + "Microsoft 365 / Outlook.com and Barracuda results; some providers (Gmail, for example) filter spam without "
+                      + "saying so and simply file it in Junk. That doesn't mean this message is safe.");
+            if (!_settings.Current.LocalSpamLearning)
+                lines.Add("Turn on local spam learning (Settings → Spam) and mark messages Junk / Not junk to let SidePhase Mail learn what you consider spam.");
         }
         else
         {
@@ -398,6 +409,12 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             if (spam.RequiredScore is { } required) lines.Add($"Server threshold: {required.ToString("0.0", culture)}.");
             if (spam.HasConflictingHeaders) lines.Add("The message carries conflicting spam headers; the one added last is used.");
             if (spam.Version is { } version) lines.Add($"SpamAssassin {version}.");
+        }
+
+        if (spam.Authentication is { } auth)
+        {
+            lines.Add($"Sender checks{(auth.CheckedBy is null ? string.Empty : $" by {auth.CheckedBy}")}: {auth.Describe()}."
+                      + (auth.LooksForged ? " The From address may be forged." : string.Empty));
         }
 
         SpamCheckDetail = string.Join(" ", lines);

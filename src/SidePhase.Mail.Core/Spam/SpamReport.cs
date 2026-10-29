@@ -1,14 +1,26 @@
 namespace SidePhase.Mail.Core.Spam;
 
 /// <summary>
-/// What the receiving server's SpamAssassin said about a message, parsed from its X-Spam-* headers.
+/// What the receiving server's spam filter said about a message, parsed from the headers it added (SpamAssassin,
+/// Rspamd, Microsoft 365 / Outlook.com, Barracuda), plus the sender checks it recorded (SPF, DKIM, DMARC).
 /// </summary>
 public sealed record SpamReport
 {
     public static SpamReport None { get; } = new();
 
-    /// <summary>True when at least one recognised SpamAssassin header was present.</summary>
+    /// <summary>True when at least one recognised spam-filter header was present.</summary>
     public bool HasHeaders { get; init; }
+
+    /// <summary>The filter that wrote the headers (see <see cref="SpamFilters"/>); null means SpamAssassin (older data).</summary>
+    public string? Filter { get; init; }
+
+    public string FilterName => Filter ?? SpamFilters.SpamAssassin;
+
+    /// <summary>SPF / DKIM / DMARC results recorded by the receiving server, when it added them in transit.</summary>
+    public SenderAuthentication? Authentication { get; init; }
+
+    /// <summary>Anything worth keeping: filter headers or sender checks.</summary>
+    public bool HasInformation => HasHeaders || Authentication is not null;
 
     /// <summary>The server's own yes/no decision (X-Spam-Flag or the first word of X-Spam-Status).</summary>
     public bool? ServerFlaggedAsSpam { get; init; }
@@ -65,4 +77,31 @@ public enum SpamVerdict
     /// <summary>Score is approaching the threshold.</summary>
     Suspicious,
     Spam,
+}
+
+/// <summary>Names of the spam filters whose headers are understood.</summary>
+public static class SpamFilters
+{
+    public const string SpamAssassin = "SpamAssassin";
+    public const string Rspamd = "Rspamd";
+    public const string Microsoft = "Microsoft";
+    public const string Barracuda = "Barracuda";
+    public const string Generic = "Your mail server";
+}
+
+/// <summary>
+/// Sender checks from the receiving server's <c>Authentication-Results</c> header: did the message really come from
+/// the domain it claims (SPF), is it signed by it (DKIM), and does that line up with the From address (DMARC).
+/// Values are as reported: pass, fail, softfail, neutral, none, temperror, permerror; null when not reported.
+/// </summary>
+public sealed record SenderAuthentication(string? Spf, string? Dkim, string? Dmarc, string? CheckedBy)
+{
+    /// <summary>DMARC failed, or (without a DMARC result) both SPF and DKIM failed: the From address is likely forged.</summary>
+    public bool LooksForged =>
+        Is(Dmarc, "fail") || (Dmarc is null && Is(Spf, "fail") && Dkim is not null && !Is(Dkim, "pass"));
+
+    public string Describe() => string.Join(" · ", new[] { ("SPF", Spf), ("DKIM", Dkim), ("DMARC", Dmarc) }
+        .Where(p => p.Item2 is not null).Select(p => $"{p.Item1} {p.Item2}"));
+
+    private static bool Is(string? value, string expected) => string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
 }

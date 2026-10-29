@@ -9,6 +9,15 @@ feature has been checked by hand on Windows.
 
 ## Unreleased
 
+### Added
+- **More spam filters understood.** Besides SpamAssassin, the verdicts of Rspamd, Microsoft 365 / Outlook.com (spam
+  confidence level) and Barracuda are read, plus a bare `X-Spam: yes`. Each filter's score is judged on its own scale,
+  adjusted in proportion to your threshold setting. Headers the sender wrote themselves are still ignored.
+- **Sender checks.** The SPF, DKIM and DMARC results recorded by your mail server (Gmail, Outlook.com and most hosts add
+  them) are shown in the spam details. A message whose From address fails them is marked *suspicious* with a warning;
+  nothing is moved or deleted because of it.
+- Messages already downloaded are re-checked when opened.
+
 ### Changed
 - Attachments are found with the normal search: typing a file name (or part of one) finds the messages it's attached
   to; `filename:` and `filetype:` still work. The separate *Attachments* page in the sidebar is gone.
