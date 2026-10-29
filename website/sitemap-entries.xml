@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Merge these product entries into the existing Studio sitemap; preserve existing URLs. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://sidephasestudio.com/sidephasemail/</loc></url>
+  <url><loc>https://sidephasestudio.com/sidephasemail/privacy/</loc></url>
+  <url><loc>https://sidephasestudio.com/sidephasemail/terms/</loc></url>
+  <url><loc>https://sidephasestudio.com/sidephasemail/support/</loc></url>
+</urlset>

@@ -20,6 +20,7 @@ BundleArtifacts/
 
 # Secrets / local configuration (never commit OAuth client secrets or tokens)
 *.local.json
+*.local.props
 secrets.json
 appsettings.Development.json
 

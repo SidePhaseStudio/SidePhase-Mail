@@ -15,6 +15,7 @@ public sealed class CredentialProvider(ISecretStore secrets, OAuthClient oauth, 
 {
     private static readonly TimeSpan RefreshMargin = TimeSpan.FromMinutes(3);
     private readonly ConcurrentDictionary<Guid, OAuthTokens> _tokens = new();
+    private readonly ConcurrentDictionary<Guid, byte> _removed = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _refreshLocks = new();
 
     // Accounts whose refresh token the provider rejected (revoked or expired). Asking again on every sync would only
@@ -30,12 +31,12 @@ public sealed class CredentialProvider(ISecretStore secrets, OAuthClient oauth, 
             return new MailCredential(settings.Username, password, null);
         }
 
-        if (_signInRequired.TryGetValue(accountId, out var reason)) throw new OAuthException(reason);
-
         var gate = _refreshLocks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            ThrowIfRemoved(accountId);
+            if (_signInRequired.TryGetValue(accountId, out var reason)) throw new OAuthException(reason);
             var tokens = _tokens.TryGetValue(accountId, out var cached) ? cached : await LoadTokensAsync(accountId, ct).ConfigureAwait(false);
             if (tokens is null)
             {
@@ -61,7 +62,7 @@ public sealed class CredentialProvider(ISecretStore secrets, OAuthClient oauth, 
                     throw;
                 }
 
-                await SaveTokensAsync(accountId, tokens, ct).ConfigureAwait(false);
+                await SaveTokensCoreAsync(accountId, tokens, ct).ConfigureAwait(false);
             }
 
             _tokens[accountId] = tokens;
@@ -78,6 +79,18 @@ public sealed class CredentialProvider(ISecretStore secrets, OAuthClient oauth, 
 
     public async Task SaveTokensAsync(Guid accountId, OAuthTokens tokens, CancellationToken ct = default)
     {
+        var gate = _refreshLocks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ThrowIfRemoved(accountId);
+            await SaveTokensCoreAsync(accountId, tokens, ct).ConfigureAwait(false);
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task SaveTokensCoreAsync(Guid accountId, OAuthTokens tokens, CancellationToken ct)
+    {
         // Save first: if writing fails, the next attempt starts from what's on disk rather than from tokens that
         // only ever existed in memory.
         await secrets.SetAsync(SecretKeys.OAuthTokens(accountId), JsonSerializer.Serialize(tokens), ct).ConfigureAwait(false);
@@ -87,9 +100,22 @@ public sealed class CredentialProvider(ISecretStore secrets, OAuthClient oauth, 
 
     public async Task DeleteAsync(Guid accountId, CancellationToken ct = default)
     {
-        _tokens.TryRemove(accountId, out _);
-        _signInRequired.TryRemove(accountId, out _);
-        await secrets.DeletePrefixAsync(SecretKeys.AccountPrefix(accountId), ct).ConfigureAwait(false);
+        var gate = _refreshLocks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // A concurrent refresh must finish before deletion and must never recreate a removed account's tokens.
+            await secrets.DeletePrefixAsync(SecretKeys.AccountPrefix(accountId), ct).ConfigureAwait(false);
+            _removed[accountId] = 0;
+            _tokens.TryRemove(accountId, out _);
+            _signInRequired.TryRemove(accountId, out _);
+        }
+        finally { gate.Release(); }
+    }
+
+    private void ThrowIfRemoved(Guid accountId)
+    {
+        if (_removed.ContainsKey(accountId)) throw new OAuthException("This account has been removed.");
     }
 
     private async Task<OAuthTokens?> LoadTokensAsync(Guid accountId, CancellationToken ct)

@@ -39,7 +39,7 @@ public sealed class LiveDataSourceIntegrationTests : IAsyncLifetime
         var settings = new SettingsService(store);
         await settings.LoadAsync();
         var secrets = new FileSecretStore(paths, new XorProtector());
-        var oauthConfig = new OAuthConfiguration(settings, secrets);
+        var oauthConfig = new OAuthConfiguration(settings);
         var oauth = new OAuthClient(new HttpClient(), new NoBrowser());
         var credentials = new CredentialProvider(secrets, oauth, oauthConfig);
         var cache = new MailCache(new MailDatabase(paths));

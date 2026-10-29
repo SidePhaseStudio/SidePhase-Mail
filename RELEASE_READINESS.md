@@ -13,12 +13,12 @@ CI), the CI packaging test (MSIX install → launch → uninstall on Windows), o
 | --- | --- | --- |
 | **"Sent but not arriving / not in Sent" report** (see Known issues) | Reported on a real account during this milestone; not reproduced against the test server. Must be diagnosed with the new send log before any wider beta. | Owner + dev |
 | Hand-check of the UI on Windows 11 | Most UI is verified only by compiling and starting (CI smoke test); see *Implemented but not fully tested*. | Owner / beta testers |
-| Google OAuth app + verification | Gmail sign-in has never been tested against Google; public use needs restricted-scope verification and CASA ([ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md#before-public-release-provider-configuration-and-verification)). | SidePhase Studio |
-| Microsoft app registration + publisher verification | Outlook/Microsoft 365 sign-in never tested against Microsoft. | SidePhase Studio |
+| Google OAuth app + verification | Real Google sign-in, IMAP/SMTP connection tests and Gmail inbox sync verified on 29 October 2026; public use needs restricted-scope verification and a security-assessment applicability determination ([ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md#before-public-release-provider-configuration-and-verification)). | SidePhase Studio |
+| Microsoft app registration + publisher verification | Studio public-client registration, delegated scopes, desktop redirect and branding configured; Client ID bundled. Personal Outlook.com sign-in and inbox sync verified on 29 October 2026. Publisher verification, work/school and remaining live checks pending. | SidePhase Studio |
 | Partner Center name reservation | Real package identity (Name/Publisher) replaces the placeholders in `Package.appxmanifest`. | SidePhase Studio |
 | Code signing for non-Store packages | CI/beta MSIX are unsigned (testers use a local test certificate). | SidePhase Studio |
 | Final artwork | Package tiles/logos are placeholders generated from the app logo. | SidePhase Studio |
-| Privacy policy published on SidePhase Studio's domain | Required by Google, Microsoft and the Store. Draft: [PRIVACY.md](PRIVACY.md). | SidePhase Studio |
+| Policy and product pages | Published at [sidephasestudio.com/sidephasemail/](https://sidephasestudio.com/sidephasemail/), linked from the app and Google configuration. Google review remains pending. Source: [PRIVACY.md](PRIVACY.md). | SidePhase Studio |
 
 ## Feature status
 
@@ -56,8 +56,8 @@ on Windows or against the real provider · **Partial** · **Not implemented**.
 | Feature | Status | Evidence / notes |
 | --- | --- | --- |
 | Other (IMAP/SMTP with password or app password) | **Tested 🔌** | Known-provider table, autoconfig, ISPDB, guesses, manual settings, test before save. |
-| Gmail OAuth | **Not fully tested** | Unit-tested with fake endpoints only; **never tested with Google**. Needs a client ID and verification. App passwords work meanwhile. |
-| Microsoft OAuth | **Not fully tested** | Unit-tested with fake endpoints only; **never tested with Microsoft**. Outlook.com can't use passwords, so it needs a registered app. |
+| Gmail OAuth | **Not fully tested** | Real browser sign-in, account creation and Gmail inbox sync verified on 29 October 2026. Public verification and live send/refresh/revoke/removal checks remain pending. |
+| Microsoft OAuth | **Not fully tested** | Studio registration is bundled; fake-endpoint tests pass. Real Outlook.com sign-in and inbox sync verified in the portable build on 29 October 2026. Publisher verification, work/school, MSIX and live send/lifecycle validation are pending. |
 | OAuth refresh and failure handling | **Tested** (fakes) | M6: outages are temporary (no sign-in prompt); revoked tokens stop retrying; SMTP refreshes once. |
 | Google/Microsoft choice for company domains | **Tested** (logic) | M6. |
 | Thunderbird settings import (beta) | **Partial** | Server settings only (prefs.js), with consent; never passwords. Mail archives (mbox), address books (use Thunderbird's vCard export → Contacts → Import) and flags are **not imported**. |
@@ -117,4 +117,24 @@ connection errors; tested with the test server only).
 ## Security and privacy
 
 See [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) (findings and fixes in this milestone) and the
-[privacy policy draft](PRIVACY.md).
+[published privacy policy](https://sidephasestudio.com/sidephasemail/privacy/).
+
+### Google OAuth distribution follow-up
+
+The Studio Desktop Client ID is now embedded in both build channels; Google client setup fields/secrets have been
+removed from customer settings. Browser + PKCE, refresh, DPAPI storage and MailKit XOAUTH2 are reused.
+See GOOGLE_SETUP.md for restricted-scope justification, assessment applicability and the release checklist.
+Real Gmail consent, token exchange, the existing IMAP/SMTP connection checks, account creation and inbox sync were
+verified on 29 October 2026 in the portable Windows build. The actual Gmail Inbox, Drafts, Sent Mail and labels appeared
+and messages downloaded. Initial omission of the Desktop value produced `invalid_request`; supplying Google's issued
+Desktop value fixed the exchange. 473 tests passed, 15 local-server integration tests skipped; portable publish and MSIX
+build passed. No real send/delivery, expiry-driven refresh, revoke/reconnect, account-removal or installed-MSIX Google
+sign-in test is claimed. Those remain in GOOGLE_SETUP.md's release checklist.
+The saved Google consent-screen support address is now support@sidephasestudio.com, selected using its separate Google Account; the original Gmail account remains project Owner.
+
+### Public app pages (29 October 2026)
+
+Product, privacy, terms/licence and support/data-removal pages are published under `/sidephasemail/`.
+Welcome, Add account and Settings link to the published policies; About also links to the product and support pages.
+The privacy policy discloses retained outbox items and other local copies rather than promising complete erasure on
+account removal. The Studio homepage is unchanged; only the dedicated site's exact redirects and sitemap were extended.

@@ -1,88 +1,59 @@
-# SidePhase Mail privacy policy (DRAFT)
+# SidePhase Mail privacy policy
 
-> **Draft for review. Not yet published.** It describes SidePhase Mail 0.6 (beta) as built from this repository,
-> checked against the code. It must be reviewed (including legally) and published on SidePhase Studio's own website
-> before a public release, and updated whenever the app's data handling changes, for example if sponsored content
-> is ever switched on.
+Published policy: https://sidephasestudio.com/sidephasemail/privacy/
 
-**Who we are.** SidePhase Mail is an email app for Windows made by SidePhase Studio. Contact: *[SidePhase Studio contact
-address to be added]*.
+Effective / last updated: 29 October 2026.
+
+## Who provides the app
+
+SidePhase Mail is provided by SidePhase Studio. For support, privacy questions or requests about information you have sent us, contact [support@sidephasestudio.com](mailto:support@sidephasestudio.com). This policy covers the current SidePhase Mail beta and its product pages.
 
 ## The short version
 
-* Your email, contacts, passwords and settings **stay on your PC** and go only to **the mail providers you add**
-  (for example your Gmail, Outlook or other mail server).
-* SidePhase Studio **does not run any server that receives your email or your data**. The app has no analytics, no
-  telemetry, no crash reporting to us, no ad tracking and no account with us.
-* Some features contact other services, listed below, and only when you use them.
+Your mail accounts connect directly from your PC to the providers you choose. SidePhase Studio does not operate a service that receives or stores your mailbox, mail-account passwords or OAuth tokens. We do not sell Google user data, use it for advertising profiles, or send it to an AI service. You do not create a SidePhase Studio account to use the app.
 
-## What SidePhase Mail stores on your PC
+## Google access and Limited Use
 
-In the app's data folder (`%LOCALAPPDATA%\SidePhase Mail`, or the installed app's own package folder):
+When you add Gmail, Google asks you to authorise mail access and confirmation of your email address. Mail access lets the app synchronise and display messages, fetch attachments, compose and send mail, save drafts, change flags, organise folders and permanently delete messages when you explicitly confirm that action. Google requires the full-mail scope for this IMAP/SMTP access. Ordinary Delete moves mail to Trash; confirmed permanent deletion cannot be undone through the app.
 
-* **Your mail:** copies of message headers, previews, the messages you open and their attachments when you save them,
-  drafts, messages waiting to be sent, and a search index of this mail.
-* **Account settings:** names, email addresses, server names and ports. **Passwords and sign-in tokens** are stored
-  separately, encrypted with Windows (DPAPI), so only your Windows user account on this PC can decrypt them.
-* **Things you create:** contacts (and people you've written to, for suggestions), pins, favourites, snoozes,
-  reminders, categories, rules, smart folders, signatures, preferences.
-* **Optional local spam learning:** if you mark messages as junk or not junk, word counts from those messages'
-  sender domain, subject and preview are kept locally to improve suggestions. You can turn it off and reset it.
-* **Diagnostic logs:** errors and a record of sending steps (such as the mail server's reply), kept on your PC to
-  help diagnose problems. They're designed to exclude message contents, subjects, passwords and tokens; email
-  addresses are shortened to the domain. Nothing is sent to us. You can share them if you choose to report a bug.
+We comply with the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including its Limited Use requirements, when using or transferring information received from Google APIs. Google data is used only for the app’s visible email features. It is not sold, used for targeted advertising, used to determine creditworthiness, or used to train general-purpose AI models. SidePhase Studio has no routine access to read your Google messages. If you choose to share specific messages or diagnostics with support, we use that material to handle your request; please minimise and redact it.
 
-Uninstalling the installed app removes its data folder. For the portable version, delete the folder yourself.
-Removing an account in the app deletes that account's local data. Mail on your provider's server is never deleted by
-removing an account or uninstalling.
+## Information stored on your PC
 
-## Which services the app contacts, and when
+The app stores account names, email addresses and connection settings; cached message headers, previews and downloaded bodies; downloaded or queued attachments; drafts, outbox items and search indexes; contacts, signatures, rules, categories, snoozes, pins and preferences. Optional local spam learning keeps word counts derived from messages you classify. This processing stays on the PC.
 
-| Service | When | What is sent |
-| --- | --- | --- |
-| **Your mail providers** (IMAP and SMTP servers you configure) | To sync, read, organise and send mail | What any mail app sends: your sign-in and the mail you read, send or change. |
-| **Google / Microsoft sign-in** (accounts.google.com, oauth2.googleapis.com, login.microsoftonline.com) | When you sign in with Google or Microsoft, and to renew access in the background | The standard OAuth requests. Your password goes only to Google or Microsoft in your browser, never to the app. |
-| **Your email provider's setup service** (`autoconfig.<your domain>` or `<your domain>/.well-known/autoconfig`) | When you add an account and its settings aren't built in | Your email address, to look up its server settings (the standard "autoconfig" method). |
-| **Mozilla's mail settings database** (autoconfig.thunderbird.net) | When you add an account and the steps above found nothing | **Only the domain** of your email address (for example `example.com`), not the full address. |
-| **Websites in messages** | Only when you allow remote images for a message, or open a link after confirming | Requests for those images, or the page you open, as any browser would. Remote images are blocked by default, are fetched without cookies, and never from addresses on your local network. |
-| **GitHub** (github.com) | Only if you open the project or bug-report links in Settings, or install a beta update through Windows App Installer | Ordinary web requests. |
+Passwords for password-based accounts and OAuth access/refresh tokens are stored separately using Windows DPAPI for the current Windows user. They are not stored in the mail database or preferences. The mail cache itself is not encrypted by the app: protect your Windows account, device and backups appropriately. Portable and installed editions keep separate app-data folders; the installed edition can copy portable data on first use.
 
-**Not contacted:** SidePhase Studio servers (none exist for the app), advertising networks, analytics services.
+## How information moves
 
-## Windows and Microsoft components
+Mail, account identifiers and authentication credentials are transmitted directly to your selected mail provider over TLS to provide mail functions. Google or Microsoft sign-in uses that provider’s own website in your browser; your provider password is not entered into SidePhase Mail. Tokens go directly to the provider when authenticating or refreshing access.
 
-SidePhase Mail uses parts of Windows that have their own privacy settings, controlled by Windows rather than by us:
-the **Microsoft Edge WebView2** runtime (used to display email safely), **Windows notifications**, **Windows Error
-Reporting** (Windows may send crash reports to Microsoft according to your Windows diagnostic settings), and, for the
-Store version, the **Microsoft Store** (installation, updates and, in future, purchases). See Microsoft's privacy
-statement for these.
+Account setup may contact your provider’s autoconfiguration service with your email address. The Mozilla Thunderbird settings database is queried with the email domain only when used as a fallback. If you permit remote images, the relevant image hosts receive normal network requests; those images are blocked by default. Opening external links uses your web browser and the destination’s policies apply.
 
-## Promotions
+## Promotions, analytics and diagnostics
 
-The main window can show one banner, labelled *Promotion*, in its footer. In this version it only ever shows SidePhase
-Studio promotions that are **built into the app** (none is switched on yet, so the footer stays empty). Showing them
-contacts nothing, and nothing about what you see or click is recorded or sent. Clicking a promotion opens its web page
-in your browser after showing you the address. Promotions never use your email, contacts, address or anything about
-you, are the same for everyone, and never appear inside the message list or your messages. You can hide them for the
-session from the banner.
+The app has no SidePhase Studio analytics, tracking identifiers, automatic crash upload or automatic support-data upload. Local diagnostics are designed to exclude message contents, subjects, passwords and tokens, and to shorten addresses to their domain. Review logs before choosing to share them.
 
-The app can also be configured to fetch promotions from a separate SidePhase Studio service, but **that is off** and
-needs an explicit configuration file. If it is switched on in a future version, the only information sent will be the
-banner position, the app version and your display language (no cookies, identifiers or anything about your mail), and
-this policy will be updated first.
+The beta can show bundled Studio promotions or a built-in preview banner. These do not use mail or contacts to choose content. A separate remote-promotion mode exists but is off unless explicitly configured: it requests a banner using placement, app version and display language, with normal network connection metadata. It sends no mailbox data, OAuth tokens, cookies or user identifier. Gmail data is never used for advertising. There is currently no in-app purchase available.
 
-## Your choices
+## Retention, removal and revocation
 
-* Remove an account, or clear the local cache (Settings → Privacy), at any time.
-* Turn off remote images (the default), local spam learning, and notifications.
-* Look at, copy or delete the data folder (Settings → About → Data folder).
+Your local data remains under your control while you use the app. Removing an account deletes its active cached mailbox and saved sign-in from that installation, without deleting server mail. Queued outbox messages are deliberately retained so unsent work is not lost. Separate contacts, crash-recovery files, saved attachments, database backups, portable copies and your own device backups can also remain. Account removal is not a secure erase of every historical copy.
 
-## Children
+Clear local data removes cached messages, which download again if the account is still connected; it does not sign you out. To remove all app-held local data, remove accounts, cancel unwanted queued messages, close the app and remove its app-data folder and any retained copies. Exported attachments and your backups must be removed separately. Revoke Google access independently in your Google Account’s third-party connections; revocation does not erase copies already downloaded to your PC. See [the data-removal instructions](/sidephasemail/support/#remove-data).
 
-SidePhase Mail is a general-purpose email client and isn't directed at children.
+## Support correspondence and your choices
 
-## Changes
+If you contact support, we receive the address, message and any material you choose to send. We use it to answer your enquiry, investigate the reported issue and keep necessary support records; we do not request your mailbox password or OAuth tokens. Where applicable, our basis for handling support correspondence is our legitimate interest in providing support, or a legal obligation. We keep it only as long as reasonably needed for those purposes and applicable obligations. Contact us to request access, correction or deletion, or to raise a privacy concern.
 
-We'll update this policy when the app's data handling changes, and say what changed in the release notes.
+Your mailbox is held by you and your mail provider, so we cannot retrieve or erase local mailbox data on your behalf. You can control remote images, notifications and local spam learning in Settings, remove accounts and revoke provider permissions. Where applicable, you may also have rights to restriction, objection or portability and to complain to your data-protection authority, including the UK Information Commissioner’s Office.
 
-*Last updated: [date of publication]*
+## Website visits and third-party services
+
+These product pages have no visitor accounts, forms, analytics scripts or advertising scripts. Their own code does not set cookies or use browser storage. Cloudflare and hosting/network services process connection information, such as IP addresses and request details, to deliver and protect the pages; security features may use their own cookies. See [Cloudflare’s privacy policy](https://www.cloudflare.com/privacypolicy/) and the [Studio website privacy notice](/privacy.html).
+
+GitHub processes visits when you open project/download/issue links. Windows, WebView2, Windows Error Reporting and the Microsoft Store have their own privacy practices and settings. Windows may send diagnostics to Microsoft according to your system settings. These services do not give SidePhase Studio routine access to your mailbox.
+
+## Children and policy changes
+
+SidePhase Mail is a general-purpose email client and is not directed at children. We update this policy when the app’s handling of information changes. Material changes will be explained in release notes or the app as appropriate; any new use of Google data requiring consent will be presented before that use begins.
