@@ -153,7 +153,9 @@ public sealed partial class MailPage : Page
             return;
         }
 
-        App.GetService<Services.WindowService>().OpenMessage(item.Summary, item.ThreadMessages);
+        // Open once the double-click's own input is done, so the list doesn't take focus back from the new window.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => App.GetService<Services.WindowService>().OpenMessage(item.Summary, item.ThreadMessages));
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)

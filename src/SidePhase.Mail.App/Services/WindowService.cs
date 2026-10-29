@@ -21,5 +21,9 @@ public sealed class WindowService(IServiceProvider services)
         var viewModel = ActivatorUtilities.CreateInstance<ReadingPaneViewModel>(services);
         var window = new MessageWindow(viewModel, message, thread);
         window.Activate();
+
+        // The click that opened it (a double-click in the list) finishes after this and would hand focus back to the
+        // main window, leaving the new window behind it: bring it to the front once that input has been processed.
+        window.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => WindowHelper.BringToFront(window));
     }
 }

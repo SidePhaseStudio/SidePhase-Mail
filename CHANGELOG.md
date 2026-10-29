@@ -9,7 +9,13 @@ feature has been checked by hand on Windows.
 
 ## Unreleased
 
+### Changed
+- Attachments are found with the normal search: typing a file name (or part of one) finds the messages it's attached
+  to; `filename:` and `filetype:` still work. The separate *Attachments* page in the sidebar is gone.
+- *Add account* moved from the sidebar to the top of *Settings → Accounts*.
+
 ### Fixed
+- A message opened by double-click now comes to the front instead of opening behind the main window.
 - Opening a message in an *Unread* smart folder or with the *Unread* filter no longer marks every message in the view
   as read. The open message now stays listed until you move to another one.
 - Long messages can be scrolled with the mouse wheel and touchpad again (an invisible layer over the message was

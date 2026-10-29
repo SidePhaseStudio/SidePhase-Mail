@@ -55,19 +55,9 @@
         SelectionChanged="OnNavSelectionChanged">
 
       <NavigationView.FooterMenuItems>
-        <NavigationViewItem x:Name="AttachmentsItem" Content="Attachments" Tag="attachments" ToolTipService.ToolTip="Find attachments">
-          <NavigationViewItem.Icon>
-            <FontIcon Glyph="&#xE723;" />
-          </NavigationViewItem.Icon>
-        </NavigationViewItem>
         <NavigationViewItem x:Name="ContactsItem" Content="Contacts" Tag="contacts" ToolTipService.ToolTip="Contacts">
           <NavigationViewItem.Icon>
             <FontIcon Glyph="&#xE716;" />
-          </NavigationViewItem.Icon>
-        </NavigationViewItem>
-        <NavigationViewItem x:Name="AddAccountItem" Content="Add account" Tag="add-account" ToolTipService.ToolTip="Add account">
-          <NavigationViewItem.Icon>
-            <FontIcon Glyph="&#xE8FA;" />
           </NavigationViewItem.Icon>
         </NavigationViewItem>
         <NavigationViewItem x:Name="SettingsItem" Content="Settings" Tag="settings" ToolTipService.ToolTip="Settings">

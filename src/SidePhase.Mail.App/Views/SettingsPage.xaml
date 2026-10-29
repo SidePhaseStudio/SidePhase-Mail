@@ -184,6 +184,9 @@
         <!-- ============================ Accounts ============================ -->
         <StackPanel x:Name="AccountsSection" Spacing="4" Visibility="Collapsed">
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Your accounts" />
+          <controls:SettingsCard Description="Google, Microsoft (Outlook.com, Hotmail, Live, Microsoft 365) or any IMAP/SMTP provider." Glyph="&#xE8FA;" Header="Add an account">
+            <Button Click="OnAddAccountClick" Content="Add account…" Style="{StaticResource SpPrimaryButtonStyle}" />
+          </controls:SettingsCard>
           <ItemsRepeater ItemsSource="{x:Bind ViewModel.Accounts}">
             <ItemsRepeater.Layout>
               <StackLayout Spacing="4" />
@@ -280,9 +283,6 @@
             </ItemsRepeater.ItemTemplate>
           </ItemsRepeater>
 
-          <controls:SettingsCard Description="Google, Microsoft (Outlook.com, Hotmail, Live, Microsoft 365) or any IMAP/SMTP provider." Glyph="&#xE8FA;" Header="Add an account">
-            <Button Click="OnAddAccountClick" Content="Add account…" Style="{StaticResource SpSecondaryButtonStyle}" />
-          </controls:SettingsCard>
           <controls:SettingsCard Description="Show the fictional sample mailbox instead of your real accounts. The two are never mixed, and your accounts come back when you turn this off." Glyph="&#xE7BE;" Header="Demonstration mailbox">
             <ToggleSwitch IsOn="{x:Bind ViewModel.UseDemoMailbox, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
