@@ -22,7 +22,8 @@ public sealed class MessageCommandService(
     WindowService windows,
     IClock clock,
     Core.Spam.LocalSpamFilter localFilter,
-    Infrastructure.Storage.AppDataPaths paths)
+    Infrastructure.Storage.AppDataPaths paths,
+    PendingRemovals pending)
 {
     /// <summary>Teaches the local filter from an explicit Junk / Not junk choice (real accounts only).</summary>
     private void Learn(IEnumerable<MessageSummary> messages, bool isSpam)
@@ -91,7 +92,8 @@ public sealed class MessageCommandService(
         });
         if (targets.Count >= 50) toasts.Show($"Moving {targets.Count} messages to {folder.Name}…");
 
-        var moves = await mail.MoveToFolderAsync(targets, folder.Id, progress);
+        IReadOnlyList<MoveRecord> moves;
+        using (pending.Hide(targets)) moves = await mail.MoveToFolderAsync(targets, folder.Id, progress);
         var note = otherAccounts > 0 ? $" ({otherAccounts} from other accounts stayed where they were)" : string.Empty;
         ConfirmMoves(moves, targets.Count,
             moves.Count == 1 ? $"Moved to {folder.Name}{note}" : $"Moved {moves.Count} messages to {folder.Name}{note}");
@@ -120,7 +122,8 @@ public sealed class MessageCommandService(
             return;
         }
 
-        var moves = await mail.MoveToAsync(targets, FolderKind.Archive);
+        IReadOnlyList<MoveRecord> moves;
+        using (pending.Hide(targets)) moves = await mail.MoveToAsync(targets, FolderKind.Archive);
         ConfirmMoves(moves, targets.Count, moves.Count == 1 ? "Archived" : $"Archived {moves.Count} messages");
     }
 
@@ -140,7 +143,9 @@ public sealed class MessageCommandService(
                 "Delete permanently");
             if (confirmed)
             {
-                var deleted = await mail.DeletePermanentlyAsync(inTrash.Select(m => m.Id).ToList());
+                var ids = inTrash.Select(m => m.Id).ToList();
+                int deleted;
+                using (pending.Hide(ids)) deleted = await mail.DeletePermanentlyAsync(ids);
                 if (deleted == inTrash.Count) toasts.Show(deleted == 1 ? "Message permanently deleted." : "Messages permanently deleted.");
                 else if (deleted > 0) toasts.Show($"{deleted} of {inTrash.Count} messages were permanently deleted; the server refused the rest.", ToastKind.Warning);
                 // Nothing deleted: the server's error is already on screen; don't cover it with a success notice.
@@ -150,7 +155,8 @@ public sealed class MessageCommandService(
         }
 
         var targets = messages.Where(m => m.FolderKind != FolderKind.Trash).Select(m => m.Id).ToList();
-        var moves = await mail.MoveToAsync(targets, FolderKind.Trash);
+        IReadOnlyList<MoveRecord> moves;
+        using (pending.Hide(targets)) moves = await mail.MoveToAsync(targets, FolderKind.Trash);
         ConfirmMoves(moves, targets.Count, moves.Count == 1 ? "Moved to Trash" : $"Moved {moves.Count} messages to Trash");
     }
 
@@ -158,7 +164,9 @@ public sealed class MessageCommandService(
 
     public async Task MoveToJunkAsync(IReadOnlyList<MessageSummary> messages)
     {
-        var moves = await mail.MoveToAsync(messages.Select(m => m.Id).ToList(), FolderKind.Junk);
+        var junkIds = messages.Select(m => m.Id).ToList();
+        IReadOnlyList<MoveRecord> moves;
+        using (pending.Hide(junkIds)) moves = await mail.MoveToAsync(junkIds, FolderKind.Junk);
         // Learn only from messages that actually moved (a refused move teaches the filter nothing).
         var moved = moves.Select(m => m.MessageId).ToHashSet();
         Learn(messages.Where(m => moved.Contains(m.Id)).ToList(), isSpam: true);
