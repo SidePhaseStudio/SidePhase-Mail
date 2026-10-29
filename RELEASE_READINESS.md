@@ -130,7 +130,7 @@ and messages downloaded. Initial omission of the Desktop value produced `invalid
 Desktop value fixed the exchange. 473 tests passed, 15 local-server integration tests skipped; portable publish and MSIX
 build passed. No real send/delivery, expiry-driven refresh, revoke/reconnect, account-removal or installed-MSIX Google
 sign-in test is claimed. Those remain in GOOGLE_SETUP.md's release checklist.
-The temporary Google consent-screen Gmail support address must become support@sidephasestudio.com before release.
+The saved Google consent-screen support address is now support@sidephasestudio.com, selected using its separate Google Account; the original Gmail account remains project Owner.
 
 ### Public app pages (29 October 2026)
 
