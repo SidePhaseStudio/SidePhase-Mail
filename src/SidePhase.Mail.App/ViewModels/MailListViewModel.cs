@@ -33,6 +33,7 @@ public sealed partial class MailListViewModel : ObservableObject
     private bool _refreshQueued;
     private int _lastSelectedIndex = -1;
     private bool _suppressAutoAdvance;
+    private readonly PendingRemovals _pending;
 
     /// <summary>
     /// The open message(s) and the folder each was in when opened. They stay listed while open even if they stop
@@ -56,8 +57,12 @@ public sealed partial class MailListViewModel : ObservableObject
         MessageCommandService commands,
         ToastService toasts,
         ReadingPaneViewModel reading,
-        SmartFolderService smartFolders)
+        SmartFolderService smartFolders,
+        PendingRemovals pending)
     {
+        // Deleted/moved messages leave the list at once, not when the server has finished.
+        _pending = pending;
+        _pending.Changed += (_, _) => ui.Post(() => _ = RefreshAsync());
         _smartFolders = smartFolders;
         _smartFolders.Changed += (_, _) => QueueRefresh();
         _mail = mail;
@@ -323,9 +328,8 @@ public sealed partial class MailListViewModel : ObservableObject
 
         _ = Reading.ShowAsync(value?.Summary, value?.ThreadMessages);
 
-        // Opening a conversation expands it, like Gmail.
-        if (value is { IsConversation: true, IsExpanded: false, ConversationKey: { } key } && _expanded.Add(key)) QueueRefresh();
-
+        // Conversations stay collapsed when opened: the reading pane shows the whole thread, and the arrow on the row
+        // expands it in the list.
         // Offline, marking as read could only fail and flip back; it happens next time the message is opened online.
         if (value is { IsUnread: true } && _settings.Current.MarkAsReadOnOpen && (_mail.IsDemo || App.GetService<Services.ConnectivityService>().IsOnline))
         {
@@ -503,7 +507,9 @@ public sealed partial class MailListViewModel : ObservableObject
     {
         _refreshQueued = false;
         var version = ++_refreshVersion;
-        var all = await _mail.GetMessagesAsync();
+        IReadOnlyList<MessageSummary> all = await _mail.GetMessagesAsync();
+        var hidden = _pending.Snapshot();
+        if (hidden.Count > 0) all = all.Where(m => !hidden.Contains(m.Id)).ToList();
         var accounts = await _mail.GetAccountsAsync();
         if (version != _refreshVersion) return; // a newer refresh superseded this one
 

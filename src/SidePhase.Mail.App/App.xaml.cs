@@ -337,6 +337,7 @@ public partial class App : Application
         services.AddSingleton<ToastService>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<WindowService>();
+        services.AddSingleton<PendingRemovals>();
         services.AddSingleton<MessageCommandService>();
         services.AddSingleton<DesktopNotificationService>();
         services.AddSingleton<NewMailCoordinator>();

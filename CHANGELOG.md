@@ -15,6 +15,10 @@ feature has been checked by hand on Windows.
 - *Add account* moved from the sidebar to the top of *Settings → Accounts*.
 
 ### Fixed
+- Deleted, archived, junked or moved messages leave the list immediately instead of after the server finishes (a
+  second or two). If the server refuses, they come back with its error.
+- Opening a conversation no longer expands it in the list; the reading pane shows the whole thread, and the arrow on
+  the row expands it.
 - A message opened by double-click now comes to the front instead of opening behind the main window.
 - Opening a message in an *Unread* smart folder or with the *Unread* filter no longer marks every message in the view
   as read. The open message now stays listed until you move to another one.
