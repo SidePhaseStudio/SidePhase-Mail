@@ -66,7 +66,8 @@ Same loopback + PKCE flow against the Microsoft identity platform (`https://logi
 as a **public client** (no secret).
 
 Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All`, `https://outlook.office.com/SMTP.Send`,
-`offline_access`, `openid`, `email`. No Microsoft Graph permissions are requested.
+`offline_access`, `openid`, `email`. No Graph Mail.ReadWrite or Mail.Send permissions are requested;
+the portal lists the delegated protocol scopes under the Microsoft Graph permission catalogue.
 
 ### Registering the app (Microsoft Entra)
 
@@ -74,15 +75,17 @@ Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All`, `https://outlook.off
 2. Supported account types: *Accounts in any organizational directory and personal Microsoft accounts*.
 3. Redirect URI: platform **Mobile and desktop applications**, URI `http://localhost`. (Loopback ports are
    matched loosely for this platform, so the random port works.)
-4. **Authentication → Allow public client flows: Yes.**
-5. **API permissions → Add → APIs my organization uses → Office 365 Exchange Online** (delegated)
-   `IMAP.AccessAsUser.All` and `SMTP.Send`, plus `offline_access`, `openid`, `email`.
+4. Verify **Authentication** lists a mobile/desktop redirect. Authorization code + PKCE does not need
+   the additional device-code/password-flow toggle enabled.
+5. **API permissions → Add → Microsoft Graph → Delegated permissions**:
+   `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`.
+   These declare user-consented protocol access; do not grant application permissions or tenant-wide consent.
 6. Publisher: set `SidePhaseMicrosoftClientId` in `Directory.Build.props` to the public Application (client) ID.
    CI can override it with repository variable `SIDEPHASE_MICROSOFT_CLIENT_ID`. Customers do not enter IDs.
    Developers can override the bundled ID with environment variable `SIDEPHASE_MICROSOFT_CLIENT_ID`
    (tenant override `SIDEPHASE_MICROSOFT_TENANT`, default `common`). No Microsoft secret is needed.
 
-Publisher registration and real Microsoft mailbox sign-in are pending. See [MICROSOFT_SETUP.md](../MICROSOFT_SETUP.md).
+Publisher registration is configured. Real Microsoft mailbox sign-in remains untested. See [MICROSOFT_SETUP.md](../MICROSOFT_SETUP.md).
 
 Work/school tenants may require admin consent, and the mailbox must have IMAP and SMTP AUTH enabled.
 

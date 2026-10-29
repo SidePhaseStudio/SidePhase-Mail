@@ -50,6 +50,7 @@ public sealed class GoogleOAuthLifecycleTests : IDisposable
     public void Build_has_registration_metadata_and_google_is_a_public_client()
     {
         Assert.EndsWith(".apps.googleusercontent.com", OAuthConfiguration.BundledGoogleClientId);
+        Assert.True(Guid.TryParse(OAuthConfiguration.BundledMicrosoftClientId, out _));
         var config = OAuthProviders.Google("studio-id");
         Assert.Equal("127.0.0.1", config.RedirectHost);
         Assert.Contains("https://mail.google.com/", config.Scopes);
