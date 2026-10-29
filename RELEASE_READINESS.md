@@ -56,7 +56,7 @@ on Windows or against the real provider · **Partial** · **Not implemented**.
 | Feature | Status | Evidence / notes |
 | --- | --- | --- |
 | Other (IMAP/SMTP with password or app password) | **Tested 🔌** | Known-provider table, autoconfig, ISPDB, guesses, manual settings, test before save. |
-| Gmail OAuth | **Not fully tested** | Unit-tested with fake endpoints only; **never tested with Google**. Needs a client ID and verification. App passwords work meanwhile. |
+| Gmail OAuth | **Not fully tested** | Real browser sign-in, account creation and Gmail inbox sync verified on 29 October 2026. Public verification and live send/refresh/revoke/removal checks remain pending. |
 | Microsoft OAuth | **Not fully tested** | Unit-tested with fake endpoints only; **never tested with Microsoft**. Outlook.com can't use passwords, so it needs a registered app. |
 | OAuth refresh and failure handling | **Tested** (fakes) | M6: outages are temporary (no sign-in prompt); revoked tokens stop retrying; SMTP refreshes once. |
 | Google/Microsoft choice for company domains | **Tested** (logic) | M6. |

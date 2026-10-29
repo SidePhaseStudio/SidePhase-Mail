@@ -23,7 +23,7 @@ credentials. These steps need the owner's accounts and decisions. Details are in
       Never commit it or upload it as an artifact. Without these, beta releases stay unsigned drafts.
 
 ## 3. Google sign-in (Gmail)
-- [ ] Create a Google Cloud project and an OAuth client of type *Desktop app*.
+- [x] Create a Google Cloud project and an OAuth client of type *Desktop app* (sidephase-mail, 29 October 2026).
 - [ ] Scope: `https://mail.google.com/` only (IMAP/SMTP need it) plus `openid email`. Nothing else.
 - [ ] Publish the consent screen and complete Google's restricted-scope verification; confirm whether this local-only design requires a security assessment
       before public use; until then only listed test users can sign in.
