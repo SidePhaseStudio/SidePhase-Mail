@@ -140,7 +140,7 @@ jobs:
           * **Portable:** extract ``SidePhaseMail-$env:VERSION-win-x64-portable.zip`` and run ``SidePhaseMail.exe``.
 
           The installed app copies accounts and settings from the portable build the first time it starts.
-          Google and Microsoft sign-in use the Studio registrations. Google currently requires an approved test user. Microsoft publisher verification and real mailbox validation remain pending; see docs/ACCOUNT_PROVIDERS.md.
+          Google and Microsoft sign-in use the Studio registrations. Google currently requires an approved test user. Microsoft personal sign-in/inbox sync have been verified in the portable build; publisher verification and remaining live checks are pending; see docs/ACCOUNT_PROVIDERS.md.
 
           ### Files (SHA-256)
           | File | SHA-256 |

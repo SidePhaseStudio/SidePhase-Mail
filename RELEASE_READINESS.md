@@ -14,7 +14,7 @@ CI), the CI packaging test (MSIX install → launch → uninstall on Windows), o
 | **"Sent but not arriving / not in Sent" report** (see Known issues) | Reported on a real account during this milestone; not reproduced against the test server. Must be diagnosed with the new send log before any wider beta. | Owner + dev |
 | Hand-check of the UI on Windows 11 | Most UI is verified only by compiling and starting (CI smoke test); see *Implemented but not fully tested*. | Owner / beta testers |
 | Google OAuth app + verification | Real Google sign-in, IMAP/SMTP connection tests and Gmail inbox sync verified on 29 October 2026; public use needs restricted-scope verification and a security-assessment applicability determination ([ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md#before-public-release-provider-configuration-and-verification)). | SidePhase Studio |
-| Microsoft app registration + publisher verification | Studio public-client registration, delegated scopes, desktop redirect and branding configured; Client ID bundled. Publisher verification and real mailbox tests pending. | SidePhase Studio |
+| Microsoft app registration + publisher verification | Studio public-client registration, delegated scopes, desktop redirect and branding configured; Client ID bundled. Personal Outlook.com sign-in and inbox sync verified on 29 October 2026. Publisher verification, work/school and remaining live checks pending. | SidePhase Studio |
 | Partner Center name reservation | Real package identity (Name/Publisher) replaces the placeholders in `Package.appxmanifest`. | SidePhase Studio |
 | Code signing for non-Store packages | CI/beta MSIX are unsigned (testers use a local test certificate). | SidePhase Studio |
 | Final artwork | Package tiles/logos are placeholders generated from the app logo. | SidePhase Studio |
@@ -57,7 +57,7 @@ on Windows or against the real provider · **Partial** · **Not implemented**.
 | --- | --- | --- |
 | Other (IMAP/SMTP with password or app password) | **Tested 🔌** | Known-provider table, autoconfig, ISPDB, guesses, manual settings, test before save. |
 | Gmail OAuth | **Not fully tested** | Real browser sign-in, account creation and Gmail inbox sync verified on 29 October 2026. Public verification and live send/refresh/revoke/removal checks remain pending. |
-| Microsoft OAuth | **Not fully tested** | Studio registration is bundled; fake-endpoint tests pass. **Real Microsoft mailbox sign-in remains untested**; publisher verification and live validation are pending. |
+| Microsoft OAuth | **Not fully tested** | Studio registration is bundled; fake-endpoint tests pass. Real Outlook.com sign-in and inbox sync verified in the portable build on 29 October 2026. Publisher verification, work/school, MSIX and live send/lifecycle validation are pending. |
 | OAuth refresh and failure handling | **Tested** (fakes) | M6: outages are temporary (no sign-in prompt); revoked tokens stop retrying; SMTP refreshes once. |
 | Google/Microsoft choice for company domains | **Tested** (logic) | M6. |
 | Thunderbird settings import (beta) | **Partial** | Server settings only (prefs.js), with consent; never passwords. Mail archives (mbox), address books (use Thunderbird's vCard export → Contacts → Import) and flags are **not imported**. |

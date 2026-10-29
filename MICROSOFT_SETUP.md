@@ -2,7 +2,7 @@
 
 Status: the app has browser-based OAuth with PKCE, refresh tokens and Windows-protected storage.
 The shared Microsoft registration was created on 29 October 2026 and is bundled in builds.
-Client ID: `cff3a5ae-ddc3-4688-a1e7-9ee28ba2b868`. Real Microsoft mailbox sign-in has not been tested.
+Client ID: `cff3a5ae-ddc3-4688-a1e7-9ee28ba2b868`. Real Outlook.com sign-in and inbox synchronization succeeded in the portable Windows build on 29 October 2026.
 Customers must not create their own registrations. No backend or Microsoft client secret is needed.
 
 Configured in Entra: personal plus organizational accounts, the native `http://localhost` callback,
@@ -12,6 +12,11 @@ the five delegated scopes below, app logo and public homepage/privacy/terms URLs
 Public-release blocker: the publisher is still unverified. The current tenant uses an `onmicrosoft.com`
 domain. Entra requires a DNS-verified custom domain matching the Partner Center primary contact domain
 before publisher verification can proceed. Do not claim that any work/school tenant can consent yet.
+
+Live evidence: the Outlook account is stored with Microsoft OAuth and outlook.office365.com.
+The local cache contains synchronized Inbox, Sent, Archive, Junk and Deleted folders, including 13 Inbox messages
+at verification time. This confirms personal Outlook sign-in and download, not actual sending/delivery,
+expiry refresh, revocation/reconnection, removal, work/school access or installed-MSIX sign-in.
 
 1. Sign into https://entra.microsoft.com/ using the Studio's registration owner account.
 2. Open **App registrations**. Reuse an existing SidePhase Mail registration if present; otherwise create one.

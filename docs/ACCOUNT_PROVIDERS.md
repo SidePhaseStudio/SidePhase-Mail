@@ -5,7 +5,8 @@ Google and Microsoft sign-in need, where data is stored, and the security decisi
 
 > **Verification status.** IMAP/SMTP is integration-tested against disposable Dovecot/Postfix in CI.
 > Real Google sign-in, connection checks and Gmail inbox synchronization succeeded on 29 October 2026.
-> Microsoft now has a bundled Studio public-client registration, but real Microsoft mailbox sign-in is still pending.
+> Microsoft has a bundled Studio public-client registration; real Outlook.com sign-in and inbox synchronization
+> succeeded in the portable Windows build on 29 October 2026.
 > Token refresh and failure handling have automated fake-endpoint coverage. Public provider approval and the remaining
 > real-account lifecycle checks are not complete.
 
@@ -86,7 +87,8 @@ the portal lists the delegated protocol scopes under the Microsoft Graph permiss
    Developers can override the bundled ID with environment variable `SIDEPHASE_MICROSOFT_CLIENT_ID`
    (tenant override `SIDEPHASE_MICROSOFT_TENANT`, default `common`). No Microsoft secret is needed.
 
-Publisher registration is configured. Real Microsoft mailbox sign-in remains untested. See [MICROSOFT_SETUP.md](../MICROSOFT_SETUP.md).
+Publisher registration is configured. Personal Outlook.com sign-in and inbox synchronization are verified;
+work/school, installed-MSIX and remaining lifecycle/send checks are pending. See [MICROSOFT_SETUP.md](../MICROSOFT_SETUP.md).
 
 Work/school tenants may require admin consent, and the mailbox must have IMAP and SMTP AUTH enabled.
 
