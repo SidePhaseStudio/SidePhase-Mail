@@ -400,7 +400,7 @@ public sealed class MailCache(MailDatabase database)
             p["$read"].Value = m.IsRead;
             p["$star"].Value = m.IsStarred;
             p["$att"].Value = m.HasAttachments;
-            p["$spam"].Value = m.Spam.HasHeaders ? JsonSerializer.Serialize(m.Spam, Json) : DBNull.Value;
+            p["$spam"].Value = m.Spam.HasInformation ? JsonSerializer.Serialize(m.Spam, Json) : DBNull.Value;
             p["$size"].Value = m.Size;
             p["$irt"].Value = (object?)m.InReplyTo ?? DBNull.Value;
             p["$refs"].Value = m.References.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(m.References, Json);
@@ -598,7 +598,7 @@ public sealed class MailCache(MailDatabase database)
         await using var c = await database.OpenAsync(ct).ConfigureAwait(false);
         await using var cmd = c.CreateCommand();
         cmd.CommandText = "UPDATE messages SET spam_json = $s WHERE id = $id";
-        cmd.Parameters.AddWithValue("$s", spam.HasHeaders ? JsonSerializer.Serialize(spam, Json) : DBNull.Value);
+        cmd.Parameters.AddWithValue("$s", spam.HasInformation ? JsonSerializer.Serialize(spam, Json) : DBNull.Value);
         cmd.Parameters.AddWithValue("$id", messageId.ToString());
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }

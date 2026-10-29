@@ -40,6 +40,7 @@ on Windows or against the real provider · **Partial** · **Not implemented**.
 | Message threading (conversation view) | **Tested** (logic) / **Not fully tested** (UI) | Message-ID/In-Reply-To/References grouping, cross-folder; 20,000-message grouping test. |
 | Pinned messages, Favourites | **Tested 🔌** | Persist across restarts, sync, moves and UIDVALIDITY resets. |
 | SpamAssassin detection | **Tested** | Header parsing, trust checks (forged sender-written headers ignored), thresholds. |
+| Other spam filters and sender checks | **Tested** (parsing) / **Not fully tested** (real providers) | Rspamd, Microsoft SCL, Barracuda, `X-Spam`; SPF/DKIM/DMARC from the receiving server's Authentication-Results; failed DMARC = suspicious only. |
 | Local spam learning (optional) | **Tested** (logic) / **Not fully tested** (UI) | Never moves or deletes mail. |
 | Mail rules | **Tested 🔌** (engine) / **Not fully tested** (editor UI) | M6: full addresses must match exactly; never act on Junk. |
 | Smart folders | **Tested** (logic) / **Not fully tested** (UI) | Never move mail. |
