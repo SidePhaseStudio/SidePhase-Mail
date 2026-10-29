@@ -76,7 +76,7 @@ public static class AppIdentity
         }
     }
 
-    /// <summary>The product version, e.g. "0.6.0-beta.1" (without build metadata).</summary>
+    /// <summary>The product version, e.g. "0.7.0-beta.1" (without build metadata).</summary>
     public static string Version
     {
         get

@@ -50,6 +50,14 @@ public sealed partial class NavItemViewModel : ObservableObject
     /// <summary>A shortcut in the "Favourite folders" section (the folder also appears under its account).</summary>
     public bool IsFavouriteFolder { get; init; }
 
+    /// <summary>The account this entry is (accounts only).</summary>
+    public Guid? AccountId { get; init; }
+
+    /// <summary>A connection or sign-in problem with this account, shown as a warning badge (accounts only).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutomationName))]
+    public partial string? ProblemText { get; set; }
+
     /// <summary>Child folders (accounts only). Null for leaves so no expand chevron is shown.</summary>
     public ObservableCollection<NavItemViewModel>? Children { get; init; }
 
@@ -66,7 +74,9 @@ public sealed partial class NavItemViewModel : ObservableObject
 
     public Visibility BadgeVisibility => ShowBadges && BadgeMode != BadgeMode.None && Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    public string AutomationName => Count > 0 && BadgeMode == BadgeMode.Unread ? $"{Title}, {Count} unread" : Title;
+    public string AutomationName =>
+        (Count > 0 && BadgeMode == BadgeMode.Unread ? $"{Title}, {Count} unread" : Title)
+        + (ProblemText is { Length: > 0 } problem ? $", problem: {problem}" : string.Empty);
 
     public IEnumerable<NavItemViewModel> SelfAndDescendants()
     {

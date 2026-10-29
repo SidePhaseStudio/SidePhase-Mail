@@ -51,21 +51,11 @@ public sealed class DesktopNotificationService : IDisposable
         }
     }
 
-    /// <summary>The message to open if this launch came from clicking a notification while the app was closed.</summary>
-    public static Guid? MessageFromLaunch()
-    {
-        try
-        {
-            var args = AppInstance.GetCurrent().GetActivatedEventArgs();
-            return args.Kind == ExtendedActivationKind.AppNotification && args.Data is AppNotificationActivatedEventArgs notification
-                ? ParseMessageId(notification.Arguments)
-                : null;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
+    /// <summary>The message a notification click refers to, if this activation came from one.</summary>
+    public static Guid? MessageFromActivation(AppActivationArguments args) =>
+        args.Kind == ExtendedActivationKind.AppNotification && args.Data is AppNotificationActivatedEventArgs notification
+            ? ParseMessageId(notification.Arguments)
+            : null;
 
     /// <summary>Shows one notification per message (or one summary for many). Returns false if nothing could be shown.</summary>
     public bool Show(IReadOnlyList<MessageSummary> messages)

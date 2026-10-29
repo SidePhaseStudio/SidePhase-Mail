@@ -57,12 +57,19 @@ Reporting** (Windows may send crash reports to Microsoft according to your Windo
 Store version, the **Microsoft Store** (installation, updates and, in future, purchases). See Microsoft's privacy
 statement for these.
 
-## Sponsored content
+## Promotions
 
-The app contains a framework for small sponsored cards, but **no advertising is shown and no advertising service is
-contacted** in this version. A setting can display built-in test cards, which are part of the app and contact nothing.
-If sponsored content is introduced, it will never use your email, contacts, address or anything about you, will never
-appear inside your messages, and this policy will be updated first.
+The main window can show one banner, labelled *Promotion*, in its footer. In this version it only ever shows SidePhase
+Studio promotions that are **built into the app** (none is switched on yet, so the footer stays empty). Showing them
+contacts nothing, and nothing about what you see or click is recorded or sent. Clicking a promotion opens its web page
+in your browser after showing you the address. Promotions never use your email, contacts, address or anything about
+you, are the same for everyone, and never appear inside the message list or your messages. You can hide them for the
+session from the banner.
+
+The app can also be configured to fetch promotions from a separate SidePhase Studio service, but **that is off** and
+needs an explicit configuration file. If it is switched on in a future version, the only information sent will be the
+banner position, the app version and your display language (no cookies, identifiers or anything about your mail), and
+this policy will be updated first.
 
 ## Your choices
 

@@ -1,6 +1,6 @@
 # SidePhase Mail: release readiness
 
-**Version:** 0.6.0-beta.1 (Milestone 6) · **Assessed:** October 2026 · **Verdict: ready for a *controlled* beta with
+**Version:** 0.7.0-beta.1 (Milestone 7) · **Assessed:** October 2026 · **Verdict: ready for a *controlled* beta with
 IMAP/SMTP (password) accounts. Not production-ready.**
 
 This page states what is actually verified, not what code exists for. A feature is only listed as tested when there
@@ -74,9 +74,12 @@ on Windows or against the real provider · **Partial** · **Not implemented**.
 | Beta release workflow | **Implemented, not yet run** | Manual; creates a draft pre-release only after all tests pass. |
 | Light/dark, Mica/Acrylic with solid fallbacks, high contrast | **Tested** (owner, M1) / **Not fully tested** since | Contrast themes map to system colours. |
 | High DPI, multiple monitors, resizing | **Not fully tested** | Per-monitor-v2 DPI awareness; minimum size; centred on the current display. |
-| Keyboard access, screen readers | **Partial** | Shortcuts and automation names on key controls; no full Narrator pass yet. |
-| Reduced motion | **Partial** | Standard XAML transitions follow the Windows animation setting; two small custom press animations in `Styles.xaml` don't. |
-| Sponsored-content framework | **Tested** (logic) / **Not fully tested** (UI) | Off by default; test cards only; production disabled in code. |
+| Keyboard access, screen readers | **Partial** | Shortcuts and automation names on key controls; M7: message rows have spoken names, compose status is announced, visible focus in compose. No full Narrator pass yet. |
+| Reduced motion | **Partial** | Standard XAML transitions and (M7) the reading-pane fade follow the Windows animation setting; two small custom press animations in `Styles.xaml` don't. |
+| Footer promotion banner | **Tested** (logic) / **Not fully tested** (UI) | M7: one labelled banner in the footer; approved SidePhase Studio promotions bundled with the app only (none approved yet, so nothing shows); collapses when empty or in short windows. The remote SidePhase Ads API is used only when explicitly configured. |
+| Offline (queued sends, offline drafts, status) | **Tested 🔌** (engine) / **Not fully tested** (real network loss on Windows) | M7: unreachable server = still queued, never failed; sent once on reconnect; drafts saved offline uploaded once; offline bar. |
+| Message actions report real results | **Tested** (logic) / **Not fully tested** (UI) | M7: no "Done" when the server refused; partial results say so; Undo only for what moved. |
+| Account storage (quota) | **Not fully tested** | M7: shown in Settings where the server supports IMAP QUOTA. |
 
 ## Known issues
 
@@ -96,6 +99,11 @@ on Windows or against the real provider · **Partial** · **Not implemented**.
    (WebView2's own protections apply).
 8. The installed and portable builds keep separate data after the first copy.
 9. No automated UI tests.
+10. Message bodies and attachments are available offline only if they were opened (downloaded) while online.
+11. Images pasted into a message are sent as attachments, not inline. Pasted images and forwarded attachments are kept
+    in the data folder (`Pasted`, `Forwarding`) because drafts refer to them; they aren't cleaned up automatically yet.
+12. Signatures are plain text.
+13. A flag change made while a sync is running can occasionally be reverted by that sync until the next one.
 
 ## Performance (measured)
 

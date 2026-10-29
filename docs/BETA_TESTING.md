@@ -37,6 +37,9 @@ build (Settings → About shows version, build and channel).
 - [ ] **Thunderbird import (optional):** *Use settings from Thunderbird* asks first, fills in the server settings,
       and asks you for the password. Your Thunderbird profile is unchanged.
 - [ ] Rename and recolour an account; restart; sign-in still works.
+- [ ] Settings → Accounts shows mailbox storage (where your provider reports it, e.g. Gmail, many IMAP hosts).
+- [ ] Change an account's password in webmail: the account shows a warning in the sidebar and *Sign in again* works.
+- [ ] Try an action the server refuses (e.g. move to a folder deleted in webmail): you see an error, not "Done".
 - [ ] **Account removal:** Settings → Accounts → Remove: the account and its cached mail disappear from the app;
       nothing is deleted on the server (check webmail).
 
@@ -46,7 +49,10 @@ build (Settings → About shows version, build and channel).
 - [ ] Undo a send within the window: it reopens for editing and is not delivered.
 - [ ] Schedule a message for 2 minutes ahead: it's sent on time (the app must be open).
 - [ ] Reply, reply all and forward keep the conversation together in the recipient's mail app.
-- [ ] Turn Wi-Fi off and send: the message waits in the outbox and goes when you're back online.
+- [ ] Turn Wi-Fi off and send: the "You're offline" bar shows, the message waits in the outbox (not *Failed*), and
+      goes **once** when you're back online. Leave it offline for 10+ minutes too.
+- [ ] Forward a message that has attachments: the recipient gets the attachments.
+- [ ] Write a draft offline, close it, reconnect: the draft appears once in webmail's Drafts.
 
 ### Reading, folders and organisation
 - [ ] New mail arrives on the check interval; a Windows notification opens the message.
@@ -62,7 +68,14 @@ build (Settings → About shows version, build and channel).
 - [ ] Open a message with attachments; preview an image; save one file and *Save all*.
 - [ ] Saving a `.exe`, `.js` or `.docm` attachment warns you first; nothing is ever opened automatically.
 - [ ] A large attachment (10 MB+) downloads with progress and opens correctly afterwards in its own app.
-- [ ] Attach files to a new message by picker and by drag and drop.
+- [ ] Attach files to a new message by picker and by drag and drop (onto the window and onto the message text).
+- [ ] Paste a screenshot (Win+Shift+S, then Ctrl+V) into a message: it's attached as a PNG.
+- [ ] Misspelt words in the subject and message are underlined; addresses aren't.
+
+### Accessibility
+- [ ] Narrator reads message rows (sender, subject, state) and announces send status in compose.
+- [ ] Tab through compose: the focused field is visible, also in a contrast theme.
+- [ ] Windows *Animation effects* off: no fade when opening messages.
 
 ### Offline and resilience
 - [ ] Start the app with no network: cached mail is readable, and a clear "offline" message appears; when the
@@ -77,8 +90,9 @@ build (Settings → About shows version, build and channel).
       also removes the installed app's local data; your mail on the server is not affected.)
 
 ### Optional
-- [ ] Settings → About → *Preview sponsored cards*: a small "Sponsored · Test content" card appears at the bottom of
-      the sidebar and in the empty reading pane, never in a message. *Hide* and *Simulate the ad-free upgrade* remove it.
+- [ ] Settings → Promotions → *Preview the promotion banner (test content)*: one banner labelled "Promotion · Test
+      content" appears centred in the footer, never in the list or a message. It disappears in a short window, with
+      *Hide*, and with *Simulate the ad-free upgrade*. With the preview off, there's no footer at all.
 - [ ] Set SidePhase Mail as the default email app (Settings → Apps → Default apps, installed app only) and click a
       `mailto:` link on a web page: a new message opens with the address filled in.
 

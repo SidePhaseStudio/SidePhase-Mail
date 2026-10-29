@@ -11,11 +11,12 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="48" />
       <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
     <!-- Backdrop layers: an opaque base for solid themes and a tint that deepens Mica towards the palette. -->
-    <Border x:Name="SolidLayer" Grid.RowSpan="2" Background="{ThemeResource SpWindowSolidBrush}" />
-    <Border Grid.RowSpan="2" Background="{ThemeResource SpWindowTintBrush}" />
+    <Border x:Name="SolidLayer" Grid.RowSpan="3" Background="{ThemeResource SpWindowSolidBrush}" />
+    <Border Grid.RowSpan="3" Background="{ThemeResource SpWindowTintBrush}" />
 
     <!-- ============================ Title bar ============================ -->
     <TitleBar
@@ -76,15 +77,31 @@
         </NavigationViewItem>
       </NavigationView.FooterMenuItems>
 
-      <!-- Optional sponsored card at the very bottom of the sidebar (only while it's open; nothing when advertising is
-           off, which is the default). Never inside messages or the message list. -->
-      <NavigationView.PaneFooter>
-        <ads:SponsoredCard Margin="12,4,12,10" Placement="SidebarFooter" Visibility="{x:Bind Shell.IsPaneOpen, Mode=OneWay}" />
-      </NavigationView.PaneFooter>
 
       <!-- Pages float on the glass as rounded translucent panels (see SpPanelStyle); no hard frame border. -->
-      <Frame x:Name="ContentFrame" Margin="0,0,8,8" />
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <!-- Shown only while Windows reports no internet connection. -->
+        <InfoBar
+            x:Name="OfflineBar"
+            Margin="0,0,8,8"
+            AutomationProperties.LiveSetting="Polite"
+            IsClosable="False"
+            IsOpen="False"
+            Message="Cached mail is still available. Drafts are saved on this PC and messages you send wait in the Outbox until you're back online."
+            Severity="Warning"
+            Title="You're offline" />
+        <Frame x:Name="ContentFrame" Grid.Row="1" Margin="0,0,8,8" />
+      </Grid>
     </NavigationView>
+
+    <!-- ============================ Footer promotion ============================ -->
+    <!-- One centred banner (about 728 x 90) for approved SidePhase Studio promotions. Collapses completely when there's
+         nothing to show (the default) or the window is short. Never inside the inbox or an email. -->
+    <ads:PromotionFooter x:Name="Footer" Grid.Row="2" />
 
     <!-- ============================ Toasts ============================ -->
     <InfoBar

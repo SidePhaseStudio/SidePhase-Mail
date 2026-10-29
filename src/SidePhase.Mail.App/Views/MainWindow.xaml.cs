@@ -57,7 +57,11 @@ public sealed partial class MainWindow : Window
             BuildNavigation();
             SelectScope(_mailList.Scope);
         };
+        var connectivity = App.GetService<ConnectivityService>();
+        OfflineBar.IsOpen = !connectivity.IsOnline;
+        connectivity.Changed += (_, online) => DispatcherQueue.TryEnqueue(() => OfflineBar.IsOpen = !online);
         RootGrid.Loaded += OnRootLoaded;
+        RootGrid.SizeChanged += (_, e) => Footer.UpdateAvailableSpace(e.NewSize.Height);
         Closed += (_, _) =>
         {
             App.GetService<DesktopNotificationService>().Dispose();
@@ -167,8 +171,18 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(AddAccountPage), preset, new DrillInNavigationTransitionInfo());
     }
 
-    public void ShowSettings()
+    /// <summary>Settings section to open next time Settings is shown (e.g. "accounts" from a sign-in problem).</summary>
+    private string? _settingsSection;
+
+    public void ShowSettings(string? section = null)
     {
+        _settingsSection = section;
+        if (NavView.SelectedItem == SettingsItem && section is not null && ContentFrame.Content is SettingsPage page)
+        {
+            page.ShowSection(section);
+            return;
+        }
+
         NavView.SelectedItem = SettingsItem;
     }
 
@@ -189,7 +203,7 @@ public sealed partial class MainWindow : Window
         {
             toasts.ShowWithAction(e.Message, ToastKind.Error, "Sign in again", () =>
             {
-                ShowSettings();
+                ShowSettings("accounts");
                 return Task.CompletedTask;
             });
         }
@@ -294,7 +308,8 @@ public sealed partial class MainWindow : Window
         switch (args.SelectedItemContainer?.Tag)
         {
             case "settings":
-                ContentFrame.Navigate(typeof(SettingsPage), null, new EntranceNavigationTransitionInfo());
+                ContentFrame.Navigate(typeof(SettingsPage), _settingsSection, new EntranceNavigationTransitionInfo());
+                _settingsSection = null;
                 break;
             case "attachments":
                 ContentFrame.Navigate(typeof(AttachmentsPage), null, new EntranceNavigationTransitionInfo());
@@ -477,7 +492,9 @@ public sealed partial class MainWindow : Window
                     break;
                 default:
                     var moves = await App.GetService<IMailDataSource>().MoveToAsync(messages.Select(m => m.Id).ToList(), Core.Models.FolderKind.Inbox);
-                    App.GetService<ToastService>().ShowWithUndo(moves.Count == 1 ? "Moved to Inbox" : $"Moved {moves.Count} messages to Inbox", () => App.GetService<IMailDataSource>().RestoreAsync(moves));
+                    // Nothing moved: the server's error is already showing; don't cover it with a success notice.
+                    if (moves.Count > 0)
+                        App.GetService<ToastService>().ShowWithUndo(moves.Count == 1 ? "Moved to Inbox" : $"Moved {moves.Count} messages to Inbox", () => App.GetService<IMailDataSource>().RestoreAsync(moves));
                     break;
             }
         };
@@ -495,8 +512,22 @@ public sealed partial class MainWindow : Window
 
     private static void UpdateBadge(NavItemViewModel model, NavigationViewItem container, InfoBadge badge)
     {
-        badge.Value = model.Count;
-        badge.Visibility = model.BadgeVisibility;
+        if (model.Kind == NavItemKind.Account && model.ProblemText is { Length: > 0 } problem)
+        {
+            // A warning instead of a count: the account can't sync until this is fixed.
+            badge.Value = -1;
+            badge.IconSource = new FontIconSource { Glyph = "\uE7BA" };
+            badge.Visibility = Visibility.Visible;
+            ToolTipService.SetToolTip(container, $"{model.Subtitle} · {problem}");
+        }
+        else
+        {
+            badge.IconSource = null;
+            badge.Value = model.Count;
+            badge.Visibility = model.BadgeVisibility;
+            if (model.Kind == NavItemKind.Account) ToolTipService.SetToolTip(container, model.Subtitle);
+        }
+
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(container, model.AutomationName);
     }
 

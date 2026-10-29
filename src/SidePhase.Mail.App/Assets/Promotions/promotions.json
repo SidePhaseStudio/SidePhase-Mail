@@ -1,0 +1,14 @@
+{
+  "_readme": "SidePhase Studio promotions shown in the footer banner. Only entries with \"approved\": true (and inside their optional starts/ends dates) are shown. Images: PNG/JPEG files in this folder, designed at 728 x 90 (1456 x 180 for high-DPI), referenced by file name. No URLs for images: nothing is downloaded. See docs/ADVERTISING.md.",
+  "promotions": [
+    {
+      "id": "example-draft",
+      "approved": false,
+      "advertiser": "SidePhase Studio",
+      "headline": "DRAFT - replace with an approved SidePhase Studio promotion",
+      "body": "Not shown: approved is false.",
+      "callToAction": "Learn more",
+      "destination": "https://github.com/SidePhaseStudio/SidePhase-Mail"
+    }
+  ]
+}

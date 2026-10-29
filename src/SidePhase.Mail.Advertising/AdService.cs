@@ -3,8 +3,9 @@ namespace SidePhase.Mail.Advertising;
 /// <summary>
 /// Decides whether a sponsored card is shown, and which. Rules:
 /// <list type="bullet">
-/// <item>Nothing with the ad-free entitlement, with advertising Off, or (until enabled in a reviewed release) in
-/// Production mode.</item>
+/// <item>Nothing with the ad-free entitlement or with advertising Off; Production only when explicitly configured
+/// (mode and an https:// endpoint in advertising.json).</item>
+/// <item>No promotion available: nothing (the footer collapses).</item>
 /// <item>A card stays for at least <see cref="AdvertisingPolicy.MinimumDisplayTime"/>; no rotation or animation.</item>
 /// <item>The user can hide cards for the rest of the session.</item>
 /// <item>Failures never surface: no card is shown instead.</item>
@@ -21,6 +22,7 @@ public sealed class AdService
     private readonly Dictionary<AdPlacement, (SponsoredContent Card, DateTimeOffset Shown)> _current = [];
     private readonly Lock _gate = new();
     private AdvertisingSettings _settings;
+    private readonly HousePromotionProvider? _house;
     private bool _hiddenForSession;
 
     public AdService(
@@ -29,8 +31,10 @@ public sealed class AdService
         string appVersion,
         string language,
         Func<AdvertisingSettings, IAdProvider?>? providerFor = null,
-        Func<DateTimeOffset>? now = null)
+        Func<DateTimeOffset>? now = null,
+        string? promotionsFile = null)
     {
+        _house = promotionsFile is null ? null : new HousePromotionProvider(promotionsFile, now);
         _store = store;
         _entitlement = entitlement;
         _appVersion = appVersion;
@@ -61,8 +65,9 @@ public sealed class AdService
         }
     }
 
+    /// <summary>Production without a usable https:// endpoint behaves like Off.</summary>
     public static AdvertisingMode EffectiveMode(AdvertisingSettings settings) =>
-        settings.Mode == AdvertisingMode.Production && !AdvertisingPolicy.ProductionAdvertisingEnabled
+        settings.Mode == AdvertisingMode.Production && RemoteAdProvider.Create(Http, settings.Endpoint) is null
             ? AdvertisingMode.Off
             : settings.Mode;
 
@@ -140,9 +145,10 @@ public sealed class AdService
     private static readonly DemoAdProvider Demo = new();
     private static readonly HttpClient Http = new(new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = false });
 
-    private static IAdProvider? DefaultProvider(AdvertisingSettings settings) => EffectiveMode(settings) switch
+    private IAdProvider? DefaultProvider(AdvertisingSettings settings) => EffectiveMode(settings) switch
     {
         AdvertisingMode.Demo => Demo,
+        AdvertisingMode.House => _house,
         AdvertisingMode.Production => RemoteAdProvider.Create(Http, settings.Endpoint),
         _ => null,
     };

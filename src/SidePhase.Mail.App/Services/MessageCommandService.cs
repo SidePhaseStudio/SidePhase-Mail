@@ -21,7 +21,8 @@ public sealed class MessageCommandService(
     DialogService dialogs,
     WindowService windows,
     IClock clock,
-    Core.Spam.LocalSpamFilter localFilter)
+    Core.Spam.LocalSpamFilter localFilter,
+    Infrastructure.Storage.AppDataPaths paths)
 {
     /// <summary>Teaches the local filter from an explicit Junk / Not junk choice (real accounts only).</summary>
     private void Learn(IEnumerable<MessageSummary> messages, bool isSpam)
@@ -92,7 +93,19 @@ public sealed class MessageCommandService(
 
         var moves = await mail.MoveToFolderAsync(targets, folder.Id, progress);
         var note = otherAccounts > 0 ? $" ({otherAccounts} from other accounts stayed where they were)" : string.Empty;
-        toasts.ShowWithUndo(moves.Count == 1 ? $"Moved to {folder.Name}{note}" : $"Moved {moves.Count} messages to {folder.Name}{note}", () => mail.RestoreAsync(moves));
+        ConfirmMoves(moves, targets.Count,
+            moves.Count == 1 ? $"Moved to {folder.Name}{note}" : $"Moved {moves.Count} messages to {folder.Name}{note}");
+    }
+
+    /// <summary>
+    /// Confirms a move with an Undo notice, but only for what the server actually moved. If nothing moved, the server's
+    /// error (already shown by the mail source) stays on screen instead of being covered by a success notice.
+    /// </summary>
+    private void ConfirmMoves(IReadOnlyList<MoveRecord> moves, int requested, string success)
+    {
+        if (moves.Count == 0) return;
+        var text = moves.Count < requested ? $"{success}. {requested - moves.Count} couldn't be moved; they're still where they were." : success;
+        toasts.ShowWithUndo(text, () => mail.RestoreAsync(moves));
     }
 
     public Task ArchiveAsync(MessageSummary message) => ArchiveAsync([message]);
@@ -108,7 +121,7 @@ public sealed class MessageCommandService(
         }
 
         var moves = await mail.MoveToAsync(targets, FolderKind.Archive);
-        toasts.ShowWithUndo(targets.Count == 1 ? "Archived" : $"Archived {targets.Count} messages", () => mail.RestoreAsync(moves));
+        ConfirmMoves(moves, targets.Count, moves.Count == 1 ? "Archived" : $"Archived {moves.Count} messages");
     }
 
     public Task DeleteAsync(MessageSummary message) => DeleteAsync([message]);
@@ -127,8 +140,10 @@ public sealed class MessageCommandService(
                 "Delete permanently");
             if (confirmed)
             {
-                await mail.DeletePermanentlyAsync(inTrash.Select(m => m.Id).ToList());
-                toasts.Show(inTrash.Count == 1 ? "Message permanently deleted." : "Messages permanently deleted.");
+                var deleted = await mail.DeletePermanentlyAsync(inTrash.Select(m => m.Id).ToList());
+                if (deleted == inTrash.Count) toasts.Show(deleted == 1 ? "Message permanently deleted." : "Messages permanently deleted.");
+                else if (deleted > 0) toasts.Show($"{deleted} of {inTrash.Count} messages were permanently deleted; the server refused the rest.", ToastKind.Warning);
+                // Nothing deleted: the server's error is already on screen; don't cover it with a success notice.
             }
 
             return;
@@ -136,16 +151,18 @@ public sealed class MessageCommandService(
 
         var targets = messages.Where(m => m.FolderKind != FolderKind.Trash).Select(m => m.Id).ToList();
         var moves = await mail.MoveToAsync(targets, FolderKind.Trash);
-        toasts.ShowWithUndo(targets.Count == 1 ? "Moved to Trash" : $"Moved {targets.Count} messages to Trash", () => mail.RestoreAsync(moves));
+        ConfirmMoves(moves, targets.Count, moves.Count == 1 ? "Moved to Trash" : $"Moved {moves.Count} messages to Trash");
     }
 
     public Task MoveToJunkAsync(MessageSummary message) => MoveToJunkAsync([message]);
 
     public async Task MoveToJunkAsync(IReadOnlyList<MessageSummary> messages)
     {
-        Learn(messages, isSpam: true);
         var moves = await mail.MoveToAsync(messages.Select(m => m.Id).ToList(), FolderKind.Junk);
-        toasts.ShowWithUndo("Moved to Junk", () => mail.RestoreAsync(moves));
+        // Learn only from messages that actually moved (a refused move teaches the filter nothing).
+        var moved = moves.Select(m => m.MessageId).ToHashSet();
+        Learn(messages.Where(m => moved.Contains(m.Id)).ToList(), isSpam: true);
+        ConfirmMoves(moves, messages.Count, moves.Count == 1 ? "Moved to Junk" : $"Moved {moves.Count} messages to Junk");
     }
 
     /// <summary>Trusts the sender and returns the message to the Inbox.</summary>
@@ -156,6 +173,12 @@ public sealed class MessageCommandService(
         IReadOnlyList<MoveRecord> moves = message.FolderKind == FolderKind.Junk
             ? await mail.MoveToAsync([message.Id], FolderKind.Inbox)
             : [];
+
+        if (message.FolderKind == FolderKind.Junk && moves.Count == 0)
+        {
+            toasts.Show($"{message.From.DisplayName} is now a trusted sender, but the message couldn't be moved back to the Inbox.", ToastKind.Warning);
+            return;
+        }
 
         toasts.ShowWithUndo($"{message.From.DisplayName} is now a trusted sender.", async () =>
         {
@@ -273,7 +296,54 @@ public sealed class MessageCommandService(
         if (account is null) return;
 
         var body = await mail.GetMessageBodyAsync(message.Id);
-        windows.OpenCompose(ReplyBuilder.Create(mode, message, body, account));
+        var draft = ReplyBuilder.Create(mode, message, body, account);
+        if (mode == ComposeMode.Forward && draft.Attachments.Count > 0) draft = await FetchForwardedAttachmentsAsync(message, draft);
+        windows.OpenCompose(draft);
+    }
+
+    /// <summary>
+    /// A forward carries the original's attachments: download each one into a private folder in the app's data (not
+    /// opened, not run) so it can be attached and sent. Any that can't be downloaded (for example offline) are left out,
+    /// and the user is told which.
+    /// </summary>
+    private async Task<DraftMessage> FetchForwardedAttachmentsAsync(MessageSummary message, DraftMessage draft)
+    {
+        if (mail.IsDemo) return draft with { Attachments = [] }; // demonstration attachments have no content
+        var folder = Path.Combine(paths.Root, "Forwarding", Guid.NewGuid().ToString("N"));
+        var kept = new List<DraftAttachment>();
+        var missing = new List<string>();
+        if (draft.Attachments.Count > 0 && draft.Attachments.Sum(a => a.SizeBytes) > 2 * 1024 * 1024)
+            toasts.Show($"Getting {draft.Attachments.Count} attachment(s) to forward…");
+
+        for (var index = 0; index < draft.Attachments.Count; index++)
+        {
+            var attachment = draft.Attachments[index];
+            var path = Path.Combine(folder, $"{index:D3}-{AttachmentSafety.SafeFileName(attachment.FileName)}");
+            try
+            {
+                Directory.CreateDirectory(folder);
+                await using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+                {
+                    await mail.SaveAttachmentAsync(message.Id, index, file);
+                }
+
+                kept.Add(attachment with { SourcePath = path, SizeBytes = new FileInfo(path).Length });
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                TryDelete(path);
+                missing.Add(attachment.FileName);
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            toasts.Show(missing.Count == draft.Attachments.Count
+                ? "The attachments couldn't be downloaded (are you offline?), so they aren't included. Attach them again if needed."
+                : $"Not included because they couldn't be downloaded: {string.Join(", ", missing.Take(3))}{(missing.Count > 3 ? "…" : string.Empty)}.", ToastKind.Warning);
+        }
+
+        return draft with { Attachments = kept };
     }
 
     public async Task EditDraftAsync(MessageSummary message)

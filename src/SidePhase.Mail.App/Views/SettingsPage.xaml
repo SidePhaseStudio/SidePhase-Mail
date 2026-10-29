@@ -213,6 +213,10 @@
                   </Expander.Header>
                   <StackPanel Spacing="12">
                     <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind StatusText, Mode=OneWay}" TextWrapping="Wrap" />
+                    <StackPanel MaxWidth="360" HorizontalAlignment="Left" Spacing="4" Visibility="{x:Bind HasStorage, Mode=OneWay}">
+                      <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind StorageText, Mode=OneWay}" />
+                      <ProgressBar Width="360" AutomationProperties.Name="Mailbox storage used" Maximum="100" Value="{x:Bind StoragePercent, Mode=OneWay}" />
+                    </StackPanel>
                     <Grid ColumnSpacing="8" Visibility="{x:Bind CanEditAppearance}">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MaxWidth="360" />
@@ -230,16 +234,21 @@
                         <ItemsRepeater.ItemTemplate>
                           <DataTemplate x:DataType="vm:AccountColorOption">
                             <Button
-                                Width="26"
-                                Height="26"
+                                Width="32"
+                                Height="32"
                                 MinWidth="0"
                                 Padding="0"
-                                AutomationProperties.Name="{x:Bind Hex}"
-                                Background="{x:Bind h:X.HexBrush(Hex)}"
-                                BorderBrush="{ThemeResource SpStrokeStrongBrush}"
+                                AutomationProperties.Name="{x:Bind Name}"
+                                Background="Transparent"
+                                BorderThickness="0"
                                 Command="{x:Bind SelectCommand}"
-                                CornerRadius="13"
-                                ToolTipService.ToolTip="{x:Bind Hex}" />
+                                CornerRadius="16"
+                                ToolTipService.ToolTip="{x:Bind Name}">
+                              <Grid>
+                                <Ellipse Width="32" Height="32" Stroke="{ThemeResource SpTextPrimaryBrush}" StrokeThickness="2" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <Ellipse Width="24" Height="24" Fill="{x:Bind h:X.HexBrush(Hex)}" />
+                              </Grid>
+                            </Button>
                           </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                       </ItemsRepeater>
@@ -646,15 +655,15 @@
             <Button Command="{x:Bind ViewModel.OpenDataFolderCommand}" Content="Open" Style="{StaticResource SpSecondaryButtonStyle}" />
           </controls:SettingsCard>
 
-          <TextBlock Margin="2,18,0,4" Style="{StaticResource SpSectionHeaderTextStyle}" Text="Sponsored content" />
+          <TextBlock Margin="2,18,0,4" Style="{StaticResource SpSectionHeaderTextStyle}" Text="Promotions" />
           <controls:SettingsCard
-              Description="SidePhase Mail is planned to stay free with small, clearly labelled sponsored cards at the bottom of the sidebar and in the empty reading pane - never inside your email, and never using your messages, contacts or address. No real advertising is shown yet. Turn this on to preview the placements with built-in test cards (nothing is downloaded)."
+              Description="SidePhase Mail is planned to stay free with one clearly labelled SidePhase Studio promotion in a banner at the bottom of the window - never inside your inbox or your email, and never using your messages, contacts or address. No promotion is running yet, so the banner stays hidden. Turn this on to preview the placement with a built-in test banner (nothing is downloaded)."
               Glyph="&#xE789;"
-              Header="Preview sponsored cards (test content)">
-            <ToggleSwitch IsOn="{x:Bind ViewModel.PreviewSponsoredCards, Mode=TwoWay}" OffContent="Off" OnContent="On" />
+              Header="Preview the promotion banner (test content)">
+            <ToggleSwitch IsOn="{x:Bind ViewModel.PreviewPromotionBanner, Mode=TwoWay}" OffContent="Off" OnContent="On" />
           </controls:SettingsCard>
           <controls:SettingsCard
-              Description="For testing the planned ad-free upgrade: hides every sponsored card as if it were owned. There's nothing to buy yet."
+              Description="For testing the planned ad-free upgrade: hides the promotion banner as if it were owned. There's nothing to buy yet."
               Glyph="&#xE734;"
               Header="Simulate the ad-free upgrade">
             <ToggleSwitch IsOn="{x:Bind ViewModel.SimulateAdFree, Mode=TwoWay}" OffContent="Off" OnContent="On" />

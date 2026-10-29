@@ -88,7 +88,7 @@ public sealed class MailDataSourceRouter : IMailDataSource
 
     public Task RestoreAsync(IReadOnlyCollection<MoveRecord> moves, CancellationToken cancellationToken = default) => Active.RestoreAsync(moves, cancellationToken);
 
-    public Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default) => Active.DeletePermanentlyAsync(messageIds, cancellationToken);
+    public Task<int> DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default) => Active.DeletePermanentlyAsync(messageIds, cancellationToken);
 
     public Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default) => Active.SaveDraftAsync(draft, cancellationToken);
 

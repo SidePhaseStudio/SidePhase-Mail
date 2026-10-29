@@ -50,6 +50,12 @@ public enum SendOutcome
 
     /// <summary>The message data was sent but the server's answer never arrived.</summary>
     Uncertain,
+
+    /// <summary>
+    /// The outgoing server couldn't be reached at all (offline, no DNS, connection refused, sign-in service down), so
+    /// nothing was sent. Retried for as long as it takes, without counting as a failed attempt.
+    /// </summary>
+    NotConnected,
 }
 
 public sealed record SendAttemptResult(SendOutcome Outcome, string Message);

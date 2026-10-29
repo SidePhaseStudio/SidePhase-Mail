@@ -109,7 +109,8 @@ public interface IMailDataSource
     Task SetCategoryAsync(IReadOnlyCollection<Guid> messageIds, string category, bool add, CancellationToken cancellationToken = default);
 
     /// <summary>Permanently deletes messages that are already in Trash.</summary>
-    Task DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default);
+    /// <summary>Returns how many messages were actually deleted (failures are reported through <see cref="ErrorOccurred"/>).</summary>
+    Task<int> DeletePermanentlyAsync(IReadOnlyCollection<Guid> messageIds, CancellationToken cancellationToken = default);
 
     Task<Guid> SaveDraftAsync(DraftMessage draft, CancellationToken cancellationToken = default);
 

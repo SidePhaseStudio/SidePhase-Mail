@@ -1,69 +1,76 @@
-# Sponsored content (advertising)
+# Promotions (advertising)
 
-SidePhase Mail is planned to stay free, supported by small, clearly labelled sponsored cards, with an optional paid
-ad-free upgrade. This milestone adds the **framework only**:
+SidePhase Mail is planned to stay free, supported by **one clearly labelled promotion banner**, with an optional
+paid ad-free upgrade. Decisions so far:
 
-* **No third-party ad network is integrated.**
-* **Production advertising is disabled in code** (`AdvertisingPolicy.ProductionAdvertisingEnabled = false`). It stays
-  off until campaigns are approved and the privacy policy describes it.
-* **Advertising is off by default.** *Settings → About → Preview sponsored cards (test content)* shows the built-in
-  demonstration cards, which are marked **Test content** and link only to the reserved `example.com/.org/.net` domains.
-  Nothing is downloaded or reported.
+* **No third-party advertising networks or SDKs** (no AdsJumbo or similar). None is integrated or referenced.
+* **SidePhase Studio promotions only**, bundled with the app and individually approved.
+* **No advertising server in this repository.** A separate *SidePhase Ads API* can be connected later, but only when
+  explicitly configured.
 
-## Where cards can appear
+## The placement
 
-| Placement | Where | When |
+One banner, **centred in the main window's footer**, about **728 × 90** (it narrows with the window). It is:
+
+* labelled **Promotion** (and **Promotion · Test content** for the built-in preview banner);
+* in the Dark Glass card style, with no pop-ups, animation, autoplay, video or sound;
+* never inside the inbox, the message list, a message or a compose window;
+* **collapsed completely** when there is no promotion to show (the default today), when the window is shorter than
+  680 epx, with the ad-free entitlement, or after the user presses *Hide* (until restart).
+
+Each banner has *Why am I seeing this?* and *Hide*. Its link goes through the same confirmation dialog as links in
+email. A banner stays for at least 10 minutes (no rotation).
+
+## Sources (advertising.json → `mode`)
+
+| Mode | What shows | Network |
 | --- | --- | --- |
-| `SidebarFooter` | Bottom of the left sidebar | Only while the sidebar is open |
-| `EmptyReadingPane` | Under "Select a message to read" | Only while no message is open |
+| `House` (**default**) | Approved SidePhase Studio promotions from `src/SidePhase.Mail.App/Assets/Promotions/promotions.json` | None |
+| `Demo` | The built-in test banner (Settings → About → *Preview the promotion banner*) | None |
+| `Off` | Nothing | None |
+| `Production` | Banners from the SidePhase Ads API at `endpoint` | HTTPS to that endpoint only |
 
-Cards **never** appear inside an email body, next to an open message, in the message list or in compose windows,
-and there are no pop-ups, images, video, autoplay or animation. Every card shows a **Sponsored** label (and **Test
-content** for demonstration cards), the advertiser's name, a *Why am I seeing this?* explanation and a button that hides
-sponsored content until the app restarts. Clicking the card's link shows the same confirmation dialog as links in email
-before the browser opens. A card stays for at least 10 minutes (no rotation).
+`Production` must be set **by hand in `advertising.json`** together with an `https://` `endpoint` (no query string,
+no credentials). There is no setting for it in the app; without a valid endpoint it behaves like `Off`.
+
+### Adding an approved promotion
+
+1. Add an entry to `Assets/Promotions/promotions.json` with `"approved": true` (optional `starts`/`ends` dates).
+2. Text only, or with a banner image: a PNG/JPEG **in the same folder**, referenced by file name, designed at
+   728 × 90 (provide 1456 × 180 for sharp high-DPI display). Images are never URLs, so nothing is downloaded.
+3. Content rules (checked before showing): headline ≤ 70 characters, body ≤ 140, call to action ≤ 24, no markup or
+   control characters, link must be `https://`. Entries that break a rule are skipped.
+4. Rebuild. The shipped file contains one example entry with `"approved": false`, so nothing shows.
 
 ## Privacy rules (enforced by design and tests)
 
-* The advertising module (`src/SidePhase.Mail.Advertising`) **does not reference the mail engine** (`SidePhase.Mail.Core`,
-  `SidePhase.Mail.Infrastructure`, MailKit, MimeKit). A test fails if it ever does.
-* A provider is only ever told an `AdRequest`: **placement, app version and display language**. A test fails if
-  anything is added to it, so any change gets a privacy review first.
-* No email contents, subjects, addresses, contacts, folders, accounts, identifiers or behaviour are collected,
-  stored or sent for advertising. There is no ad ID, no cookie (the HTTP client has cookies disabled) and no
-  impression or click reporting.
-* Cards are plain text. They're rendered with the app's own controls, never as HTML, so they can't run script,
-  load trackers or look like part of an email. Content rules (lengths, no markup or control characters, HTTPS links
-  only) are checked before a card is shown.
+* The module (`src/SidePhase.Mail.Advertising`) **does not reference the mail engine** (Core, Infrastructure,
+  MailKit, MimeKit); a test fails if it ever does.
+* Bundled promotions involve no network access at all.
+* The Ads API is only told an `AdRequest`: placement, app version and display language. A test fails if anything is
+  added to it. There are no cookies, identifiers or impression/click reporting, and remote banners are text only.
+* No email contents, subjects, addresses, contacts or behaviour are ever used for promotions.
 
 ## Architecture
 
 ```
 SidePhase.Mail.Advertising (net10.0, no mail references)
-  AdPlacement, SponsoredContent      card model + content rules (IsValid)
-  AdRequest                          the only data a provider receives
-  IAdProvider                        DemoAdProvider (built-in test cards) | RemoteAdProvider (future API, HTTPS JSON)
-  AdvertisingSettings(+Store)        advertising.json in the data folder: Mode Off/Demo/Production, Endpoint, SimulateAdFree
-  AdvertisingPolicy                  ProductionAdvertisingEnabled = false, MinimumDisplayTime
-  IAdEntitlement / LocalAdEntitlement   ad-free (Premium) entitlement; local simulation for now
-  AdService                          decides what to show; never throws; hide-for-session
+  SponsoredContent, AdPlacement.Footer, PromotionSource   banner model + content rules
+  HousePromotionProvider    approved entries from the bundled promotions.json (dates, validation)
+  DemoAdProvider            built-in test banner
+  RemoteAdProvider          the separate SidePhase Ads API (HTTPS JSON, validated, cookie-free)
+  AdvertisingSettings(+Store), AdvertisingPolicy, IAdEntitlement/LocalAdEntitlement, AdService
 
-SidePhase.Mail.App/Advertising/SponsoredCard   the card control (Dark Glass card style), placed by MainWindow and ReadingPane
+SidePhase.Mail.App/Advertising/PromotionFooter   the footer banner (row 2 of MainWindow)
 ```
 
-To **remove advertising entirely**: delete the `SidePhase.Mail.Advertising` project, the `Advertising` folder in the
-app, the two `<ads:SponsoredCard>` elements, the `AdService` registration in `App.xaml.cs` and the *Sponsored content*
-cards in Settings. Nothing in the mail engine changes.
+To **remove promotions entirely**: delete the Advertising project, the app's `Advertising` folder and
+`Assets/Promotions`, the `<ads:PromotionFooter>` element and its row in `MainWindow.xaml`, the `AdService`
+registration in `App.xaml.cs`, and the *Promotions* cards in Settings.
 
-## Future work (not done)
+## Still to do (needs SidePhase Studio)
 
-1. **Approved campaigns and disclosures.** Update `PRIVACY.md` (what a request contains, who runs the service, how
-   long server logs are kept) and the Store listing before enabling anything.
-2. **Advertising API.** `RemoteAdProvider` expects `GET {endpoint}?placement=…&version=…&lang=…` returning one card as
-   JSON (format in the class comment). The endpoint must be HTTPS without a query string or credentials. Set
-   `ProductionAdvertisingEnabled = true` only in a reviewed release, and configure the endpoint in `advertising.json`
-   (or a build setting).
-3. **Ad-free upgrade.** Replace `LocalAdEntitlement` with an implementation backed by a Microsoft Store add-on
-   (`Windows.Services.Store.StoreContext.GetAppLicenseAsync()` → `AddOnLicenses`). Remove the *Simulate the ad-free
-   upgrade* setting at the same time.
-4. **Message list placement** is intentionally not supported.
+1. Approve the first promotions (text and artwork).
+2. If the Ads API is built: host it separately, document what its server logs keep, update `PRIVACY.md` first.
+3. Ad-free upgrade: replace `LocalAdEntitlement` with a Microsoft Store add-on check
+   (`Windows.Services.Store.StoreContext`), and remove the *Simulate the ad-free upgrade* setting.

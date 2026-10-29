@@ -34,9 +34,14 @@ public sealed partial class SenderRuleItemViewModel(SenderRule rule, Action<Send
     private void Remove() => remove(this);
 }
 
-public sealed partial class AccountColorOption(string hex, Action<string> select)
+public sealed partial class AccountColorOption(string name, string hex, Action<string> select) : ObservableObject
 {
+    public string Name { get; } = name;
+
     public string Hex { get; } = hex;
+
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
 
     [RelayCommand]
     private void Select() => select(Hex);
@@ -67,11 +72,14 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
         _saveAppearance = saveAppearance;
         _status = status;
         EditName = account.DisplayName;
-        ColorOptions = AccountColors.Select(c => new AccountColorOption(c, SelectColor)).ToList();
+        ColorOptions = AccountPalette.Colours.Select(c => new AccountColorOption(c.Name, c.Hex, SelectColor)).ToList();
+        UpdateColorSelection();
     }
 
-    /// <summary>Colours to tell accounts apart (the same family as the accent colours).</summary>
-    public static readonly string[] AccountColors = ["#8B7CFF", "#6C8CFF", "#3FA7F5", "#3FB6A8", "#4CC38A", "#E9A93B", "#FF7A6B", "#F06BA8", "#9DA5B4"];
+    private void UpdateColorSelection()
+    {
+        foreach (var option in ColorOptions) option.IsSelected = string.Equals(option.Hex, Account.ColorHex, StringComparison.OrdinalIgnoreCase);
+    }
 
     public IReadOnlyList<AccountColorOption> ColorOptions { get; }
 
@@ -93,7 +101,11 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
     private async void SelectColor(string hex)
     {
         if (!CanEditAppearance || string.Equals(hex, Account.ColorHex, StringComparison.OrdinalIgnoreCase)) return;
-        if (await _saveAppearance(this, Account.DisplayName, hex)) SetAccount(Account with { ColorHex = hex });
+        if (await _saveAppearance(this, Account.DisplayName, hex))
+        {
+            SetAccount(Account with { ColorHex = hex });
+            UpdateColorSelection();
+        }
     }
 
     private void SetAccount(MailAccount account)
@@ -153,6 +165,30 @@ public sealed partial class AccountSettingsViewModel : ObservableObject
             return status.LastSyncedAt is { } at
                 ? "Connected · last checked " + at.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)
                 : "Not checked yet since SidePhase Mail started";
+        }
+    }
+
+    /// <summary>Mailbox storage from the server (only where the server reports it).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStorage), nameof(StorageText), nameof(StoragePercent))]
+    public partial AccountStorage? Storage { get; set; }
+
+    public bool HasStorage => Storage is not null;
+
+    public string StorageText => Storage is { } s ? "Mailbox storage: " + s.Describe() : string.Empty;
+
+    public double StoragePercent => (Storage?.Fraction ?? 0) * 100;
+
+    public async Task LoadStorageAsync(Func<Guid, CancellationToken, Task<AccountStorage?>> load)
+    {
+        if (Account.IsDemo) return;
+        try
+        {
+            Storage = await load(Account.Id, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            Storage = null;
         }
     }
 
@@ -340,7 +376,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ads = ads;
         _ads.Changed += (_, _) => ui.Post(() =>
         {
-            OnPropertyChanged(nameof(PreviewSponsoredCards));
+            OnPropertyChanged(nameof(PreviewPromotionBanner));
             OnPropertyChanged(nameof(SimulateAdFree));
         });
         _mailRules = mailRules;
@@ -845,16 +881,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    // ---------------------------------------------------------------- Sponsored content
+    // ---------------------------------------------------------------- Promotions
 
-    /// <summary>Shows the built-in test cards in the sponsored placements (nothing is downloaded or reported).</summary>
-    public bool PreviewSponsoredCards
+    /// <summary>Shows the built-in test banner in the footer (nothing is downloaded or reported). Off: approved bundled promotions only.</summary>
+    public bool PreviewPromotionBanner
     {
         get => _ads.Settings.Mode == global::SidePhase.Mail.Advertising.AdvertisingMode.Demo;
         set
         {
-            if (value == PreviewSponsoredCards) return;
-            _ads.Update(a => a.Mode = value ? global::SidePhase.Mail.Advertising.AdvertisingMode.Demo : global::SidePhase.Mail.Advertising.AdvertisingMode.Off);
+            if (value == PreviewPromotionBanner) return;
+            _ads.Update(a => a.Mode = value ? global::SidePhase.Mail.Advertising.AdvertisingMode.Demo : global::SidePhase.Mail.Advertising.AdvertisingMode.House);
         }
     }
 
@@ -875,6 +911,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         foreach (var account in await _mail.GetAccountsAsync())
         {
             var item = new AccountSettingsViewModel(account, _settings, ReauthenticateAccountAsync, RemoveAccountAsync, SaveAppearanceAsync, _live.GetAccountStatus);
+            _ = item.LoadStorageAsync(_live.GetStorageAsync);
             item.DefaultSenderChanged += (_, _) =>
             {
                 foreach (var other in Accounts) other.RefreshDefaultSender();
