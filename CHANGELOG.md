@@ -7,7 +7,21 @@ packages upgrade in place and keep their data.
 Status words follow [RELEASE_READINESS.md](RELEASE_READINESS.md): automated tests and CI passing do **not** mean a
 feature has been checked by hand on Windows.
 
-## 0.7.0-beta.1 — Milestone 7: final polish and controlled beta (unreleased)
+## Unreleased
+
+### Fixed
+- Opening a message in an *Unread* smart folder or with the *Unread* filter no longer marks every message in the view
+  as read. The open message now stays listed until you move to another one.
+- Long messages can be scrolled with the mouse wheel and touchpad again (an invisible layer over the message was
+  taking the scroll).
+
+### Added
+- After saving an attachment, the notice offers **Open** (through Windows, so SmartScreen and Office Protected View
+  still apply). Files that can run programs or macros offer **Show in folder** instead. *Save all* offers **Open folder**.
+- Double-click a message to open it in its own window (a draft opens for editing). The window follows read/star
+  changes and closes if the message is deleted or moved away.
+
+## 0.7.0-beta.1 — Milestone 7: final polish and controlled beta
 
 ### Fixed
 - Message actions (move, archive, delete, junk, drag to a folder) only confirm, and only offer Undo for, what the

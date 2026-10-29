@@ -33,6 +33,14 @@ public sealed partial class MailListViewModel : ObservableObject
     private bool _refreshQueued;
     private int _lastSelectedIndex = -1;
     private bool _suppressAutoAdvance;
+
+    /// <summary>
+    /// The open message(s) and the folder each was in when opened. They stay listed while open even if they stop
+    /// matching the view, e.g. an "Unread" smart folder or filter once marking as read takes effect. Otherwise the open
+    /// message would vanish, the list would auto-advance to the next one, mark that read too, and so on until every
+    /// message in the view had been marked read. A message that moves folder (archive, delete, junk) isn't kept.
+    /// </summary>
+    private Dictionary<Guid, Guid> _keepVisible = [];
     private int _refreshVersion;
     private int _searchVersion;
     private IReadOnlyDictionary<string, IReadOnlySet<Guid>> _bodyMatches = new Dictionary<string, IReadOnlySet<Guid>>();
@@ -303,6 +311,11 @@ public sealed partial class MailListViewModel : ObservableObject
 
     partial void OnSelectedItemChanged(MessageItemViewModel? value)
     {
+        _keepVisible = value is null
+            ? []
+            : (value.IsConversation ? value.ConversationMessages : [value.Summary])
+                .GroupBy(m => m.Id).ToDictionary(g => g.Key, g => g.First().FolderId);
+
         if (value is not null)
         {
             _lastSelectedIndex = Entries.IndexOf(value);
@@ -563,13 +576,15 @@ public sealed partial class MailListViewModel : ObservableObject
         var clockNow = _clock.Now;
         var firstDay = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
         var isLocallyJunk = (Func<MessageSummary, bool>)_junk.IsLocallyJunk;
+        var keep = _keepVisible;
+        bool KeptOpen(MessageSummary m) => !m.IsSnoozed && keep.TryGetValue(m.Id, out var folder) && folder == m.FolderId;
 
         var (inScope, sections) = await Task.Run(() =>
         {
             var asksForJunkOrTrash = searchEverywhere && MessageSearch.Parse(searchText).Any(t => t.Operator == "in");
             var matching = all.Where(m => searchEverywhere
                     ? !m.IsSnoozed && (asksForJunkOrTrash || m.FolderKind is not (FolderKind.Junk or FolderKind.Trash))
-                    : smartFilter?.Invoke(m) ?? MailboxScopeMatcher.Matches(m, scope, isLocallyJunk))
+                    : (smartFilter?.Invoke(m) ?? MailboxScopeMatcher.Matches(m, scope, isLocallyJunk)) || KeptOpen(m))
                 .ToList();
 
             // Conversation view: replies are grouped with the messages they answer, including your own from Sent.
@@ -584,6 +599,7 @@ public sealed partial class MailListViewModel : ObservableObject
                 SearchText = searchText,
                 Search = searchContext,
                 Filter = filter,
+                KeepVisible = keep.Keys.ToHashSet(),
                 Sort = sort,
                 ShowPinnedSection = settings.ShowPinnedSection && scope.Kind != MailboxScopeKind.Pinned,
                 PinnedSectionCollapsed = settings.PinnedSectionCollapsed,

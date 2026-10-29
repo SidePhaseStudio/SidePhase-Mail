@@ -51,14 +51,23 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         Subject = SenderName = SenderAddress = Initials = DateText = ToLine = CcLine = string.Empty;
         AccountName = FolderName = SpamTitle = SpamDetail = SpamActionText = SpamCheckSummary = SpamCheckDetail = string.Empty;
         AccountColor = "#8B7CFF";
-        _mail.DataChanged += (_, e) =>
+        _mail.DataChanged += OnDataChanged;
+    }
+
+    private void OnDataChanged(object? sender, MailDataChangedEventArgs e)
+    {
+        if (e.Kind == MailDataChangeKind.Reset)
         {
-            if (e.Kind == MailDataChangeKind.Reset)
-            {
-                _accounts.Clear();
-                _folders.Clear();
-            }
-        };
+            _accounts.Clear();
+            _folders.Clear();
+        }
+    }
+
+    /// <summary>Stops listening for changes (a separate message window's view model, when the window closes).</summary>
+    public void Detach()
+    {
+        _mail.DataChanged -= OnDataChanged;
+        _loadCts?.Cancel();
     }
 
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = [];

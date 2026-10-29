@@ -81,6 +81,21 @@ public class MessageListTests
     }
 
     [Fact]
+    public void The_open_message_stays_listed_under_Unread_after_it_is_marked_read()
+    {
+        // Regression: it used to vanish, the list auto-advanced to the next message and marked that read too, until
+        // every message in the Unread view had been marked read.
+        var open = Samples.Message(read: true);
+        var other = Samples.Message(read: false);
+        var alreadyRead = Samples.Message(read: true);
+        var listed = MessageListBuilder.Build([open, other, alreadyRead], Options(o => o with { Filter = MessageFilter.Unread, KeepVisible = new HashSet<Guid> { open.Id } }))
+            .SelectMany(s => s.Messages).ToList();
+        Assert.Contains(open, listed);
+        Assert.Contains(other, listed);
+        Assert.DoesNotContain(alreadyRead, listed);
+    }
+
+    [Fact]
     public void Non_date_sorts_produce_a_single_untitled_section()
     {
         var b = Samples.Message("Bob <bob@x.example>");

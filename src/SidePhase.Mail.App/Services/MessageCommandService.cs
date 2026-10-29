@@ -444,8 +444,48 @@ public sealed class MessageCommandService(
 
         if (await DownloadToAsync(message, index, attachment, path, overwrite: true))
         {
-            toasts.Show($"Saved \"{Path.GetFileName(path)}\".", ToastKind.Success);
+            // Opening is the user's choice, never automatic. Files that can run code only get "Show in folder", so they're
+            // never one click from running.
+            var saved = $"Saved \"{Path.GetFileName(path)}\".";
+            if (AttachmentSafety.IsDangerous(path))
+                toasts.ShowWithAction(saved, ToastKind.Success, "Show in folder", () => ShowInFolder(path));
+            else
+                toasts.ShowWithAction(saved, ToastKind.Success, "Open", () => OpenSavedFile(path));
         }
+    }
+
+    /// <summary>
+    /// Opens a saved attachment in its usual app, through Windows (so the Mark of the Web added on saving applies:
+    /// SmartScreen, Office Protected View and macro blocking).
+    /// </summary>
+    private Task OpenSavedFile(string path)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            toasts.Show($"Couldn't open \"{Path.GetFileName(path)}\": {ex.Message}", ToastKind.Error);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Opens File Explorer with the saved file (or a folder) selected.</summary>
+    private Task ShowInFolder(string path)
+    {
+        try
+        {
+            var arguments = File.Exists(path) ? $"/select,\"{path}\"" : $"\"{path}\"";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", arguments) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            toasts.Show("Couldn't open File Explorer: " + ex.Message, ToastKind.Error);
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>Saves every attachment into a chosen folder. Existing files are never overwritten: names get " (2)" etc.</summary>
@@ -487,9 +527,12 @@ public sealed class MessageCommandService(
             if (await DownloadToAsync(message, i, attachments[i], Path.Combine(folder, name), overwrite: false)) saved++;
         }
 
-        toasts.Show(
+        if (saved == 0) return; // each failure was already reported
+        toasts.ShowWithAction(
             saved == attachments.Count ? $"Saved {saved} attachments to {Path.GetFileName(folder)}." : $"Saved {saved} of {attachments.Count} attachments.",
-            saved == attachments.Count ? ToastKind.Success : ToastKind.Warning);
+            saved == attachments.Count ? ToastKind.Success : ToastKind.Warning,
+            "Open folder",
+            () => ShowInFolder(folder));
     }
 
     /// <summary>Previewable types: ordinary images and plain text. Never scripts, SVG (which can contain code) or HTML.</summary>

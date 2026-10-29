@@ -142,6 +142,20 @@ public sealed partial class MailPage : Page
         AdvancedSearchFlyout.Hide();
     }
 
+    /// <summary>Double-click opens the message in its own window; a draft opens for editing instead.</summary>
+    private async void OnMessageDoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not MessageItemViewModel item) return;
+        e.Handled = true;
+        if (item.Summary.FolderKind == Core.Models.FolderKind.Drafts)
+        {
+            await App.GetService<Services.MessageCommandService>().EditDraftAsync(item.Summary);
+            return;
+        }
+
+        App.GetService<Services.WindowService>().OpenMessage(item.Summary, item.ThreadMessages);
+    }
+
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_syncingSelection) return;

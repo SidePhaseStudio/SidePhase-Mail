@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A message opened in its own window (double-click in the list): the same reading pane, on the Dark Glass panel. -->
+<Window
+    x:Class="SidePhase.Mail.App.Views.MessageWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Grid x:Name="RootGrid">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="48" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Border x:Name="SolidLayer" Grid.RowSpan="2" Background="{ThemeResource SpWindowSolidBrush}" />
+    <Border Grid.RowSpan="2" Background="{ThemeResource SpWindowTintBrush}" />
+    <Border
+        Grid.Row="1"
+        Margin="8,0,8,8"
+        Background="{ThemeResource SpReaderBrush}"
+        BorderBrush="{ThemeResource SpPanelStrokeBrush}"
+        BorderThickness="1"
+        CornerRadius="{StaticResource SpCornerLarge}" />
+
+    <TitleBar x:Name="MessageTitleBar" Height="48">
+      <TitleBar.IconSource>
+        <ImageIconSource ImageSource="ms-appx:///Assets/AppLogo.png" />
+      </TitleBar.IconSource>
+    </TitleBar>
+
+    <Grid x:Name="PaneHost" Grid.Row="1" Margin="8,0,8,8" />
+  </Grid>
+</Window>

@@ -395,6 +395,7 @@
             ItemTemplateSelector="{StaticResource TemplateSelector}"
             ItemsSource="{x:Bind ViewModel.Entries}"
             CanDragItems="True"
+            DoubleTapped="OnMessageDoubleTapped"
             DragItemsStarting="OnDragItemsStarting"
             SelectionChanged="OnSelectionChanged"
             SelectionMode="Extended"
