@@ -10,8 +10,14 @@ notifications use support@sidephasestudio.com; the consent-screen support addres
 address, approved for testing only. The required Desktop value is saved as an Actions secret and in ignored local build
 configuration. A real browser sign-in succeeded after including it, both connection tests passed and Gmail folders and
 inbox messages synchronised in the portable Windows build. Real sending/delivery, expiry/revocation/removal and installed
-MSIX sign-in remain unverified. Public verification has not been submitted: product/privacy URLs and the eligible Studio
-support identity must be completed first.
+MSIX sign-in remain unverified. Public verification has not been submitted. The product, privacy, terms and support pages are now published below;
+the eligible Studio support identity, domain ownership verification, demo evidence and Google review remain release work.
+
+Public links:
+- Product: https://sidephasestudio.com/sidephasemail/
+- Privacy: https://sidephasestudio.com/sidephasemail/privacy/
+- Terms: https://sidephasestudio.com/sidephasemail/terms/
+- Support and data removal: https://sidephasestudio.com/sidephasemail/support/
 
 ## Application registration
 
@@ -26,7 +32,7 @@ The client uses authorization code + S256 PKCE, a random state and the system br
 ## Google Cloud Console: create or recreate the setup
 
 1. Sign in to [Google Cloud Console](https://console.cloud.google.com/) as the Studio project owner. Select the existing **SidePhase Mail** project (`sidephase-mail`), or create a project owned by the Studio for a fresh deployment. Separate development and production projects are useful if changing verified scopes later.
-2. Open **Google Auth Platform → Branding** (older navigation: APIs & Services → OAuth consent screen). Set the application name to **SidePhase Mail**. Set a support email and developer notification email. The desired customer contact is **support@sidephasestudio.com**. Google restricts the support dropdown to eligible Google Accounts/Groups: connect that identity before public release. Any temporary personal support address is for testing only. Publish the reviewed privacy policy and an accurate product homepage on the Studio's verified domain, and enter their actual URLs. Do not invent a URL or submit the repository's draft policy as an already published policy.
+2. Open **Google Auth Platform → Branding** (older navigation: APIs & Services → OAuth consent screen). Set the application name to **SidePhase Mail**. Set a support email and developer notification email. The desired customer contact is **support@sidephasestudio.com**. Google restricts the support dropdown to eligible Google Accounts/Groups: connect that identity before public release. Any temporary personal support address is for testing only. The product homepage and policies are published at the URLs above. Keep them accurate, verify the Studio domain and use these actual URLs in the consent screen.
 3. Choose **Audience → External**, initially **Testing**. Add the exact Google accounts that will test the app under **Test users**. Google limits testing to the listed users (up to 100); refresh tokens for this mail scope in Testing normally expire after seven days. This is not a production configuration.
 4. Under **Clients → Create client**, choose **Desktop app**, name it **SidePhase Mail Windows Desktop**, and create it. Copy only the Client ID into `Directory.Build.props`. Do not choose Web application or UWP. Obtain the issued Desktop client value from the creation dialog or its download and supply it through the ignored local props file and GitHub Actions secret above. Do not commit the credentials JSON or value.
 5. Under **Data access → Add or remove scopes**, declare exactly:
@@ -58,7 +64,7 @@ Tokens use the existing Windows DPAPI CurrentUser secret store, separate from se
 
 Microsoft Store approval does not approve Google OAuth. Before unrestricted public Gmail sign-in:
 
-1. Replace the temporary personal consent-screen support email with the eligible **support@sidephasestudio.com** identity. Complete homepage, logo if used, privacy policy, authorised domains and domain ownership verification. The policy must describe local storage, data deletion, direct provider traffic and compliance with Google's Limited Use requirements; review the actual app behavior before publishing it.
+1. Replace the temporary personal consent-screen support email with the eligible **support@sidephasestudio.com** identity. The homepage, privacy/terms URLs, real app logo and authorised domain are configured. Complete domain ownership verification and keep these pages current. The policy must describe local storage, data deletion, direct provider traffic and compliance with Google's Limited Use requirements; review the actual app behavior before publishing it.
 2. Complete brand verification and restricted-scope verification in **Google Auth Platform → Verification centre**. Supply the Windows app/download or reviewer access, exact scope justification, architecture/data-flow explanation and a demo video showing sign-in, consent and each restricted-data feature, including permanent deletion. Do not submit placeholder URLs or an untested demo claim.
 3. Explain that the app runs locally, stores tokens with Windows DPAPI, caches/processes mail locally and has no developer servers receiving mail, passwords or tokens. Document any optional external integrations accurately.
 4. Google's published restricted-scope guidance ties the third-party security assessment to access to restricted data **from or through a third-party server**. This local-only design is grounds to request that the assessment is not applicable; it is **not** an exemption from restricted-scope/brand verification and not a guarantee of Google's decision. Ask the verification team to confirm applicability for this exact architecture. If server-side access is introduced or Google determines an assessment is required, expect an approved assessor/CASA process and annual reassessment. Never route Gmail data through a new backend merely to obtain verification.

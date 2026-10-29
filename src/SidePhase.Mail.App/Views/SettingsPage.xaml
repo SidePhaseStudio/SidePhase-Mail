@@ -538,6 +538,13 @@
 
         <!-- ============================ Privacy ============================ -->
         <StackPanel x:Name="PrivacySection" Spacing="4" Visibility="Collapsed">
+          <controls:SettingsCard Header="Privacy policy and data removal" Description="How SidePhase Mail uses Google data, stores mail locally, and handles account removal and retained copies." Glyph="&#xE72E;">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <HyperlinkButton Content="Privacy policy" NavigateUri="https://sidephasestudio.com/sidephasemail/privacy/" />
+              <HyperlinkButton Content="Data removal &amp; support" NavigateUri="https://sidephasestudio.com/sidephasemail/support/#remove-data" />
+            </StackPanel>
+          </controls:SettingsCard>
+
           <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Content" />
           <controls:SettingsCard Description="Stops senders tracking when you open a message. You can still show images for a single message." Glyph="&#xE91B;" Header="Block remote images">
             <ToggleSwitch IsOn="{x:Bind ViewModel.BlockRemoteImages, Mode=TwoWay}" OffContent="Off" OnContent="On" />
@@ -632,6 +639,12 @@
                 <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="{x:Bind ViewModel.DistributionText}" />
                 <TextBlock Style="{StaticResource SpSecondaryTextStyle}" Text="A simple, private email client for Windows 11 by SidePhase Studio." TextWrapping="Wrap" />
                 <TextBlock Style="{StaticResource SpCaptionTextStyle}" Text="Connects to Google, Microsoft and IMAP/SMTP accounts directly. The demonstration mailbox uses fictional people and companies on reserved .example domains." TextWrapping="Wrap" />
+                <StackPanel Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                  <HyperlinkButton Content="App website" NavigateUri="https://sidephasestudio.com/sidephasemail/" />
+                  <HyperlinkButton Content="Privacy policy" NavigateUri="https://sidephasestudio.com/sidephasemail/privacy/" />
+                  <HyperlinkButton Content="Terms &amp; licence" NavigateUri="https://sidephasestudio.com/sidephasemail/terms/" />
+                  <HyperlinkButton Content="Support" NavigateUri="https://sidephasestudio.com/sidephasemail/support/" />
+                </StackPanel>
                 <StackPanel Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
                   <HyperlinkButton Content="Project on GitHub" NavigateUri="https://github.com/SidePhaseStudio/SidePhase-Mail" />
                   <HyperlinkButton Content="Report a problem" NavigateUri="https://github.com/SidePhaseStudio/SidePhase-Mail/issues/new/choose" />

@@ -18,7 +18,7 @@ CI), the CI packaging test (MSIX install → launch → uninstall on Windows), o
 | Partner Center name reservation | Real package identity (Name/Publisher) replaces the placeholders in `Package.appxmanifest`. | SidePhase Studio |
 | Code signing for non-Store packages | CI/beta MSIX are unsigned (testers use a local test certificate). | SidePhase Studio |
 | Final artwork | Package tiles/logos are placeholders generated from the app logo. | SidePhase Studio |
-| Privacy policy published on SidePhase Studio's domain | Required by Google, Microsoft and the Store. Draft: [PRIVACY.md](PRIVACY.md). | SidePhase Studio |
+| Policy and product pages | Published at [sidephasestudio.com/sidephasemail/](https://sidephasestudio.com/sidephasemail/), linked from the app and Google configuration. Google review remains pending. Source: [PRIVACY.md](PRIVACY.md). | SidePhase Studio |
 
 ## Feature status
 
@@ -131,3 +131,10 @@ Desktop value fixed the exchange. 473 tests passed, 15 local-server integration 
 build passed. No real send/delivery, expiry-driven refresh, revoke/reconnect, account-removal or installed-MSIX Google
 sign-in test is claimed. Those remain in GOOGLE_SETUP.md's release checklist.
 The temporary Google consent-screen Gmail support address must become support@sidephasestudio.com before release.
+
+### Public app pages (29 October 2026)
+
+Product, privacy, terms/licence and support/data-removal pages are published under `/sidephasemail/`.
+Welcome, Add account and Settings link to the published policies; About also links to the product and support pages.
+The privacy policy discloses retained outbox items and other local copies rather than promising complete erasure on
+account removal. The Studio homepage is unchanged; only the dedicated site's exact redirects and sitemap were extended.

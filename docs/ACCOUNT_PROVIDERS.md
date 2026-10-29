@@ -121,7 +121,7 @@ following is done and real sign-in has been tested:
 
 1. A Google Cloud project owned by SidePhase Studio with an OAuth client of type *Desktop app*.
 2. OAuth consent screen: app name **SidePhase Mail**, support email, logo, a homepage and a **privacy policy on a
-   domain SidePhase Studio owns** (the draft is `PRIVACY.md`), authorised domains verified in Google Search Console.
+   domain SidePhase Studio owns** (published at https://sidephasestudio.com/sidephasemail/privacy/; source is `PRIVACY.md`), authorised domains verified in Google Search Console.
 3. **Brand verification** of the consent screen.
 4. **Restricted scope verification** for `https://mail.google.com/` (needed for IMAP/SMTP): a justification and a
    demo video of the sign-in and how mail data is used.

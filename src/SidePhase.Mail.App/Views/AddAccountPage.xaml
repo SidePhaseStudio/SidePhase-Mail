@@ -29,6 +29,12 @@
         <TextBlock Style="{StaticResource SpTitleTextStyle}" Text="{x:Bind ViewModel.Title, Mode=OneWay}" />
         <TextBlock Style="{StaticResource SpSecondaryTextStyle}" TextWrapping="Wrap" Text="SidePhase Mail connects directly to your email provider. Your password or sign-in stays on this PC, encrypted with Windows, and is never sent to SidePhase Studio." />
 
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <HyperlinkButton Content="Privacy policy" NavigateUri="https://sidephasestudio.com/sidephasemail/privacy/" />
+          <HyperlinkButton Content="Terms &amp; licence" NavigateUri="https://sidephasestudio.com/sidephasemail/terms/" />
+          <HyperlinkButton Content="Support" NavigateUri="https://sidephasestudio.com/sidephasemail/support/" />
+        </StackPanel>
+
         <!-- Step 1: who are you -->
         <Border Style="{StaticResource SpCardStyle}" Padding="20">
           <StackPanel Spacing="12">

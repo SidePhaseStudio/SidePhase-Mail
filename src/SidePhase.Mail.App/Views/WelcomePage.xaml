@@ -81,6 +81,12 @@
           </Border>
         </StackPanel>
 
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <HyperlinkButton Content="Privacy policy" NavigateUri="https://sidephasestudio.com/sidephasemail/privacy/" />
+          <HyperlinkButton Content="Terms &amp; licence" NavigateUri="https://sidephasestudio.com/sidephasemail/terms/" />
+          <HyperlinkButton Content="Support" NavigateUri="https://sidephasestudio.com/sidephasemail/support/" />
+        </StackPanel>
+
         <Button
             Margin="0,10,0,0"
             HorizontalAlignment="Stretch"
