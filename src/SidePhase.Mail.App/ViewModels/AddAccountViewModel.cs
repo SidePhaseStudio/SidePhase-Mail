@@ -184,8 +184,9 @@ public sealed partial class AddAccountViewModel : ObservableObject
         CanUseAppPassword = _authMethod == AuthMethod.OAuthGoogle;
         OAuthUnavailableText = OAuthAvailable
             ? $"Your browser will open {provider}'s own sign-in page. SidePhase Mail never sees your {provider} password."
-            : $"{provider} sign-in needs an OAuth app registration that hasn't been configured in this build. Add a client ID under Settings → Accounts (see docs/ACCOUNT_PROVIDERS.md)."
-              + (CanUseAppPassword ? " You can also use a Google app password instead." : string.Empty);
+            : _authMethod == AuthMethod.OAuthGoogle
+                ? "Google sign-in isn't available in this build. Please install a build configured by SidePhase Studio."
+                : "Microsoft sign-in hasn't been configured. Add a client ID under Settings → Accounts (see docs/ACCOUNT_PROVIDERS.md).";
     }
 
     /// <summary>Fills the form with server settings imported from Thunderbird (no password: the user signs in here).</summary>

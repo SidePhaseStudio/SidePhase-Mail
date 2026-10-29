@@ -9,6 +9,7 @@ hairline borders, Segoe UI Variable typography and a calm, refined accent colour
 > **Status: 0.6 beta (Milestone 6), not production-ready.** Real IMAP/SMTP accounts work and are tested end to end;
 > Google and Microsoft sign-in (OAuth) are implemented but **not yet verified with real accounts**; they need app
 > registrations and provider verification ([docs/ACCOUNT_PROVIDERS.md](docs/ACCOUNT_PROVIDERS.md)).
+> Google uses one Studio Desktop registration embedded in every build; see [GOOGLE_SETUP.md](GOOGLE_SETUP.md) for setup and release checks.
 > [RELEASE_READINESS.md](RELEASE_READINESS.md) says exactly what is verified, what isn't, and the known issues;
 > [docs/BETA_TESTING.md](docs/BETA_TESTING.md) is the tester checklist.
 

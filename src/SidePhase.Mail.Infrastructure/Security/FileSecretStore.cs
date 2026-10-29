@@ -155,7 +155,6 @@ public static class SecretKeys
     public static string AccountPrefix(Guid accountId) => $"account/{accountId:N}/";
     public static string Password(Guid accountId) => AccountPrefix(accountId) + "password";
     public static string OAuthTokens(Guid accountId) => AccountPrefix(accountId) + "oauth";
-    public const string GoogleClientSecret = "oauth-client/google/secret";
 
 }
 

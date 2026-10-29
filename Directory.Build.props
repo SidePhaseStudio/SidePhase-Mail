@@ -14,5 +14,9 @@
     <VersionSuffix>beta.1</VersionSuffix>
     <Authors>SidePhase Studio</Authors>
     <Deterministic>true</Deterministic>
+    <!-- Public Desktop client ID owned by SidePhase Studio. Set once before distribution; see GOOGLE_SETUP.md. -->
+    <SidePhaseGoogleClientId Condition="'$(SidePhaseGoogleClientId)' == ''">14204421377-2b4le3jpgfr1amirfrh4eampelo8lodl.apps.googleusercontent.com</SidePhaseGoogleClientId>
   </PropertyGroup>
+  <!-- Publisher-only Desktop registration value; never a user's tokens or a confidential web-client secret. -->
+  <Import Project="GoogleOAuth.local.props" Condition="Exists('GoogleOAuth.local.props')" />
 </Project>

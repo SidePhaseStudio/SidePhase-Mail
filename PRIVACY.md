@@ -5,8 +5,7 @@
 > before a public release, and updated whenever the app's data handling changes, for example if sponsored content
 > is ever switched on.
 
-**Who we are.** SidePhase Mail is an email app for Windows made by SidePhase Studio. Contact: *[SidePhase Studio contact
-address to be added]*.
+**Who we are.** SidePhase Mail is an email app for Windows made by SidePhase Studio. Contact: [support@sidephasestudio.com](mailto:support@sidephasestudio.com).
 
 ## The short version
 

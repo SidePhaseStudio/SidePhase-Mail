@@ -34,14 +34,11 @@ public sealed class LoopbackRedirectListener : IDisposable
     public string RedirectUri(string host) => $"http://{host}:{Port}/";
 
     /// <summary>Waits for the browser to arrive at the redirect URI and returns its query parameters.</summary>
-    public async Task<IReadOnlyDictionary<string, string>> WaitForCallbackAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<string, string>> WaitForCallbackAsync(CancellationToken cancellationToken, string? expectedState = null)
     {
         while (true)
         {
-            var accepts = new List<Task<TcpClient>> { _v4.AcceptTcpClientAsync(cancellationToken).AsTask() };
-            if (_v6 is not null) accepts.Add(_v6.AcceptTcpClientAsync(cancellationToken).AsTask());
-            var accepted = await Task.WhenAny(accepts).ConfigureAwait(false);
-            using var client = await accepted.ConfigureAwait(false);
+            using var client = await AcceptAsync(cancellationToken).ConfigureAwait(false);
             var stream = client.GetStream();
 
             var requestLine = await ReadRequestLineAsync(stream, cancellationToken).ConfigureAwait(false);
@@ -53,6 +50,11 @@ public sealed class LoopbackRedirectListener : IDisposable
             }
 
             var target = parts[1];
+            if (target.Split('?')[0] != "/")
+            {
+                await RespondAsync(stream, 404, "Not found", cancellationToken).ConfigureAwait(false);
+                continue;
+            }
             var query = target.Contains('?') ? target[(target.IndexOf('?') + 1)..] : string.Empty;
             var values = ParseQuery(query);
             if (values.Count == 0)
@@ -62,12 +64,34 @@ public sealed class LoopbackRedirectListener : IDisposable
                 continue;
             }
 
+            if (expectedState is not null && values.GetValueOrDefault("state") != expectedState)
+            {
+                await RespondAsync(stream, 400, "This response does not match the pending sign-in.", cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
             var ok = !values.ContainsKey("error");
             await RespondAsync(stream, 200, ok
                 ? "Sign-in received. You can close this tab and return to SidePhase Mail to finish."
                 : "Sign-in was cancelled or failed. You can close this tab and return to SidePhase Mail.", cancellationToken).ConfigureAwait(false);
             return values;
         }
+    }
+
+    private async Task<TcpClient> AcceptAsync(CancellationToken ct)
+    {
+        // Cancel and observe the unused accept, including when a favicon or invalid callback causes another loop.
+        using var pending = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var accepts = new List<Task<TcpClient>> { _v4.AcceptTcpClientAsync(pending.Token).AsTask() };
+        if (_v6 is not null) accepts.Add(_v6.AcceptTcpClientAsync(pending.Token).AsTask());
+        var winner = await Task.WhenAny(accepts).ConfigureAwait(false);
+        await pending.CancelAsync().ConfigureAwait(false);
+        foreach (var other in accepts.Where(a => a != winner))
+        {
+            try { (await other.ConfigureAwait(false)).Dispose(); }
+            catch (OperationCanceledException) { }
+        }
+        return await winner.ConfigureAwait(false);
     }
 
     internal static Dictionary<string, string> ParseQuery(string query)

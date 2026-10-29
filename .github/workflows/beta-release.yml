@@ -20,6 +20,8 @@ jobs:
   build:
     name: Build and test
     uses: ./.github/workflows/build.yml
+    secrets:
+      SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET }}
 
   draft-release:
     name: Draft the beta release

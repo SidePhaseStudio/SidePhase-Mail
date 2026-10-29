@@ -43,7 +43,7 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
         IReadOnlyDictionary<string, string> callback;
         try
         {
-            callback = await listener.WaitForCallbackAsync(timeout.Token).ConfigureAwait(false);
+            callback = await listener.WaitForCallbackAsync(timeout.Token, state).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -51,7 +51,12 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
         }
 
         var code = ValidateCallback(callback, state, config.Name);
-        return await ExchangeCodeAsync(config, code, verifier, redirectUri, cancellationToken).ConfigureAwait(false);
+        var tokens = await ExchangeCodeAsync(config, code, verifier, redirectUri, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(tokens.RefreshToken))
+            throw new OAuthException("Offline access wasn't granted. Sign in again and allow mail access to keep your inbox synchronising.");
+        if (config.Method == Core.Models.AuthMethod.OAuthGoogle && string.IsNullOrWhiteSpace(tokens.Email))
+            throw new OAuthException("Google didn't confirm the signed-in email address. Please sign in again.");
+        return tokens;
     }
 
     public static Uri BuildAuthorizationUri(OAuthProviderConfig config, string redirectUri, string state, string codeChallenge, string? loginHint)
@@ -87,7 +92,7 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
             throw error switch
             {
                 "access_denied" => new OAuthException($"{providerName} sign-in was cancelled, or access wasn't granted."),
-                _ => new OAuthException($"{providerName} sign-in failed ({error}). {callback.GetValueOrDefault("error_description")}".Trim()),
+                _ => new OAuthException($"{providerName} sign-in failed. Please try again."),
             };
         }
 
@@ -107,7 +112,8 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
             ["code_verifier"] = verifier,
             ["scope"] = string.Join(' ', config.Scopes),
         };
-        if (!string.IsNullOrEmpty(config.ClientSecret)) form["client_secret"] = config.ClientSecret;
+        if (config.Method == Core.Models.AuthMethod.OAuthGoogle && !string.IsNullOrWhiteSpace(config.DesktopClientSecret))
+            form["client_secret"] = config.DesktopClientSecret;
         return await PostTokenRequestAsync(config, form, existingRefreshToken: null, cancellationToken).ConfigureAwait(false);
     }
 
@@ -120,7 +126,8 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
             ["client_id"] = config.ClientId,
             ["scope"] = string.Join(' ', config.Scopes),
         };
-        if (!string.IsNullOrEmpty(config.ClientSecret)) form["client_secret"] = config.ClientSecret;
+        if (config.Method == Core.Models.AuthMethod.OAuthGoogle && !string.IsNullOrWhiteSpace(config.DesktopClientSecret))
+            form["client_secret"] = config.DesktopClientSecret;
         return await PostTokenRequestAsync(config, form, refreshToken, cancellationToken).ConfigureAwait(false);
     }
 
@@ -164,6 +171,12 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
                 throw new OAuthException($"{config.Name} rejected the sign-in ({error ?? status.ToString(System.Globalization.CultureInfo.InvariantCulture)}).");
             }
 
+            // Google returns canonical identity scope URIs rather than the request's "email" shorthand.
+            if (config.Method == Core.Models.AuthMethod.OAuthGoogle && json.TryGetProperty("scope", out var scope)
+                && (scope.ValueKind != JsonValueKind.String || !scope.GetString()!.Split(' ').Contains("https://mail.google.com/")))
+                throw new OAuthException($"{config.Name} mail access wasn't fully granted. Sign in again and allow the requested permissions.");
+            if (accessToken.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(accessToken.GetString()))
+                throw new OAuthException($"{config.Name} returned an invalid sign-in response. Please try again.", isTransient: true);
             return ReadTokens(json, accessToken, existingRefreshToken);
         }
     }
@@ -171,7 +184,8 @@ public sealed class OAuthClient(HttpClient http, IBrowserLauncher browser)
     private static OAuthTokens ReadTokens(JsonElement json, JsonElement accessToken, string? existingRefreshToken)
     {
         var expiresIn = json.TryGetProperty("expires_in", out var exp) && exp.TryGetInt32(out var seconds) ? seconds : 3600;
-        var refresh = json.TryGetProperty("refresh_token", out var r) ? r.GetString() : existingRefreshToken;
+        var refresh = json.TryGetProperty("refresh_token", out var r) && r.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(r.GetString()) ? r.GetString() : existingRefreshToken;
         var email = json.TryGetProperty("id_token", out var idToken) ? ReadEmailClaim(idToken.GetString()) : null;
         return new OAuthTokens(accessToken.GetString()!, refresh, DateTimeOffset.UtcNow.AddSeconds(expiresIn), email);
     }

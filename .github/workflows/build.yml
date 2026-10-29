@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
   # Used by the beta release workflow, which only drafts a release once all of this has passed.
   workflow_call:
+    secrets:
+      SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET:
+        required: false
     outputs:
       version:
         description: Version built (e.g. 0.7.0-beta.1)
@@ -26,6 +29,9 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   CONFIGURATION: Release
+  # Desktop registrations are public clients. Google still requires its issued Desktop value for token exchange.
+  SidePhaseGoogleClientId: ${{ vars.SIDEPHASE_GOOGLE_CLIENT_ID }}
+  SidePhaseGoogleDesktopClientSecret: ${{ secrets.SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET }}
 
 jobs:
   mail-integration:
@@ -101,6 +107,14 @@ jobs:
         run: |
           dotnet --info
           Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version
+
+      - name: Verify publisher Google Desktop registration is available
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SidePhaseGoogleDesktopClientSecret)) {
+            throw 'Set the SIDEPHASE_GOOGLE_DESKTOP_CLIENT_SECRET Actions secret before distributing this build (GOOGLE_SETUP.md).'
+          }
 
       - name: Read version
         id: version

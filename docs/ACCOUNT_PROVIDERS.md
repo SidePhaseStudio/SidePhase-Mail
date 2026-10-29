@@ -47,24 +47,18 @@ code using **PKCE (S256)** and a random `state` that must match. SidePhase Mail 
 Scopes requested: `https://mail.google.com/` (IMAP/SMTP access; required by Google for XOAUTH2), `openid`, `email`
 (to confirm which address signed in). `access_type=offline` is requested so a refresh token is issued.
 
-### Registering the app (Google Cloud Console)
+### Studio registration and public verification
 
-1. Create a project at <https://console.cloud.google.com/>.
-2. **APIs & Services → OAuth consent screen**: user type *External*; app name *SidePhase Mail*; add the scopes
-   above. While the app is in *Testing*, add the Google accounts that may sign in as **test users**.
-3. **Credentials → Create credentials → OAuth client ID → Desktop app.** Loopback redirects are allowed
-   automatically for desktop clients.
-4. Give the app the client ID: *Settings → Accounts → Google OAuth client ID*, or the environment variable
-   `SIDEPHASE_GOOGLE_CLIENT_ID`. Google also issues a “client secret” for desktop clients; for installed apps
-   it is not confidential, but it's still never compiled in or committed. Enter it under
-   *Settings → Accounts → Google client secret* (stored encrypted) or set `SIDEPHASE_GOOGLE_CLIENT_SECRET`.
+The application-wide Studio Desktop Client ID is embedded at build time from `SidePhaseGoogleClientId`
+in `Directory.Build.props`. Gmail customers only choose **Add account → Google → Sign in with Google**;
+they never enter registration credentials. The issued public Desktop registration value is supplied through publisher build configuration. Developer overrides and exact Cloud Console
+steps are in [GOOGLE_SETUP.md](../GOOGLE_SETUP.md), including test users, real-account tests and release verification.
 
-### Restricted scope verification
-
-`https://mail.google.com/` is a **restricted scope**. Until Google verifies the app, only the test users
-(max. 100) can sign in, and refresh tokens for apps in *Testing* expire after 7 days. Publishing to everyone requires
-Google's OAuth verification and an annual third-party security assessment (CASA). Until then, Gmail users can also
-connect with an **app password** (requires 2-Step Verification), which the Add Account page offers.
+Full-mail access is restricted. The existing confirmed permanent-delete feature is part of its scope justification;
+Google must approve the justification. Public distribution requires brand and restricted-scope verification.
+A third-party security assessment may apply if restricted data is accessed from or through third-party servers;
+request a determination for this local-only architecture rather than assuming an assessment is always required.
+Testing-mode tokens normally expire after seven days. See the setup guide for current official references.
 
 ## Microsoft OAuth (Outlook.com, Hotmail, Live, Microsoft 365)
 
@@ -131,8 +125,8 @@ following is done and real sign-in has been tested:
 3. **Brand verification** of the consent screen.
 4. **Restricted scope verification** for `https://mail.google.com/` (needed for IMAP/SMTP): a justification and a
    demo video of the sign-in and how mail data is used.
-5. **Annual security assessment (CASA)** by an authorised third-party assessor, required for restricted Gmail scopes.
-   Plan for the time and cost; it repeats every year.
+5. **Security-assessment applicability** confirmed by Google's verification team for this local-only architecture.
+   Server-side access can require an annual third-party assessment; restricted-scope verification still applies locally.
 6. Until verified, the app is limited to up to 100 test users added by hand, and their refresh tokens expire after 7
    days. Gmail users can use an **app password** meanwhile.
 
@@ -149,17 +143,18 @@ following is done and real sign-in has been tested:
 
 ### Client IDs in builds
 
-Client IDs are public identifiers, but this repository still contains **none**, and CI uses none. A release build
-would supply them at build time from a private configuration (not committed). Google's "client secret" for desktop
-apps is not confidential by Google's own definition, but it is still never committed; the app stores it DPAPI-encrypted
-if entered. Until then, testers enter their own IDs in *Settings → Accounts*.
+The Studio Google Desktop Client ID is a public identifier embedded in portable and Store builds from
+`Directory.Build.props`; CI can override it with the `SIDEPHASE_GOOGLE_CLIENT_ID` Actions variable.
+The required Google Desktop value comes from ignored local build configuration or an Actions secret; it is embedded in the desktop binary and is not confidential. Microsoft registration settings remain as documented above.
+See [GOOGLE_SETUP.md](../GOOGLE_SETUP.md).
 
 ## Security decisions
 
 * **No plaintext passwords or tokens on disk.** Secrets go only to the DPAPI-protected secret store; SQLite has
   no password or token columns (a test checks this). A damaged or foreign secret is treated as missing, so the user is asked to sign in again.
 * **No secrets in logs or error messages.** Errors are translated into friendly text. Sign-in failures never include the server's reply; other refusals (e.g. a rejected recipient) may quote it, but passwords and tokens are never part of an error message.
-* **Nothing is compiled in.** OAuth client IDs and the Google client secret come from settings, the encrypted store or environment variables.
+* **Public registration only in builds.** The Studio Google Client ID is embedded; the issued Desktop client value is included as required by the live token endpoint. No confidential web-client credentials are used.
+  Each user's OAuth tokens remain DPAPI-protected locally.
 * **Encrypted connections only.** SSL/TLS from the start or STARTTLS that must succeed; there is no plain-text
   option, and a failed STARTTLS is an error, never a downgrade. Certificates are validated by Windows; certificate errors are shown, never bypassed.
 * **Minimal OAuth permissions**: mail access for IMAP/SMTP and the user's address only.

@@ -44,7 +44,7 @@ public class OAuthTests
     [Fact]
     public void Authorization_uri_requests_pkce_and_the_documented_scopes_only()
     {
-        var config = OAuthProviders.Google("client-123.apps.googleusercontent.com", null);
+        var config = OAuthProviders.Google("client-123.apps.googleusercontent.com");
         var uri = OAuthClient.BuildAuthorizationUri(config, "http://127.0.0.1:5555/", "state-xyz", "challenge-abc", "me@gmail.com");
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         Assert.Equal("accounts.google.com", uri.Host);
@@ -88,7 +88,7 @@ public class OAuthTests
         var handler = new FakeTokenHandler(HttpStatusCode.OK, $$"""{"access_token":"at-1","refresh_token":"rt-1","expires_in":1800,"id_token":"x.{{payload}}.y"}""");
         var client = new OAuthClient(new HttpClient(handler), new NoBrowser());
 
-        var tokens = await client.ExchangeCodeAsync(OAuthProviders.Google("cid", "csecret"), "code-1", "verifier-1", "http://127.0.0.1:1/");
+        var tokens = await client.ExchangeCodeAsync(OAuthProviders.Google("cid"), "code-1", "verifier-1", "http://127.0.0.1:1/");
         Assert.Equal("at-1", tokens.AccessToken);
         Assert.Equal("rt-1", tokens.RefreshToken);
         Assert.Equal("me@gmail.com", tokens.Email);
@@ -113,7 +113,7 @@ public class OAuthTests
     {
         var handler = new FakeTokenHandler(HttpStatusCode.BadRequest, """{"error":"invalid_grant"}""");
         var client = new OAuthClient(new HttpClient(handler), new NoBrowser());
-        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid", null), "rt"));
+        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid"), "rt"));
         Assert.Contains("Sign in again", ex.Message);
         Assert.DoesNotContain("rt", ex.Message.Split(' '));
     }
@@ -153,7 +153,7 @@ public class OAuthOutageTests
     public async Task A_revoked_sign_in_is_permanent()
     {
         var client = new OAuthClient(new HttpClient(new FakeTokenHandler(HttpStatusCode.BadRequest, "{\"error\":\"invalid_grant\"}")), new NoBrowser());
-        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid", null), "rt"));
+        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid"), "rt"));
 
         Assert.False(ex.IsTransient);
         Assert.True(SidePhase.Mail.Infrastructure.Mail.MailErrorTranslator.Describe(ex).RequiresSignIn);
@@ -163,7 +163,7 @@ public class OAuthOutageTests
     public async Task Unreachable_provider_is_transient()
     {
         var client = new OAuthClient(new HttpClient(new ThrowingHandler()), new NoBrowser());
-        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid", null), "rt"));
+        var ex = await Assert.ThrowsAsync<OAuthException>(() => client.RefreshAsync(OAuthProviders.Google("cid"), "rt"));
         Assert.True(ex.IsTransient);
     }
 

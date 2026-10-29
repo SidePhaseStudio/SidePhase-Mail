@@ -349,7 +349,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IUiDispatcher _ui;
     private readonly AppDataPaths _paths;
     private readonly IAccountService _accounts;
-    private readonly ISecretStore _secrets;
     private readonly LiveMailDataSource _live;
     private readonly Core.Spam.LocalSpamFilter _localFilter;
     private readonly Core.Organisation.MailRuleService _mailRules;
@@ -366,7 +365,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         IUiDispatcher ui,
         AppDataPaths paths,
         IAccountService accounts,
-        ISecretStore secrets,
         LiveMailDataSource live,
         Core.Spam.LocalSpamFilter localFilter,
         Core.Organisation.MailRuleService mailRules,
@@ -390,7 +388,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             foreach (var account in Accounts.Where(a => a.Account.Id == id)) account.RefreshStatus();
         });
-        _secrets = secrets;
         _settings = settings;
         _rules = rules;
         _mail = mail;
@@ -400,7 +397,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ui = ui;
         _paths = paths;
 
-        NewTrustedSender = NewBlockedSender = NewBlockedDomain = RuleError = GoogleClientSecret = string.Empty;
+        NewTrustedSender = NewBlockedSender = NewBlockedDomain = RuleError = string.Empty;
 
         AccentOptions =
         [
@@ -735,35 +732,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public string GoogleClientId
-    {
-        get => S.GoogleClientId ?? string.Empty;
-        set => Set(s => s.GoogleClientId = string.IsNullOrWhiteSpace(value) ? null : value.Trim(), (S.GoogleClientId ?? string.Empty) != value);
-    }
-
     public string MicrosoftClientId
     {
         get => S.MicrosoftClientId ?? string.Empty;
         set => Set(s => s.MicrosoftClientId = string.IsNullOrWhiteSpace(value) ? null : value.Trim(), (S.MicrosoftClientId ?? string.Empty) != value);
-    }
-
-    [ObservableProperty] public partial string GoogleClientSecret { get; set; }
-
-    [RelayCommand]
-    private async Task SaveGoogleClientSecretAsync()
-    {
-        if (string.IsNullOrWhiteSpace(GoogleClientSecret))
-        {
-            await _secrets.DeleteAsync(Infrastructure.Security.SecretKeys.GoogleClientSecret);
-            _toasts.Show("Google client secret removed.");
-        }
-        else
-        {
-            await _secrets.SetAsync(Infrastructure.Security.SecretKeys.GoogleClientSecret, GoogleClientSecret.Trim());
-            _toasts.Show("Google client secret saved (encrypted).", ToastKind.Success);
-        }
-
-        GoogleClientSecret = string.Empty;
     }
 
     private async Task<bool> SaveAppearanceAsync(AccountSettingsViewModel item, string name, string? color)

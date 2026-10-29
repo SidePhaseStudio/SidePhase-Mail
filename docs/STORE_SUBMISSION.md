@@ -25,9 +25,9 @@ credentials. These steps need the owner's accounts and decisions. Details are in
 ## 3. Google sign-in (Gmail)
 - [ ] Create a Google Cloud project and an OAuth client of type *Desktop app*.
 - [ ] Scope: `https://mail.google.com/` only (IMAP/SMTP need it) plus `openid email`. Nothing else.
-- [ ] Publish the consent screen and complete Google's restricted-scope verification and security assessment (CASA)
+- [ ] Publish the consent screen and complete Google's restricted-scope verification; confirm whether this local-only design requires a security assessment
       before public use; until then only listed test users can sign in.
-- [ ] Give the client ID to the build through configuration, never committed. **Then test sign-in, sync, send and
+- [ ] Embed the Studio public client ID and supply the required Desktop value through publisher build configuration (GOOGLE_SETUP.md). **Then test sign-in, sync, send and
       token refresh with a real Gmail account and record the result in RELEASE_READINESS.md.**
 
 ## 4. Microsoft sign-in (Outlook.com / Microsoft 365)
