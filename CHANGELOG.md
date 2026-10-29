@@ -12,10 +12,14 @@ feature has been checked by hand on Windows.
 ### Fixed
 - Opening a message in an *Unread* smart folder or with the *Unread* filter no longer marks every message in the view
   as read. The open message now stays listed until you move to another one.
+- Long messages can be scrolled with the mouse wheel and touchpad again (an invisible layer over the message was
+  taking the scroll).
 
 ### Added
 - After saving an attachment, the notice offers **Open** (through Windows, so SmartScreen and Office Protected View
   still apply). Files that can run programs or macros offer **Show in folder** instead. *Save all* offers **Open folder**.
+- Double-click a message to open it in its own window (a draft opens for editing). The window follows read/star
+  changes and closes if the message is deleted or moved away.
 
 ## 0.7.0-beta.1 — Milestone 7: final polish and controlled beta
 

@@ -14,4 +14,12 @@ public sealed class WindowService(IServiceProvider services)
         var window = new ComposeWindow(viewModel);
         window.Activate();
     }
+
+    /// <summary>Opens a message (or conversation) in its own window.</summary>
+    public void OpenMessage(MessageSummary message, IReadOnlyList<MessageSummary>? thread)
+    {
+        var viewModel = ActivatorUtilities.CreateInstance<ReadingPaneViewModel>(services);
+        var window = new MessageWindow(viewModel, message, thread);
+        window.Activate();
+    }
 }

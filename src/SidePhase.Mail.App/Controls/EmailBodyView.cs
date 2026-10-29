@@ -41,6 +41,7 @@ public sealed partial class EmailBodyView : UserControl
         LineHeight = 22,
     };
 
+    private readonly ScrollViewer _fallbackScroller;
     private Task? _initialization;
     private bool _initializationFailed;
     private string _documentHtml = string.Empty;
@@ -53,7 +54,10 @@ public sealed partial class EmailBodyView : UserControl
         _webView.Visibility = Visibility.Collapsed;
         var grid = new Grid();
         grid.Children.Add(_webView);
-        grid.Children.Add(new ScrollViewer { Content = _fallback, Padding = new Thickness(2, 4, 12, 24) });
+        // The plain-text fallback's scroller is shown only with it: left visible over the web view, it took the mouse
+        // wheel and the message couldn't be scrolled.
+        _fallbackScroller = new ScrollViewer { Content = _fallback, Padding = new Thickness(2, 4, 12, 24), Visibility = Visibility.Collapsed };
+        grid.Children.Add(_fallbackScroller);
         Content = grid;
 
         ActualThemeChanged += (_, _) => QueueRender();
@@ -89,7 +93,7 @@ public sealed partial class EmailBodyView : UserControl
         if (content is null)
         {
             _webView.Visibility = Visibility.Collapsed;
-            _fallback.Visibility = Visibility.Collapsed;
+            _fallback.Visibility = _fallbackScroller.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -115,7 +119,7 @@ public sealed partial class EmailBodyView : UserControl
 
         // A unique URL per render so the WebView never serves a stale document.
         _documentUrl = $"{DocumentUrlPrefix}{content.MessageId:N}/{Guid.NewGuid():N}";
-        _fallback.Visibility = Visibility.Collapsed;
+        _fallback.Visibility = _fallbackScroller.Visibility = Visibility.Collapsed;
         _webView.Visibility = Visibility.Visible;
         _webView.CoreWebView2.Navigate(_documentUrl);
     }
@@ -257,6 +261,6 @@ public sealed partial class EmailBodyView : UserControl
     {
         _webView.Visibility = Visibility.Collapsed;
         _fallback.Text = text;
-        _fallback.Visibility = Visibility.Visible;
+        _fallback.Visibility = _fallbackScroller.Visibility = Visibility.Visible;
     }
 }

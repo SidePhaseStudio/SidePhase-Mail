@@ -12,8 +12,14 @@ public sealed partial class ReadingPane : UserControl
     private Guid? _shownMessageId;
 
     public ReadingPane()
+        : this(App.GetService<ReadingPaneViewModel>())
     {
-        ViewModel = App.GetService<ReadingPaneViewModel>();
+    }
+
+    /// <summary>A reading pane with its own view model, e.g. in a separate message window.</summary>
+    public ReadingPane(ReadingPaneViewModel viewModel)
+    {
+        ViewModel = viewModel;
         InitializeComponent();
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
